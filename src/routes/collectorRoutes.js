@@ -1,5 +1,5 @@
 import express from "express";
-import { authenticate } from "../middlewares/authMiddleware.js";
+import { authenticateToken } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
@@ -55,7 +55,7 @@ const router = express.Router();
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get("/me", authenticate, (req, res) =>
+router.get("/me", authenticateToken, (req, res) =>
   res.json({ success: true, data: req.user })
 );
 

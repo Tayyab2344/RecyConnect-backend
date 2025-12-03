@@ -22,17 +22,50 @@ model User {
   emailVerified Boolean   @default(false)
   deletedAt     DateTime?
   createdAt     DateTime  @default(now())
+  createdById   Int?
+  createdBy     User?     @relation("creator", fields: [createdById], references: [id])
+  createdUsers  User[]    @relation("creator")
 
-  // 👇 self relation fix
-  createdById  Int?
-  createdBy    User?  @relation("creator", fields: [createdById], references: [id])
-  createdUsers User[] @relation("creator")
+  verificationStatus String @default("PENDING")
+  kycStage           String @default("REGISTERED")
+  assignedWarehouseId Int?
+  permissions        Json?
+  rejectionReason    String?
+  requestedRole      String?
+  cnic               String? @unique
+
+  latitude       Float?
+  longitude      Float?
+  city           String?
+  area           String?
+  locationMethod String? // "auto" or "manual"
+  locationPermission Boolean @default(false)
+  addressUpdatedAt   DateTime?
+
+  // Warehouse Business Profile Fields
+  stripeAccountId    String?  // Stripe Connected Account ID
+  businessLicense    String?  // Business license number
+  taxNumber          String?  // Tax registration number
+  warehouseCapacity  Float?   // Total warehouse capacity in kg
+  operatingHours     Json?    // Business operating hours
 
   otps          Otp[]
   documents     UserDocument[]
   ocrDatas      OcrData[]
   refreshTokens RefreshToken[]
-  activityLogs  ActivityLog[]  @relation("actorLogs")
+  activityLogs  ActivityLog[] @relation("actorLogs")
+  items         Item[]
+  listings      Listing[]
+  buyerOrders   Order[]       @relation("BuyerOrders")
+  sellerOrders  Order[]       @relation("SellerOrders")
+  
+  // Warehouse ERP Relations
+  warehouseInventory    WarehouseInventory[] @relation("WarehouseInventory")
+  suppliedInventory     WarehouseInventory[] @relation("SupplierInventory")
+  expenses              Expense[]
+  financialTransactions FinancialTransaction[]
+  inventoryMovements    InventoryMovement[]
+
 }
 
 model UserDocument {
@@ -46,21 +79,25 @@ model UserDocument {
 }
 
 model OcrData {
-  id        Int      @id @default(autoincrement())
+  id            Int      @id @default(autoincrement())
   user      User     @relation(fields: [userId], references: [id])
   userId    Int
   docType   String
-  ocrText   String
-  fileUrl   String
-  createdAt DateTime @default(now())
+  ocrText       String
+  fileUrl       String
+  extractedData Json?
+  isMatch       Boolean  @default(false)
+  confidence    Float?
+  createdAt     DateTime @default(now())
 }
 
 model Otp {
   id        Int      @id @default(autoincrement())
-  userId    Int?     // Make optional for pending registrations
-  email     String?  // Add email field for pending registrations
+  userId    Int?
+  email     String?
   otpHash   String
   purpose   String
+  metadata  Json?    // Store registration data before user creation
   used      Boolean  @default(false)
   expiresAt DateTime
   createdAt DateTime @default(now())
@@ -90,5 +127,160 @@ model ActivityLog {
   userAgent    String?
   createdAt    DateTime @default(now())
   actor        User?    @relation("actorLogs", fields: [userId], references: [id])
+}
+
+model Item {
+  id          Int      @id @default(autoincrement())
+  sellerId    Int
+  seller      User     @relation(fields: [sellerId], references: [id])
+  title       String
+  description String?
+  price       Float
+  quantity    Float    // In kg or units
+  unit        String   @default("kg")
+  category    String
+  images      String[]
+  status      String   @default("AVAILABLE") // AVAILABLE, SOLD, REMOVED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+}
+
+
+
+model Rate {
+  id           Int      @id @default(autoincrement())
+  category     String   @unique
+  pricePerUnit Float
+  unit         String   @default("kg")
+  updatedAt    DateTime @updatedAt
+}
+
+model Listing {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  user           User     @relation(fields: [userId], references: [id])
+  materialType   String   // plastic, paper, metal, e-waste
+  estimatedWeight Float   // in kg, max 10kg for individuals
+  pickupAddress  String
+  images         String[] // Array of image URLs or base64 strings
+  latitude       Float?
+  longitude      Float?
+  locationMethod String?  // "auto" or "manual"
+  notes          String?
+  status         String   @default("PENDING") // PENDING, COLLECTED, COMPLETED, CANCELLED
+  buyerInfo      String?  // Buyer details when matched
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId, status])
+}
+
+model Order {
+  id             Int      @id @default(autoincrement())
+  buyerId        Int
+  buyer          User     @relation("BuyerOrders", fields: [buyerId], references: [id])
+  sellerId       Int
+  seller         User     @relation("SellerOrders", fields: [sellerId], references: [id])
+  materialType   String
+  weight         Float    // in kg
+  pickupAddress  String
+  latitude       Float?
+  longitude      Float?
+  locationMethod String?  // "auto" or "manual"
+  paymentMethod  String   @default("COD") // COD, WALLET, STRIPE
+  status         String   @default("PENDING") // PENDING, COLLECTED, COMPLETED, CANCELLED
+  
+  // Financial Tracking Fields
+  totalAmount      Float?  // Total order value
+  cogs             Float?  // Cost of Goods Sold
+  stripeFee        Float?  // Stripe processing fee (2.9% + $0.30)
+  collectorCost    Float?  // Cost paid to collector
+  netProfit        Float?  // totalAmount - (cogs + stripeFee + collectorCost)
+  stripePaymentId  String? // Stripe payment intent ID
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  financialTransactions FinancialTransaction[]
+
+  @@index([buyerId, status])
+  @@index([sellerId, status])
+}
+
+// ========================================
+// WAREHOUSE ERP MODELS
+// ========================================
+
+model WarehouseInventory {
+  id              Int      @id @default(autoincrement())
+  warehouseId     Int
+  warehouse       User     @relation("WarehouseInventory", fields: [warehouseId], references: [id])
+  materialType    String   // plastic, paper, metal, e-waste, glass
+  category        String   // AI-classified detailed category
+  quantityInStock Float    // current stock in kg
+  reorderLevel    Float?   // alert threshold
+  purchasePrice   Float    // cost per kg when acquired
+  sellingPrice    Float    // expected selling price per kg
+  supplierId      Int?     // who sold this to warehouse
+  supplier        User?    @relation("SupplierInventory", fields: [supplierId], references: [id])
+  location        String?  // bin/zone in warehouse
+  notes           String?  // additional notes
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  movements InventoryMovement[]
+
+  @@index([warehouseId, materialType])
+  @@index([warehouseId, quantityInStock])
+}
+
+model InventoryMovement {
+  id           Int                @id @default(autoincrement())
+  inventoryId  Int
+  inventory    WarehouseInventory @relation(fields: [inventoryId], references: [id])
+  type         String             // INFLOW, OUTFLOW, ADJUSTMENT, LOSS
+  quantity     Float              // in kg (positive for INFLOW, negative for OUTFLOW)
+  reference    String?            // order ID, supplier invoice, etc.
+  notes        String?
+  performedBy  Int
+  user         User               @relation(fields: [performedBy], references: [id])
+  createdAt    DateTime           @default(now())
+
+  @@index([inventoryId, createdAt])
+}
+
+model Expense {
+  id          Int      @id @default(autoincrement())
+  warehouseId Int
+  warehouse   User     @relation(fields: [warehouseId], references: [id])
+  category    String   // OPERATIONAL, EMPLOYEE, TRANSPORTATION, RENT, UTILITIES, PACKAGING, COLLECTOR
+  amount      Float
+  description String?
+  date        DateTime
+  receipt     String?  // cloudinary URL for receipt image
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([warehouseId, date])
+  @@index([warehouseId, category])
+}
+
+model FinancialTransaction {
+  id          Int      @id @default(autoincrement())
+  warehouseId Int
+  warehouse   User     @relation(fields: [warehouseId], references: [id])
+  type        String   // REVENUE, EXPENSE, REFUND
+  amount      Float
+  orderId     Int?
+  order       Order?   @relation(fields: [orderId], references: [id])
+  description String?
+  stripeFee   Float?   // Stripe processing fee if applicable
+  netAmount   Float    // amount - stripeFee (for revenue) or just amount (for expense)
+  metadata    Json?    // Additional data (material type, customer info, etc.)
+  createdAt   DateTime @default(now())
+
+  @@index([warehouseId, type, createdAt])
+  @@index([warehouseId, createdAt])
 }
 

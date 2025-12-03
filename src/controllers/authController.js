@@ -5,7 +5,6 @@ import fs from "fs/promises";
 import cloudinary from "../config/cloudinary.js";
 import { sendEmail } from "../services/emailService.js";
 import { createOtpForUser, verifyOtp } from "../services/otpService.js";
-import { extractTextFromUrl } from "../services/ocrService.js";
 import {
   signAccessToken,
   signRefreshToken,
@@ -13,22 +12,20 @@ import {
   revokeRefreshTokens,
   validateRefreshToken,
 } from "../services/tokenService.js";
+import { extractTextFromUrl, extractCNIC, extractNTN } from "../services/ocrService.js";
 import { logger } from "../utils/logger.js";
+import { UserRole, VerificationStatus, KycStage } from "../constants/enums.js";
+import { sendSuccess, sendError } from "../utils/responseHelper.js";
+
 const prisma = new PrismaClient();
 
-function validationErrors(req) {
+function validateRequest(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    const errorMessages = errors.array().map((error) => ({
-      field: error.path,
-      message: error.msg,
-      value: error.value,
-    }));
-    const err = new Error("Validation failed");
-    err.status = 400;
-    err.details = errorMessages;
-    throw err;
+    sendError(res, "Validation failed", errors.array(), 400);
+    return false;
   }
+  return true;
 }
 
 function safeUserResponse(user) {
@@ -42,447 +39,405 @@ function safeUserResponse(user) {
     businessName: user.businessName,
     companyName: user.companyName,
     emailVerified: user.emailVerified,
+    address: user.address,
+    city: user.city,
+    contactNo: user.contactNo,
+    latitude: user.latitude,
+    longitude: user.longitude,
+    locationMethod: user.locationMethod,
+    locationPermission: user.locationPermission,
+    addressUpdatedAt: user.addressUpdatedAt,
     createdAt: user.createdAt,
+    documents: user.documents,
   };
 }
 
-export async function register(req, res, next) {
+export async function register(req, res) {
   try {
-    validationErrors(req);
-    const { role } = req.body;
+    if (!validateRequest(req, res)) return;
 
-    // Role-specific field validation
-    if (role === "individual") {
-      const { name, email, password } = req.body;
-      if (!name?.trim()) {
-        return res.status(400).json({
-          success: false,
-          error: { message: "Name is required for individual registration" },
-        });
-      }
-    } else if (role === "warehouse") {
-      const { businessName, email, password } = req.body;
-      if (!businessName?.trim()) {
-        return res.status(400).json({
-          success: false,
-          error: {
-            message: "Business name is required for warehouse registration",
-          },
-        });
-      }
-    } else if (role === "company") {
-      const { companyName, email, password } = req.body;
-      if (!companyName?.trim()) {
-        return res.status(400).json({
-          success: false,
-          error: {
-            message: "Company name is required for company registration",
-          },
-        });
-      }
+    const { role, email, password, name, businessName, companyName, address, contactNo } = req.body;
+
+    // 1. Strict Role Validation
+    if (![UserRole.INDIVIDUAL, UserRole.WAREHOUSE, UserRole.COMPANY].includes(role)) {
+      return sendError(res, "Invalid role", null, 400);
     }
 
-    if (role === "individual") {
-      const { name, email, password, address, contactNo } = req.body;
-      if (!name || !email || !password)
-        return res
-          .status(400)
-          .json({ success: false, error: { message: "Missing fields" } });
-
-      // Check if user already exists
-      const existing = await prisma.user.findUnique({ where: { email } });
-      if (existing)
-        return res
-          .status(400)
-          .json({ success: false, error: { message: "User exists" } });
-
-      const hashed = await bcrypt.hash(
-        password,
-        parseInt(process.env.BCRYPT_SALT_ROUNDS || "10")
-      );
-
-      let profileImageUrl = null;
-      if (req.files?.profileImage?.[0]) {
-        const file = req.files.profileImage[0];
-        const uploaded = await cloudinary.uploader.upload(file.path, {
-          folder: `recyconnect/pending`,
-        });
-        profileImageUrl = uploaded.secure_url;
-        await fs.unlink(file.path);
-      }
-
-      // Store registration data temporarily (in memory or cache)
-      const registrationData = {
-        name,
-        email,
-        password: hashed,
-        role,
-        profileImage: profileImageUrl,
-        address,
-        contactNo,
-        timestamp: Date.now(),
-      };
-
-      // Store in a temporary cache/session (you can use Redis or in-memory store)
-      global.pendingRegistrations = global.pendingRegistrations || new Map();
-      global.pendingRegistrations.set(email, registrationData);
-
-      // Set expiry for pending registration (24 hours)
-      setTimeout(() => {
-        global.pendingRegistrations?.delete(email);
-      }, 24 * 60 * 60 * 1000);
-
-      const otp = await createOtpForUser(email, "email_verification"); // Modified to use email instead of userId
-      await sendEmail({
-        to: email,
-        subject: "Verify your RecyConnect email",
-        text: `Your OTP: ${otp}`,
-      });
-
-      return res.status(201).json({
-        success: true,
-        message:
-          "Registration initiated. Check email for OTP to complete registration.",
-      });
+    // 2. Check for existing VERIFIED user only (allow re-registration if OTP not verified)
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing && existing.emailVerified) {
+      return sendError(res, "User already exists", null, 400);
     }
 
-    if (role === "warehouse" || role === "company") {
-      const { email, password, address, contactNo } = req.body;
-      const nameField = role === "warehouse" ? "businessName" : "companyName";
-      const nameVal = req.body[nameField];
-      if (!nameVal || !email || !password)
-        return res
-          .status(400)
-          .json({ success: false, error: { message: "Missing fields" } });
+    // 3. Role-Specific Field Validation
+    if (role === UserRole.INDIVIDUAL) {
+      if (!name?.trim()) return sendError(res, "Name is required", null, 400);
+    } else if (role === UserRole.WAREHOUSE) {
+      if (!businessName?.trim()) return sendError(res, "Business name is required", null, 400);
+    } else if (role === UserRole.COMPANY) {
+      if (!companyName?.trim()) return sendError(res, "Company name is required", null, 400);
+    }
 
-      const existing = await prisma.user.findUnique({ where: { email } });
-      if (existing)
-        return res
-          .status(400)
-          .json({ success: false, error: { message: "User exists" } });
+    // 4. Profile Picture Upload (Mandatory for non-individuals)
+    let profileImageUrl = null;
+    if (req.files?.profileImage?.[0]) {
+      const file = req.files.profileImage[0];
+      const uploaded = await cloudinary.uploader.upload(file.path, {
+        folder: `recyconnect/profile/${email}`,
+      });
+      profileImageUrl = uploaded.secure_url;
+      await fs.unlink(file.path);
+    } else if (role !== UserRole.INDIVIDUAL) {
+      return sendError(res, "Profile picture is mandatory", null, 400);
+    }
 
-      const hashed = await bcrypt.hash(
-        password,
-        parseInt(process.env.BCRYPT_SALT_ROUNDS || "10")
-      );
-
+    // 5. Document Upload & Store URLs (Warehouse/Company)
+    const documentsData = [];
+    if (role === UserRole.WAREHOUSE || role === UserRole.COMPANY) {
       const files = req.files || {};
       if (!files.cnic || !files.cnic[0]) {
-        return res
-          .status(400)
-          .json({ success: false, error: { message: "CNIC is required" } });
+        return sendError(res, "CNIC is required", null, 400);
       }
 
-      // Upload documents to temporary folder
+      // Upload CNIC
       const cnicFile = files.cnic[0];
-      const uploadedCnic = await cloudinary.uploader.upload(cnicFile.path, {
-        folder: `recyconnect/pending/${email}`,
-      });
+      const upCnic = await cloudinary.uploader.upload(cnicFile.path, { folder: `recyconnect/docs/${email}` });
       await fs.unlink(cnicFile.path);
+      documentsData.push({ docType: "CNIC", fileUrl: upCnic.secure_url, fileName: cnicFile.originalname });
 
-      let documentsData = [
-        {
-          docType: "CNIC",
-          fileUrl: uploadedCnic.secure_url,
-          fileName: cnicFile.originalname,
-        },
-      ];
-
-      if (role === "company") {
-        if (
-          !files.utility ||
-          !files.utility[0] ||
-          !files.ntn ||
-          !files.ntn[0]
-        ) {
-          return res.status(400).json({
-            success: false,
-            error: { message: "Utility and NTN required for company" },
-          });
+      if (role === UserRole.COMPANY) {
+        if (!files.ntn?.[0] || !files.utility?.[0]) {
+          return sendError(res, "NTN and Utility Bill required", null, 400);
         }
-        const utilFile = files.utility[0];
         const ntnFile = files.ntn[0];
-        const up1 = await cloudinary.uploader.upload(utilFile.path, {
-          folder: `recyconnect/pending/${email}`,
-        });
-        const up2 = await cloudinary.uploader.upload(ntnFile.path, {
-          folder: `recyconnect/pending/${email}`,
-        });
-        await fs.unlink(utilFile.path);
+        const utilFile = files.utility[0];
+        const upNtn = await cloudinary.uploader.upload(ntnFile.path, { folder: `recyconnect/docs/${email}` });
+        const upUtil = await cloudinary.uploader.upload(utilFile.path, { folder: `recyconnect/docs/${email}` });
         await fs.unlink(ntnFile.path);
+        await fs.unlink(utilFile.path);
 
         documentsData.push(
-          {
-            docType: "UTILITY",
-            fileUrl: up1.secure_url,
-            fileName: utilFile.originalname,
-          },
-          {
-            docType: "NTN",
-            fileUrl: up2.secure_url,
-            fileName: ntnFile.originalname,
-          }
+          { docType: "NTN", fileUrl: upNtn.secure_url, fileName: ntnFile.originalname },
+          { docType: "UTILITY", fileUrl: upUtil.secure_url, fileName: utilFile.originalname }
         );
       }
+    }
 
-      // Store registration data temporarily
-      const registrationData = {
-        [nameField]: nameVal,
+    // 6. Hash password for storage in metadata
+    const hashed = await bcrypt.hash(password, parseInt(process.env.BCRYPT_SALT_ROUNDS || "10"));
+
+    // 7. Prepare registration metadata
+    const registrationData = {
+      name: role === UserRole.INDIVIDUAL ? name : undefined,
+      businessName: role === UserRole.WAREHOUSE ? businessName : undefined,
+      companyName: role === UserRole.COMPANY ? companyName : undefined,
+      email,
+      password: hashed,
+      role,
+      address,
+      contactNo,
+      profileImage: profileImageUrl,
+      documents: documentsData,
+      // Don't store verificationStatus/kycStage - they will be set to VERIFIED after OTP
+    };
+
+    // 8. Delete any existing unused OTPs for this email (from previous attempts)
+    await prisma.otp.deleteMany({
+      where: {
         email,
-        password: hashed,
-        role,
-        address,
-        contactNo,
-        documents: documentsData,
-        timestamp: Date.now(),
-      };
+        purpose: "email_verification",
+        used: false,
+      }
+    });
 
-      global.pendingRegistrations = global.pendingRegistrations || new Map();
-      global.pendingRegistrations.set(email, registrationData);
+    // 9. Create OTP with registration metadata (NO user created yet)
+    const otp = await createOtpForUser(null, "email_verification", email, registrationData);
 
-      setTimeout(() => {
-        global.pendingRegistrations?.delete(email);
-      }, 24 * 60 * 60 * 1000);
+    // 10. Send OTP email
+    await sendEmail({
+      to: email,
+      subject: "Verify your RecyConnect email",
+      text: `Your OTP: ${otp}`,
+    });
 
-      const otp = await createOtpForUser(email, "email_verification");
-      await sendEmail({
-        to: email,
-        subject: "Verify your RecyConnect email",
-        text: `Your OTP: ${otp}`,
-      });
-
-      return res.status(201).json({
-        success: true,
-        message:
-          "Registration initiated. Check email for OTP to complete registration.",
-      });
-    }
-
-    return res
-      .status(400)
-      .json({ success: false, error: { message: "Invalid role" } });
+    sendSuccess(res, "Registration initiated. Please verify your email.", { email }, 201);
   } catch (err) {
-    if (err.details) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          message: "Validation failed",
-          details: err.details,
-        },
-      });
-    }
-    next(err);
+    sendError(res, "Registration failed", err);
   }
 }
 
-export async function verifyOtpController(req, res, next) {
+export async function analyzeDocument(req, res) {
   try {
-    validationErrors(req);
+    if (!req.file) {
+      return sendError(res, "No document provided", null, 400);
+    }
+
+    const uploaded = await cloudinary.uploader.upload(req.file.path, {
+      folder: "recyconnect/temp_analysis",
+    });
+    await fs.unlink(req.file.path);
+
+    logger.info(`Analyzing document: ${uploaded.secure_url}`);
+    const text = await extractTextFromUrl(uploaded.secure_url);
+    logger.info(`OCR extracted text (${text.length} chars): ${text.substring(0, 200)}...`);
+
+    // Attempt to extract structured data based on common patterns
+    const cnic = extractCNIC(text);
+    const ntn = extractNTN(text);
+
+    logger.info(`Extracted CNIC: ${cnic || 'null'}, NTN: ${ntn || 'null'}`);
+
+    sendSuccess(res, "Document analyzed", {
+      text,
+      extracted: {
+        cnic,
+        ntn
+      },
+      imageUrl: uploaded.secure_url
+    });
+  } catch (err) {
+    logger.error(`Document analysis error: ${err.message}`);
+    sendError(res, "Document analysis failed", err);
+  }
+}
+
+export async function verifyOtpController(req, res) {
+  try {
+    if (!validateRequest(req, res)) return;
     const { email, otp } = req.body;
 
-    // Check if this is for pending registration
-    global.pendingRegistrations = global.pendingRegistrations || new Map();
-    const pendingData = global.pendingRegistrations.get(email);
+    // Verify OTP (works for both email-based and user-based)
+    const otpRecord = await verifyOtp(email, otp, "email_verification");
+    if (!otpRecord) {
+      return sendError(res, "Invalid or expired OTP", null, 400);
+    }
 
-    if (pendingData) {
-      // This is a pending registration
-      const ok = await verifyOtp(email, otp, "email_verification");
-      if (!ok)
-        return res.status(400).json({
-          success: false,
-          error: { message: "Invalid or expired OTP" },
-        });
+    // Check if this is a NEW registration (has metadata) or existing user verification
+    if (otpRecord.metadata && otpRecord.metadata.email) {
+      // NEW REGISTRATION: Create user from OTP metadata
+      const regData = otpRecord.metadata;
 
-      // Create the actual user now
-      const userData = {
-        name: pendingData.name,
-        email: pendingData.email,
-        password: pendingData.password,
-        role: pendingData.role,
-        businessName: pendingData.businessName,
-        companyName: pendingData.companyName,
-        profileImage: pendingData.profileImage,
-        address: pendingData.address,
-        contactNo: pendingData.contactNo,
-        emailVerified: true,
-      };
+      // Double-check user doesn't already exist
+      const existing = await prisma.user.findUnique({ where: { email: regData.email } });
+      if (existing) {
+        return sendError(res, "User already exists", null, 400);
+      }
 
-      const user = await prisma.user.create({ data: userData });
-
-      // Handle documents if any
-      if (pendingData.documents) {
-        for (const doc of pendingData.documents) {
-          await prisma.userDocument.create({
-            data: {
-              userId: user.id,
-              docType: doc.docType,
-              fileUrl: doc.fileUrl,
-              fileName: doc.fileName,
-            },
-          });
-
-          // Perform OCR for CNIC and NTN
-          if (doc.docType === "CNIC" || doc.docType === "NTN") {
-            const ocrText = await extractTextFromUrl(doc.fileUrl);
-            await prisma.ocrData.create({
-              data: {
-                userId: user.id,
-                docType: doc.docType,
-                ocrText,
-                fileUrl: doc.fileUrl,
-              },
-            });
+      // Create user from metadata
+      const user = await prisma.user.create({
+        data: {
+          name: regData.name,
+          businessName: regData.businessName,
+          companyName: regData.companyName,
+          email: regData.email,
+          password: regData.password, // Already hashed
+          role: regData.role,
+          address: regData.address,
+          contactNo: regData.contactNo,
+          profileImage: regData.profileImage,
+          emailVerified: true, // Immediately verified since they just verified OTP
+          verificationStatus: VerificationStatus.VERIFIED, // Always VERIFIED after OTP
+          kycStage: KycStage.VERIFIED, // Always VERIFIED after OTP
+          documents: {
+            create: regData.documents || []
           }
+        }
+      });
+
+      // Trigger OCR if documents exist (Async)
+      if (regData.documents && regData.documents.length > 0) {
+        try {
+          for (const doc of regData.documents) {
+            if (doc.docType === "CNIC" || doc.docType === "NTN") {
+              const text = await extractTextFromUrl(doc.fileUrl);
+              let extractedData = {};
+
+              if (doc.docType === "CNIC") {
+                const cnic = extractCNIC(text);
+                extractedData = { cnic };
+              } else if (doc.docType === "NTN") {
+                const ntn = extractNTN(text);
+                extractedData = { ntn };
+              }
+
+              await prisma.ocrData.create({
+                data: {
+                  userId: user.id,
+                  docType: doc.docType,
+                  ocrText: text,
+                  fileUrl: doc.fileUrl,
+                  extractedData,
+                  isMatch: false
+                }
+              });
+            }
+          }
+        } catch (ocrErr) {
+          logger.error("OCR Error during verification: " + ocrErr.message);
         }
       }
 
-      // Clean up pending registration
-      global.pendingRegistrations.delete(email);
-
       await prisma.activityLog.create({
-        data: {
-          userId: user.id,
-          actorRole: user.role,
-          action: "EMAIL_VERIFIED_AND_REGISTERED",
-        },
+        data: { userId: user.id, actorRole: user.role, action: "EMAIL_VERIFIED_AND_REGISTERED" },
       });
 
-      return res.json({
-        success: true,
-        message: "Email verified and registration completed successfully!",
-      });
+      sendSuccess(res, "Email verified successfully. You can now login.");
+
     } else {
-      // This is for existing user email verification
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (!user)
-        return res
-          .status(404)
-          .json({ success: false, error: { message: "User not found" } });
+      // EXISTING USER: Just update verification status
+      const user = await prisma.user.findUnique({ where: { email }, include: { documents: true } });
+      if (!user) {
+        return sendError(res, "User not found", null, 404);
+      }
 
-      const ok = await verifyOtp(user.id, otp, "email_verification");
-      if (!ok)
-        return res.status(400).json({
-          success: false,
-          error: { message: "Invalid or expired OTP" },
-        });
+      // Update user status
+      const updateData = { emailVerified: true };
+
+      // Auto-approve warehouse, company, AND individual accounts after email verification
+      if ([UserRole.WAREHOUSE, UserRole.COMPANY, UserRole.INDIVIDUAL].includes(user.role)) {
+        updateData.verificationStatus = VerificationStatus.VERIFIED;
+        updateData.kycStage = KycStage.VERIFIED;
+      }
 
       await prisma.user.update({
         where: { id: user.id },
-        data: { emailVerified: true },
-      });
-      await prisma.activityLog.create({
-        data: { userId: user.id, actorRole: user.role, action: "OTP_VERIFIED" },
+        data: updateData
       });
 
-      return res.json({
-        success: true,
-        message: "Email verified. You can now login.",
+      // Trigger OCR if documents exist (Async)
+      if (user.documents.length > 0) {
+        try {
+          for (const doc of user.documents) {
+            if (doc.docType === "CNIC" || doc.docType === "NTN") {
+              const text = await extractTextFromUrl(doc.fileUrl);
+              let extractedData = {};
+              let isMatch = false;
+
+              if (doc.docType === "CNIC") {
+                const cnic = extractCNIC(text);
+                extractedData = { cnic };
+              } else if (doc.docType === "NTN") {
+                const ntn = extractNTN(text);
+                extractedData = { ntn };
+              }
+
+              await prisma.ocrData.create({
+                data: {
+                  userId: user.id,
+                  docType: doc.docType,
+                  ocrText: text,
+                  fileUrl: doc.fileUrl,
+                  extractedData,
+                  isMatch
+                }
+              });
+            }
+          }
+        } catch (ocrErr) {
+          logger.error("OCR Error during verification: " + ocrErr.message);
+        }
+      }
+
+      await prisma.activityLog.create({
+        data: { userId: user.id, actorRole: user.role, action: "EMAIL_VERIFIED" },
       });
+
+      sendSuccess(res, "Email verified successfully. You can now login.");
     }
   } catch (err) {
-    next(err);
+    sendError(res, "Verification failed", err);
   }
 }
 
-export async function login(req, res, next) {
+export async function login(req, res) {
   try {
-    validationErrors(req);
+    if (!validateRequest(req, res)) return;
     const { identifier, password } = req.body;
 
-    console.log("Login attempt:", {
-      identifier,
-      password: password ? "[PROVIDED]" : "[MISSING]",
-    });
-
-    let user = await prisma.user.findUnique({ where: { email: identifier } });
-    if (!user)
-      user = await prisma.user.findUnique({
-        where: { collectorId: identifier },
-      });
-
-    console.log(
-      "User found:",
-      user
-        ? {
-            id: user.id,
-            email: user.email,
-            role: user.role,
-            hasPassword: !!user.password,
-          }
-        : "NOT FOUND"
-    );
-
-    if (!user)
-      return res
-        .status(400)
-        .json({ success: false, error: { message: "Invalid credentials" } });
-    if (!user.password)
-      return res.status(400).json({
-        success: false,
-        error: { message: "Account not registered yet" },
-      });
-
-    const match = await bcrypt.compare(password, user.password);
-    console.log("Password match:", match);
-
-    if (!match) {
-      await prisma.activityLog.create({
-        data: {
-          userId: user.id,
-          actorRole: user.role,
-          action: "LOGIN_FAILED",
-          meta: { identifier },
-        },
-      });
-      return res
-        .status(400)
-        .json({ success: false, error: { message: "Invalid credentials" } });
-    }
-    if (
-      user.role !== "collector" &&
-      user.role !== "admin" &&
-      !user.emailVerified
-    ) {
-      return res
-        .status(403)
-        .json({ success: false, error: { message: "Email not verified" } });
-    }
-    const access = signAccessToken(user);
-    const refresh = signRefreshToken(user);
-    await saveRefreshToken(user.id, refresh);
-    await prisma.activityLog.create({
-      data: { userId: user.id, actorRole: user.role, action: "LOGIN_SUCCESS" },
-    });
-    return res.json({
-      success: true,
-      data: {
-        accessToken: access,
-        refreshToken: refresh,
-        role: user.role,
-        name: user.name || user.businessName || user.companyName,
-        collectorId: user.collectorId,
+    // Allow login with email OR collectorId
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [{ email: identifier }, { collectorId: identifier }],
       },
     });
+
+    if (!user || !user.password) {
+      return sendError(res, "Invalid credentials", null, 401);
+    }
+
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) {
+      return sendError(res, "Invalid credentials", null, 401);
+    }
+
+    // Skip verification checks for admin users
+    if (user.role !== UserRole.ADMIN) {
+      // Check Verification Status
+      if (user.verificationStatus === VerificationStatus.BLOCKED) {
+        return sendError(res, "Account blocked", null, 403);
+      }
+
+      if (user.verificationStatus === VerificationStatus.REJECTED) {
+        return sendSuccess(res, "Account rejected", {
+          verificationStatus: VerificationStatus.REJECTED,
+          rejectionReason: user.rejectionReason,
+          kycStage: user.kycStage,
+          role: user.role
+        });
+      }
+
+      if (user.verificationStatus === VerificationStatus.PENDING && user.role !== UserRole.INDIVIDUAL) {
+        return sendSuccess(res, "Account pending verification", {
+          verificationStatus: VerificationStatus.PENDING,
+          kycStage: user.kycStage,
+          role: user.role
+        });
+      }
+
+      // Check Email Verification (for individuals mostly, but good for all)
+      if (!user.emailVerified && user.role === UserRole.INDIVIDUAL) {
+        return sendError(res, "Email not verified", null, 403);
+      }
+    }
+
+    // Generate Tokens
+    const accessToken = signAccessToken(user);
+    const refreshToken = signRefreshToken(user);
+    await saveRefreshToken(user.id, refreshToken);
+
+    await prisma.activityLog.create({
+      data: { userId: user.id, actorRole: user.role, action: "LOGIN" },
+    });
+
+    sendSuccess(res, "Login successful", {
+      accessToken,
+      refreshToken,
+      user: safeUserResponse(user),
+      verificationStatus: user.verificationStatus,
+      kycStage: user.kycStage
+    });
   } catch (err) {
-    next(err);
+    sendError(res, "Login failed", err);
   }
 }
 
-export async function forgotPassword(req, res, next) {
+export async function forgotPassword(req, res) {
   try {
-    validationErrors(req);
+    if (!validateRequest(req, res)) return;
     const { email } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user)
-      return res
-        .status(200)
-        .json({ success: true, message: "If an account exists, OTP sent" });
+
+    if (!user) {
+      return sendSuccess(res, "If an account exists, OTP sent");
+    }
+
     const otp = await createOtpForUser(user.id, "password_reset");
     await sendEmail({
       to: email,
       subject: "RecyConnect password reset OTP",
       text: `Your OTP: ${otp}`,
     });
+
     await prisma.activityLog.create({
       data: {
         userId: user.id,
@@ -490,72 +445,78 @@ export async function forgotPassword(req, res, next) {
         action: "FORGOT_PASSWORD",
       },
     });
-    return res.json({
-      success: true,
-      message: "If an account exists, OTP sent",
-    });
+
+    sendSuccess(res, "If an account exists, OTP sent");
   } catch (err) {
-    next(err);
+    sendError(res, "Forgot password failed", err);
   }
 }
 
-export async function resetPassword(req, res, next) {
+export async function resetPassword(req, res) {
   try {
-    validationErrors(req);
+    if (!validateRequest(req, res)) return;
     const { email, otp, newPassword } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user)
-      return res
-        .status(400)
-        .json({ success: false, error: { message: "Invalid request" } });
+
+    if (!user) {
+      return sendError(res, "Invalid request", null, 400);
+    }
+
     const ok = await verifyOtp(user.id, otp, "password_reset");
-    if (!ok)
-      return res
-        .status(400)
-        .json({ success: false, error: { message: "Invalid or expired OTP" } });
+    if (!ok) {
+      return sendError(res, "Invalid or expired OTP", null, 400);
+    }
+
     const hashed = await bcrypt.hash(
       newPassword,
       parseInt(process.env.BCRYPT_SALT_ROUNDS || "10")
     );
+
     await prisma.user.update({
       where: { id: user.id },
       data: { password: hashed },
     });
+
     await revokeRefreshTokens(user.id);
+
     await prisma.activityLog.create({
       data: { userId: user.id, actorRole: user.role, action: "PASSWORD_RESET" },
     });
-    return res.json({ success: true, message: "Password reset successfully" });
+
+    sendSuccess(res, "Password reset successfully");
   } catch (err) {
-    next(err);
+    sendError(res, "Reset password failed", err);
   }
 }
 
-export async function changePassword(req, res, next) {
+export async function changePassword(req, res) {
   try {
-    validationErrors(req);
+    if (!validateRequest(req, res)) return;
     const { currentPassword, newPassword } = req.body;
     const userId = req.user.id;
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user || !user.password)
-      return res
-        .status(400)
-        .json({ success: false, error: { message: "Invalid user" } });
+
+    if (!user || !user.password) {
+      return sendError(res, "Invalid user", null, 400);
+    }
+
     const ok = await bcrypt.compare(currentPassword, user.password);
-    if (!ok)
-      return res.status(400).json({
-        success: false,
-        error: { message: "Current password incorrect" },
-      });
+    if (!ok) {
+      return sendError(res, "Current password incorrect", null, 400);
+    }
+
     const hashed = await bcrypt.hash(
       newPassword,
       parseInt(process.env.BCRYPT_SALT_ROUNDS || "10")
     );
+
     await prisma.user.update({
       where: { id: userId },
       data: { password: hashed },
     });
+
     await revokeRefreshTokens(user.id);
+
     await prisma.activityLog.create({
       data: {
         userId: user.id,
@@ -563,87 +524,102 @@ export async function changePassword(req, res, next) {
         action: "PASSWORD_CHANGED",
       },
     });
-    return res.json({ success: true, message: "Password changed" });
+
+    sendSuccess(res, "Password changed");
   } catch (err) {
-    next(err);
+    sendError(res, "Change password failed", err);
   }
 }
 
-export async function registerCollector(req, res, next) {
+export async function registerCollector(req, res) {
   try {
-    validationErrors(req);
+    if (!validateRequest(req, res)) return;
     const { collectorId, password, name, contactNo, address } = req.body;
     const user = await prisma.user.findUnique({ where: { collectorId } });
-    if (!user)
-      return res
-        .status(404)
-        .json({ success: false, error: { message: "Collector ID invalid" } });
-    if (user.password)
-      return res.status(400).json({
-        success: false,
-        error: { message: "Collector already registered" },
-      });
+
+    if (!user) {
+      return sendError(res, "Collector ID invalid", null, 404);
+    }
+
+    if (user.password) {
+      return sendError(res, "Collector already registered", null, 400);
+    }
+
     const hashed = await bcrypt.hash(
       password,
       parseInt(process.env.BCRYPT_SALT_ROUNDS || "10")
     );
+
     await prisma.user.update({
       where: { id: user.id },
       data: { password: hashed, name, contactNo, address },
     });
+
     await prisma.activityLog.create({
       data: {
         userId: user.id,
-        actorRole: "collector",
+        actorRole: UserRole.COLLECTOR,
         action: "COLLECTOR_REGISTERED",
       },
     });
-    return res.json({
-      success: true,
-      message: "Collector registered. You can login with your ID and password.",
-    });
+
+    sendSuccess(res, "Collector registered. You can login with your ID and password.");
   } catch (err) {
-    next(err);
+    sendError(res, "Collector registration failed", err);
   }
 }
 
-export async function me(req, res, next) {
+export async function me(req, res) {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
       include: { documents: true, ocrDatas: true },
     });
-    if (!user)
-      return res
-        .status(404)
-        .json({ success: false, error: { message: "User not found" } });
+
+    if (!user) {
+      return sendError(res, "User not found", null, 404);
+    }
+
     await prisma.activityLog.create({
       data: { userId: user.id, actorRole: user.role, action: "FETCH_ME" },
     });
-    return res.json({ success: true, data: safeUserResponse(user) });
+
+    sendSuccess(res, "Profile fetched", safeUserResponse(user));
   } catch (err) {
-    next(err);
+    sendError(res, "Fetch profile failed", err);
   }
 }
 
-export async function updateProfile(req, res, next) {
+export async function updateProfile(req, res) {
   try {
     const userId = req.user.id;
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user)
-      return res
-        .status(404)
-        .json({ success: false, error: { message: "User not found" } });
+
+    if (!user) {
+      return sendError(res, "User not found", null, 404);
+    }
+
     // collect allowed updates
     const updates = {};
-    const allowed = ["name", "businessName", "companyName"];
-    for (const k of allowed) if (req.body[k]) updates[k] = req.body[k];
+    const allowed = ["name", "businessName", "companyName", "address", "city", "contactNo", "latitude", "longitude", "locationMethod", "locationPermission"];
+    for (const k of allowed) {
+      if (req.body[k] !== undefined) {
+        updates[k] = req.body[k];
+      }
+    }
+
+    // Track address updates
+    if (updates.address || updates.city || updates.latitude || updates.longitude) {
+      updates.addressUpdatedAt = new Date();
+    }
+
     if (req.file) {
       const uploaded = await cloudinary.uploader.upload(req.file.path, {
         folder: `recyconnect/profile/${userId}`,
       });
       await fs.unlink(req.file.path);
       updates.profileImage = uploaded.secure_url;
+
       await prisma.activityLog.create({
         data: {
           userId,
@@ -653,19 +629,22 @@ export async function updateProfile(req, res, next) {
         },
       });
     }
-    if (Object.keys(updates).length === 0)
-      return res
-        .status(400)
-        .json({ success: false, error: { message: "No changes provided" } });
+
+    if (Object.keys(updates).length === 0) {
+      return sendError(res, "No changes provided", null, 400);
+    }
+
     const before = {
       name: user.name,
       businessName: user.businessName,
       companyName: user.companyName,
     };
+
     const updated = await prisma.user.update({
       where: { id: userId },
       data: updates,
     });
+
     await prisma.activityLog.create({
       data: {
         userId,
@@ -674,41 +653,46 @@ export async function updateProfile(req, res, next) {
         meta: { before, after: updates },
       },
     });
-    return res.json({ success: true, data: safeUserResponse(updated) });
+
+    sendSuccess(res, "Profile updated", safeUserResponse(updated));
   } catch (err) {
-    next(err);
+    sendError(res, "Update profile failed", err);
   }
 }
 
-export async function logout(req, res, next) {
+export async function logout(req, res) {
   try {
     const userId = req.user.id;
     await revokeRefreshTokens(userId);
+
     await prisma.activityLog.create({
       data: { userId, actorRole: req.user.role, action: "LOGOUT" },
     });
-    return res.json({ success: true, message: "Logged out" });
+
+    sendSuccess(res, "Logged out");
   } catch (err) {
-    next(err);
+    sendError(res, "Logout failed", err);
   }
 }
 
-export async function refreshToken(req, res, next) {
+export async function refreshToken(req, res) {
   try {
-    validationErrors(req);
+    if (!validateRequest(req, res)) return;
     const { refreshToken } = req.body;
     const payload = await validateRefreshToken(refreshToken);
-    // In production, verify hashed token exists and not revoked
+
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
     });
-    if (!user)
-      return res
-        .status(401)
-        .json({ success: false, error: { message: "Invalid token" } });
+
+    if (!user) {
+      return sendError(res, "Invalid token", null, 401);
+    }
+
     const access = signAccessToken(user);
     const newRefresh = signRefreshToken(user);
     await saveRefreshToken(user.id, newRefresh);
+
     await prisma.activityLog.create({
       data: {
         userId: user.id,
@@ -716,60 +700,111 @@ export async function refreshToken(req, res, next) {
         action: "REFRESH_TOKEN_ROTATED",
       },
     });
-    return res.json({
-      success: true,
-      data: { accessToken: access, refreshToken: newRefresh },
-    });
+
+    sendSuccess(res, "Token refreshed", { accessToken: access, refreshToken: newRefresh });
   } catch (err) {
-    next(err);
+    sendError(res, "Refresh token failed", err);
   }
 }
 
-export async function resendOtp(req, res, next) {
+export async function resendOtp(req, res) {
   try {
-    validationErrors(req);
+    if (!validateRequest(req, res)) return;
     const { email } = req.body;
 
-    // Check if there's a pending registration
-    global.pendingRegistrations = global.pendingRegistrations || new Map();
-    const pendingData = global.pendingRegistrations.get(email);
+    // Check if there's a pending registration OTP (user not created yet)
+    const pendingOtp = await prisma.otp.findFirst({
+      where: {
+        email,
+        purpose: "email_verification",
+        used: false,
+      },
+      orderBy: { createdAt: 'desc' }
+    });
 
-    if (pendingData) {
-      // This is for pending registration
-      const otp = await createOtpForUser(email, "email_verification");
+    if (pendingOtp && pendingOtp.metadata) {
+      // This is a pending registration - delete old OTP and create new one with same metadata
+      await prisma.otp.deleteMany({
+        where: {
+          email,
+          purpose: "email_verification",
+          used: false,
+        }
+      });
+
+      const otp = await createOtpForUser(null, "email_verification", email, pendingOtp.metadata);
       await sendEmail({
         to: email,
         subject: "Verify your RecyConnect email",
         text: `Your OTP: ${otp}`,
       });
 
-      return res.json({
-        success: true,
-        message: "OTP sent successfully",
-      });
-    } else {
-      // Check if user exists for regular email verification
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (user && !user.emailVerified) {
-        const otp = await createOtpForUser(user.id, "email_verification");
-        await sendEmail({
-          to: email,
-          subject: "Verify your RecyConnect email",
-          text: `Your OTP: ${otp}`,
-        });
-
-        return res.json({
-          success: true,
-          message: "OTP sent successfully",
-        });
-      }
-
-      return res.status(400).json({
-        success: false,
-        error: { message: "No pending registration or unverified user found" },
-      });
+      return sendSuccess(res, "OTP sent successfully");
     }
+
+    // Otherwise, check for existing user
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      return sendError(res, "No registration found for this email", null, 404);
+    }
+
+    if (user.emailVerified) {
+      return sendError(res, "Email already verified", null, 400);
+    }
+
+    const otp = await createOtpForUser(user.id, "email_verification");
+    await sendEmail({
+      to: email,
+      subject: "Verify your RecyConnect email",
+      text: `Your OTP: ${otp}`,
+    });
+
+    sendSuccess(res, "OTP sent successfully");
   } catch (err) {
-    next(err);
+    sendError(res, "Resend OTP failed", err);
+  }
+}
+
+export async function createCollector(req, res) {
+  try {
+    // Warehouse/Company Admin only
+    const { name, collectorId } = req.body;
+    const adminId = req.user.id;
+
+    // Verify admin role
+    const admin = await prisma.user.findUnique({ where: { id: adminId } });
+    if (![UserRole.WAREHOUSE, UserRole.COMPANY, UserRole.ADMIN].includes(admin.role)) {
+      return sendError(res, "Unauthorized", null, 403);
+    }
+
+    // Generate ID if not provided
+    const finalCollectorId = collectorId || `COL-${Date.now().toString().slice(-6)}`;
+
+    // Check uniqueness
+    const existing = await prisma.user.findUnique({ where: { collectorId: finalCollectorId } });
+    if (existing) {
+      return sendError(res, "Collector ID already exists", null, 400);
+    }
+
+    // Create placeholder user
+    const user = await prisma.user.create({
+      data: {
+        name: name || "New Collector",
+        role: UserRole.COLLECTOR,
+        collectorId: finalCollectorId,
+        assignedWarehouseId: adminId, // Link to creator
+        verificationStatus: VerificationStatus.VERIFIED,
+        emailVerified: true,
+        // No password yet, they will register
+      }
+    });
+
+    await prisma.activityLog.create({
+      data: { userId: adminId, actorRole: admin.role, action: "CREATED_COLLECTOR", meta: { collectorId: finalCollectorId } }
+    });
+
+    sendSuccess(res, "Collector ID created", { collectorId: finalCollectorId });
+  } catch (err) {
+    sendError(res, "Create collector failed", err);
   }
 }

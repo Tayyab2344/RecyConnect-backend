@@ -9,41 +9,30 @@ export function generateOtpCode(length = 6) {
   return code
 }
 
-export async function createOtpForUser(emailOrUserId, purpose = 'email_verification') {
+export async function createOtpForUser(userId, purpose = 'email_verification', email = null, metadata = null) {
   const otp = generateOtpCode()
   const saltRounds = 10
   const hash = await bcrypt.hash(otp, saltRounds)
   const ttl = parseInt(process.env.OTP_TTL_MINUTES || '15')
   const expiresAt = new Date(Date.now() + ttl * 60 * 1000)
-  
-  // For pending registrations, use email as identifier
-  if (typeof emailOrUserId === 'string' && emailOrUserId.includes('@')) {
-    await prisma.otp.create({ 
-      data: { 
-        email: emailOrUserId, 
-        otpHash: hash, 
-        purpose, 
-        expiresAt 
-      } 
-    })
-  } else {
-    // For existing users, use userId
-    await prisma.otp.create({ 
-      data: { 
-        userId: emailOrUserId, 
-        otpHash: hash, 
-        purpose, 
-        expiresAt 
-      } 
-    })
-  }
-  
+
+  await prisma.otp.create({
+    data: {
+      userId: userId || undefined,
+      email: email || undefined,
+      otpHash: hash,
+      purpose,
+      metadata: metadata || undefined,
+      expiresAt
+    }
+  })
+
   return otp
 }
 
 export async function verifyOtp(emailOrUserId, code, purpose = 'email_verification') {
   let record
-  
+
   if (typeof emailOrUserId === 'string' && emailOrUserId.includes('@')) {
     // For pending registrations
     record = await prisma.otp.findFirst({
@@ -57,11 +46,14 @@ export async function verifyOtp(emailOrUserId, code, purpose = 'email_verificati
       orderBy: { createdAt: 'desc' }
     })
   }
-  
-  if (!record) return false
-  if (new Date() > record.expiresAt) return false
+
+  if (!record) return null
+  if (new Date() > record.expiresAt) return null
   const match = await bcrypt.compare(code, record.otpHash)
-  if (!match) return false
+  if (!match) return null
+
   await prisma.otp.update({ where: { id: record.id }, data: { used: true } })
-  return true
+
+  // Return the record (including metadata) instead of just true
+  return record
 }

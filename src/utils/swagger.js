@@ -9,21 +9,39 @@ export const swaggerSpec = swaggerJsdoc({
       description: `
 # RecyConnect Backend API
 
-A comprehensive waste management and recycling platform API.
+A comprehensive waste management and recycling platform API with automatic OCR-based KYC verification.
 
 ## Features
 - **Multi-role Authentication**: Support for individuals, warehouses, companies, collectors, and admins
+- **Automatic KYC Verification**: OCR-based document verification with instant approval/rejection
 - **Document Management**: Upload and OCR processing for verification documents
 - **Collector Management**: Warehouses can create and manage collector IDs
 - **Activity Logging**: Comprehensive audit trail for all system actions
 - **Secure Authentication**: JWT-based authentication with refresh tokens
 
 ## User Roles
-- **Individual**: Regular users who can register and manage their profile
-- **Warehouse**: Businesses that manage waste collection and can create collector IDs
-- **Company**: Corporate entities with additional verification requirements
-- **Collector**: Waste collectors registered by warehouses
-- **Admin**: System administrators with access to logs and monitoring
+- **Individual**: Regular users who can register and manage their profile (no KYC required)
+- **Warehouse**: Businesses that manage waste collection and can create collector IDs (KYC required)
+- **Company**: Corporate entities with additional NTN verification requirements (KYC required)
+- **Collector**: Waste collectors registered by warehouses (KYC required)
+- **Admin**: System administrators with access to logs, monitoring, and manual KYC override
+
+## KYC Verification System
+The system uses **automatic OCR-based verification** for business users:
+
+### Auto-Approval Criteria
+- ✅ CNIC successfully extracted from uploaded images (13 digits)
+- ✅ CNIC format is valid and unique (no duplicates)
+- ✅ For companies: NTN successfully extracted and valid (8 digits)
+
+### Auto-Rejection Reasons
+- ❌ OCR extraction failed (blurry/unclear images)
+- ❌ Invalid CNIC/NTN format
+- ❌ Duplicate CNIC (already registered)
+- ❌ Missing required documents
+
+### Manual Override
+Admins can manually approve or reject KYC if needed using the admin endpoints.
 
 ## Authentication
 Most endpoints require authentication using a Bearer token in the Authorization header:

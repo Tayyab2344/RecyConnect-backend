@@ -1,0 +1,285 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="RecyConnect ERD" id="erd-diagram">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1080" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- LEGEND -->
+        <mxCell id="legend-box" value="LEGEND" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;fontSize=14;fontStyle=1;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="200" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-core" value="Core Authentication &amp; User Module" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="50" y="70" width="180" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-marketplace" value="Marketplace &amp; Trading Module" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="50" y="100" width="180" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-warehouse" value="Warehouse ERP Module" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="50" y="130" width="180" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-reference" value="Reference Data" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="50" y="160" width="180" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- CORE MODULE - USER (CENTRAL ENTITY) -->
+        <mxCell id="user" value="&lt;b&gt;User&lt;/b&gt;&lt;hr&gt;&lt;b&gt;PK&lt;/b&gt; id: INT&lt;br&gt;name: VARCHAR&lt;br&gt;email: VARCHAR (UNIQUE)&lt;br&gt;password: VARCHAR&lt;br&gt;role: VARCHAR&lt;br&gt;businessName: VARCHAR&lt;br&gt;companyName: VARCHAR&lt;br&gt;collectorId: VARCHAR (UNIQUE)&lt;br&gt;profileImage: VARCHAR&lt;br&gt;address: VARCHAR&lt;br&gt;contactNo: VARCHAR&lt;br&gt;emailVerified: BOOLEAN&lt;br&gt;deletedAt: DATETIME&lt;br&gt;createdAt: DATETIME&lt;br&gt;&lt;b&gt;FK&lt;/b&gt; createdById: INT&lt;hr&gt;&lt;b&gt;KYC Fields:&lt;/b&gt;&lt;br&gt;verificationStatus: VARCHAR&lt;br&gt;kycStage: VARCHAR&lt;br&gt;cnic: VARCHAR (UNIQUE)&lt;br&gt;rejectionReason: VARCHAR&lt;br&gt;requestedRole: VARCHAR&lt;br&gt;assignedWarehouseId: INT&lt;br&gt;permissions: JSON&lt;hr&gt;&lt;b&gt;Location Fields:&lt;/b&gt;&lt;br&gt;latitude: FLOAT&lt;br&gt;longitude: FLOAT&lt;br&gt;city: VARCHAR&lt;br&gt;area: VARCHAR&lt;br&gt;locationMethod: VARCHAR&lt;br&gt;locationPermission: BOOLEAN&lt;br&gt;addressUpdatedAt: DATETIME&lt;hr&gt;&lt;b&gt;Warehouse Business:&lt;/b&gt;&lt;br&gt;stripeAccountId: VARCHAR&lt;br&gt;businessLicense: VARCHAR&lt;br&gt;taxNumber: VARCHAR&lt;br&gt;warehouseCapacity: FLOAT&lt;br&gt;operatingHours: JSON" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=top;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="760" y="240" width="280" height="600" as="geometry" />
+        </mxCell>
+
+        <!-- CORE MODULE - OTP -->
+        <mxCell id="otp" value="&lt;b&gt;Otp&lt;/b&gt;&lt;hr&gt;&lt;b&gt;PK&lt;/b&gt; id: INT&lt;br&gt;&lt;b&gt;FK&lt;/b&gt; userId: INT (nullable)&lt;br&gt;email: VARCHAR&lt;br&gt;otpHash: VARCHAR&lt;br&gt;purpose: VARCHAR&lt;br&gt;used: BOOLEAN&lt;br&gt;expiresAt: DATETIME&lt;br&gt;createdAt: DATETIME" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=top;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="360" y="240" width="240" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- CORE MODULE - REFRESH TOKEN -->
+        <mxCell id="refreshtoken" value="&lt;b&gt;RefreshToken&lt;/b&gt;&lt;hr&gt;&lt;b&gt;PK&lt;/b&gt; id: INT&lt;br&gt;&lt;b&gt;FK&lt;/b&gt; userId: INT&lt;br&gt;tokenHash: VARCHAR&lt;br&gt;revoked: BOOLEAN&lt;br&gt;createdAt: DATETIME&lt;br&gt;expiresAt: DATETIME" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=top;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="360" y="400" width="240" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- CORE MODULE - USER DOCUMENT -->
+        <mxCell id="userdocument" value="&lt;b&gt;UserDocument&lt;/b&gt;&lt;hr&gt;&lt;b&gt;PK&lt;/b&gt; id: INT&lt;br&gt;&lt;b&gt;FK&lt;/b&gt; userId: INT&lt;br&gt;docType: VARCHAR&lt;br&gt;fileUrl: VARCHAR&lt;br&gt;fileName: VARCHAR&lt;br&gt;createdAt: DATETIME" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=top;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="360" y="540" width="240" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- CORE MODULE - OCR DATA -->
+        <mxCell id="ocrdata" value="&lt;b&gt;OcrData&lt;/b&gt;&lt;hr&gt;&lt;b&gt;PK&lt;/b&gt; id: INT&lt;br&gt;&lt;b&gt;FK&lt;/b&gt; userId: INT&lt;br&gt;docType: VARCHAR&lt;br&gt;ocrText: TEXT&lt;br&gt;fileUrl: VARCHAR&lt;br&gt;extractedData: JSON&lt;br&gt;isMatch: BOOLEAN&lt;br&gt;confidence: FLOAT&lt;br&gt;createdAt: DATETIME" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=top;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="360" y="680" width="240" height="160" as="geometry" />
+        </mxCell>
+
+        <!-- CORE MODULE - ACTIVITY LOG -->
+        <mxCell id="activitylog" value="&lt;b&gt;ActivityLog&lt;/b&gt;&lt;hr&gt;&lt;b&gt;PK&lt;/b&gt; id: INT&lt;br&gt;&lt;b&gt;FK&lt;/b&gt; userId: INT (nullable)&lt;br&gt;actorRole: VARCHAR&lt;br&gt;action: VARCHAR&lt;br&gt;resourceType: VARCHAR&lt;br&gt;resourceId: VARCHAR&lt;br&gt;meta: JSON&lt;br&gt;ip: VARCHAR&lt;br&gt;userAgent: VARCHAR&lt;br&gt;createdAt: DATETIME" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=top;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="1120" y="240" width="240" height="180" as="geometry" />
+        </mxCell>
+
+        <!-- MARKETPLACE MODULE - ITEM -->
+        <mxCell id="item" value="&lt;b&gt;Item&lt;/b&gt;&lt;hr&gt;&lt;b&gt;PK&lt;/b&gt; id: INT&lt;br&gt;&lt;b&gt;FK&lt;/b&gt; sellerId: INT&lt;br&gt;title: VARCHAR&lt;br&gt;description: TEXT&lt;br&gt;price: FLOAT&lt;br&gt;quantity: FLOAT&lt;br&gt;unit: VARCHAR (default: kg)&lt;br&gt;category: VARCHAR&lt;br&gt;images: VARCHAR[]&lt;br&gt;status: VARCHAR&lt;br&gt;createdAt: DATETIME&lt;br&gt;updatedAt: DATETIME" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;verticalAlign=top;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="1120" y="440" width="240" height="200" as="geometry" />
+        </mxCell>
+
+        <!-- MARKETPLACE MODULE - LISTING -->
+        <mxCell id="listing" value="&lt;b&gt;Listing&lt;/b&gt;&lt;hr&gt;&lt;b&gt;PK&lt;/b&gt; id: INT&lt;br&gt;&lt;b&gt;FK&lt;/b&gt; userId: INT&lt;br&gt;materialType: VARCHAR&lt;br&gt;estimatedWeight: FLOAT&lt;br&gt;pickupAddress: VARCHAR&lt;br&gt;latitude: FLOAT&lt;br&gt;longitude: FLOAT&lt;br&gt;locationMethod: VARCHAR&lt;br&gt;notes: TEXT&lt;br&gt;status: VARCHAR&lt;br&gt;buyerInfo: VARCHAR&lt;br&gt;createdAt: DATETIME&lt;br&gt;updatedAt: DATETIME&lt;br&gt;&lt;b&gt;Index:&lt;/b&gt; (userId, status)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;verticalAlign=top;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="1120" y="660" width="240" height="220" as="geometry" />
+        </mxCell>
+
+        <!-- MARKETPLACE MODULE - ORDER -->
+        <mxCell id="order" value="&lt;b&gt;Order&lt;/b&gt;&lt;hr&gt;&lt;b&gt;PK&lt;/b&gt; id: INT&lt;br&gt;&lt;b&gt;FK&lt;/b&gt; buyerId: INT&lt;br&gt;&lt;b&gt;FK&lt;/b&gt; sellerId: INT&lt;br&gt;materialType: VARCHAR&lt;br&gt;weight: FLOAT&lt;br&gt;pickupAddress: VARCHAR&lt;br&gt;latitude: FLOAT&lt;br&gt;longitude: FLOAT&lt;br&gt;locationMethod: VARCHAR&lt;br&gt;paymentMethod: VARCHAR&lt;br&gt;status: VARCHAR&lt;hr&gt;&lt;b&gt;Financial Tracking:&lt;/b&gt;&lt;br&gt;totalAmount: FLOAT&lt;br&gt;cogs: FLOAT&lt;br&gt;stripeFee: FLOAT&lt;br&gt;collectorCost: FLOAT&lt;br&gt;netProfit: FLOAT&lt;br&gt;stripePaymentId: VARCHAR&lt;hr&gt;createdAt: DATETIME&lt;br&gt;updatedAt: DATETIME&lt;br&gt;&lt;b&gt;Index:&lt;/b&gt; (buyerId, status)&lt;br&gt;&lt;b&gt;Index:&lt;/b&gt; (sellerId, status)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;verticalAlign=top;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="1400" y="240" width="270" height="360" as="geometry" />
+        </mxCell>
+
+        <!-- REFERENCE MODULE - RATE -->
+        <mxCell id="rate" value="&lt;b&gt;Rate&lt;/b&gt;&lt;hr&gt;&lt;b&gt;PK&lt;/b&gt; id: INT&lt;br&gt;category: VARCHAR (UNIQUE)&lt;br&gt;pricePerUnit: FLOAT&lt;br&gt;unit: VARCHAR (default: kg)&lt;br&gt;updatedAt: DATETIME" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;verticalAlign=top;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="1400" y="620" width="240" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- WAREHOUSE ERP MODULE - WAREHOUSE INVENTORY -->
+        <mxCell id="warehouseinventory" value="&lt;b&gt;WarehouseInventory&lt;/b&gt;&lt;hr&gt;&lt;b&gt;PK&lt;/b&gt; id: INT&lt;br&gt;&lt;b&gt;FK&lt;/b&gt; warehouseId: INT&lt;br&gt;&lt;b&gt;FK&lt;/b&gt; supplierId: INT (nullable)&lt;br&gt;materialType: VARCHAR&lt;br&gt;category: VARCHAR&lt;br&gt;quantityInStock: FLOAT&lt;br&gt;reorderLevel: FLOAT&lt;br&gt;purchasePrice: FLOAT&lt;br&gt;sellingPrice: FLOAT&lt;br&gt;location: VARCHAR&lt;br&gt;notes: TEXT&lt;br&gt;createdAt: DATETIME&lt;br&gt;updatedAt: DATETIME&lt;br&gt;&lt;b&gt;Index:&lt;/b&gt; (warehouseId, materialType)&lt;br&gt;&lt;b&gt;Index:&lt;/b&gt; (warehouseId, quantityInStock)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;verticalAlign=top;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="40" y="240" width="280" height="260" as="geometry" />
+        </mxCell>
+
+        <!-- WAREHOUSE ERP MODULE - INVENTORY MOVEMENT -->
+        <mxCell id="inventorymovement" value="&lt;b&gt;InventoryMovement&lt;/b&gt;&lt;hr&gt;&lt;b&gt;PK&lt;/b&gt; id: INT&lt;br&gt;&lt;b&gt;FK&lt;/b&gt; inventoryId: INT&lt;br&gt;&lt;b&gt;FK&lt;/b&gt; performedBy: INT&lt;br&gt;type: VARCHAR&lt;br&gt;quantity: FLOAT&lt;br&gt;reference: VARCHAR&lt;br&gt;notes: TEXT&lt;br&gt;createdAt: DATETIME&lt;br&gt;&lt;b&gt;Index:&lt;/b&gt; (inventoryId, createdAt)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;verticalAlign=top;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="40" y="520" width="280" height="160" as="geometry" />
+        </mxCell>
+
+        <!-- WAREHOUSE ERP MODULE - EXPENSE -->
+        <mxCell id="expense" value="&lt;b&gt;Expense&lt;/b&gt;&lt;hr&gt;&lt;b&gt;PK&lt;/b&gt; id: INT&lt;br&gt;&lt;b&gt;FK&lt;/b&gt; warehouseId: INT&lt;br&gt;category: VARCHAR&lt;br&gt;amount: FLOAT&lt;br&gt;description: TEXT&lt;br&gt;date: DATETIME&lt;br&gt;receipt: VARCHAR&lt;br&gt;createdAt: DATETIME&lt;br&gt;updatedAt: DATETIME&lt;br&gt;&lt;b&gt;Index:&lt;/b&gt; (warehouseId, date)&lt;br&gt;&lt;b&gt;Index:&lt;/b&gt; (warehouseId, category)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;verticalAlign=top;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="40" y="700" width="280" height="180" as="geometry" />
+        </mxCell>
+
+        <!-- WAREHOUSE ERP MODULE - FINANCIAL TRANSACTION -->
+        <mxCell id="financialtransaction" value="&lt;b&gt;FinancialTransaction&lt;/b&gt;&lt;hr&gt;&lt;b&gt;PK&lt;/b&gt; id: INT&lt;br&gt;&lt;b&gt;FK&lt;/b&gt; warehouseId: INT&lt;br&gt;&lt;b&gt;FK&lt;/b&gt; orderId: INT (nullable)&lt;br&gt;type: VARCHAR&lt;br&gt;amount: FLOAT&lt;br&gt;stripeFee: FLOAT&lt;br&gt;netAmount: FLOAT&lt;br&gt;description: TEXT&lt;br&gt;metadata: JSON&lt;br&gt;createdAt: DATETIME&lt;br&gt;&lt;b&gt;Index:&lt;/b&gt; (warehouseId, type, createdAt)&lt;br&gt;&lt;b&gt;Index:&lt;/b&gt; (warehouseId, createdAt)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;verticalAlign=top;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="1700" y="240" width="280" height="200" as="geometry" />
+        </mxCell>
+
+        <!-- RELATIONSHIPS -->
+        
+        <!-- User Self-Referential (createdBy) -->
+        <mxCell id="rel-user-self" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;entryX=0.5;entryY=0;curved=1;startArrow=none;startFill=0;endArrow=ERmany;endFill=0;strokeColor=#82b366;" edge="1" parent="1" source="user" target="user">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="900" y="200" />
+              <mxPoint x="900" y="200" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rel-user-self-label" value="createdBy" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fontColor=#82b366;" vertex="1" connectable="0" parent="rel-user-self">
+          <mxGeometry x="-0.1" y="2" relative="1" as="geometry">
+            <mxPoint x="20" y="-8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- User → Otp -->
+        <mxCell id="rel-user-otp" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.1;entryX=1;entryY=0.5;curved=0;startArrow=ERone;startFill=0;endArrow=ERmany;endFill=0;strokeColor=#82b366;" edge="1" parent="1" source="user" target="otp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-user-otp-label" value="1:N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" vertex="1" connectable="0" parent="rel-user-otp">
+          <mxGeometry x="-0.1" y="2" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- User → RefreshToken -->
+        <mxCell id="rel-user-refresh" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.2;entryX=1;entryY=0.5;curved=0;startArrow=ERone;startFill=0;endArrow=ERmany;endFill=0;strokeColor=#82b366;" edge="1" parent="1" source="user" target="refreshtoken">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-user-refresh-label" value="1:N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" vertex="1" connectable="0" parent="rel-user-refresh">
+          <mxGeometry x="-0.1" y="2" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- User → UserDocument -->
+        <mxCell id="rel-user-doc" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.3;entryX=1;entryY=0.5;curved=0;startArrow=ERone;startFill=0;endArrow=ERmany;endFill=0;strokeColor=#82b366;" edge="1" parent="1" source="user" target="userdocument">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-user-doc-label" value="1:N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" vertex="1" connectable="0" parent="rel-user-doc">
+          <mxGeometry x="-0.1" y="2" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- User → OcrData -->
+        <mxCell id="rel-user-ocr" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.4;entryX=1;entryY=0.5;curved=0;startArrow=ERone;startFill=0;endArrow=ERmany;endFill=0;strokeColor=#82b366;" edge="1" parent="1" source="user" target="ocrdata">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-user-ocr-label" value="1:N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" vertex="1" connectable="0" parent="rel-user-ocr">
+          <mxGeometry x="-0.1" y="2" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- User → ActivityLog -->
+        <mxCell id="rel-user-log" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.1;entryX=0;entryY=0.5;curved=0;startArrow=ERone;startFill=0;endArrow=ERmany;endFill=0;strokeColor=#82b366;" edge="1" parent="1" source="user" target="activitylog">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-user-log-label" value="1:N (actor)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" vertex="1" connectable="0" parent="rel-user-log">
+          <mxGeometry x="-0.1" y="2" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- User → Item -->
+        <mxCell id="rel-user-item" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.25;entryX=0;entryY=0.5;curved=0;startArrow=ERone;startFill=0;endArrow=ERmany;endFill=0;strokeColor=#6c8ebf;" edge="1" parent="1" source="user" target="item">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-user-item-label" value="1:N (seller)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" vertex="1" connectable="0" parent="rel-user-item">
+          <mxGeometry x="-0.1" y="2" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- User → Listing -->
+        <mxCell id="rel-user-listing" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.4;entryX=0;entryY=0.5;curved=0;startArrow=ERone;startFill=0;endArrow=ERmany;endFill=0;strokeColor=#6c8ebf;" edge="1" parent="1" source="user" target="listing">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-user-listing-label" value="1:N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" vertex="1" connectable="0" parent="rel-user-listing">
+          <mxGeometry x="-0.1" y="2" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- User → Order (Buyer) -->
+        <mxCell id="rel-user-order-buyer" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.15;entryX=0;entryY=0.25;curved=0;startArrow=ERone;startFill=0;endArrow=ERmany;endFill=0;strokeColor=#6c8ebf;" edge="1" parent="1" source="user" target="order">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-user-order-buyer-label" value="1:N (buyer)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" vertex="1" connectable="0" parent="rel-user-order-buyer">
+          <mxGeometry x="-0.1" y="2" relative="1" as="geometry">
+            <mxPoint y="-8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- User → Order (Seller) -->
+        <mxCell id="rel-user-order-seller" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.2;entryX=0;entryY=0.35;curved=0;startArrow=ERone;startFill=0;endArrow=ERmany;endFill=0;strokeColor=#6c8ebf;" edge="1" parent="1" source="user" target="order">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-user-order-seller-label" value="1:N (seller)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" vertex="1" connectable="0" parent="rel-user-order-seller">
+          <mxGeometry x="-0.1" y="2" relative="1" as="geometry">
+            <mxPoint y="8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- User → WarehouseInventory (Warehouse) -->
+        <mxCell id="rel-user-whinv-warehouse" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;entryX=1;entryY=0.25;curved=0;startArrow=ERone;startFill=0;endArrow=ERmany;endFill=0;strokeColor=#d79b00;" edge="1" parent="1" source="user" target="warehouseinventory">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-user-whinv-warehouse-label" value="1:N (warehouse)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" vertex="1" connectable="0" parent="rel-user-whinv-warehouse">
+          <mxGeometry x="-0.1" y="2" relative="1" as="geometry">
+            <mxPoint y="-8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- User → WarehouseInventory (Supplier) -->
+        <mxCell id="rel-user-whinv-supplier" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.55;entryX=1;entryY=0.35;curved=0;startArrow=ERone;startFill=0;endArrow=ERmany;endFill=0;strokeColor=#d79b00;dashed=1;" edge="1" parent="1" source="user" target="warehouseinventory">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-user-whinv-supplier-label" value="1:N (supplier)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" vertex="1" connectable="0" parent="rel-user-whinv-supplier">
+          <mxGeometry x="-0.1" y="2" relative="1" as="geometry">
+            <mxPoint y="8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- User → Expense -->
+        <mxCell id="rel-user-expense" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.7;entryX=1;entryY=0.5;curved=0;startArrow=ERone;startFill=0;endArrow=ERmany;endFill=0;strokeColor=#d79b00;" edge="1" parent="1" source="user" target="expense">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-user-expense-label" value="1:N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" vertex="1" connectable="0" parent="rel-user-expense">
+          <mxGeometry x="-0.1" y="2" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- User → FinancialTransaction -->
+        <mxCell id="rel-user-fintrans" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.05;entryX=0;entryY=0.5;curved=0;startArrow=ERone;startFill=0;endArrow=ERmany;endFill=0;strokeColor=#d79b00;" edge="1" parent="1" source="user" target="financialtransaction">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-user-fintrans-label" value="1:N (warehouse)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" vertex="1" connectable="0" parent="rel-user-fintrans">
+          <mxGeometry x="-0.1" y="2" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- User → InventoryMovement -->
+        <mxCell id="rel-user-invmove" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.6;entryX=1;entryY=0.5;curved=0;startArrow=ERone;startFill=0;endArrow=ERmany;endFill=0;strokeColor=#d79b00;" edge="1" parent="1" source="user" target="inventorymovement">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-user-invmove-label" value="1:N (performedBy)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" vertex="1" connectable="0" parent="rel-user-invmove">
+          <mxGeometry x="-0.1" y="2" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- WarehouseInventory → InventoryMovement -->
+        <mxCell id="rel-whinv-invmove" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;curved=0;startArrow=ERone;startFill=0;endArrow=ERmany;endFill=0;strokeColor=#d79b00;" edge="1" parent="1" source="warehouseinventory" target="inventorymovement">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-whinv-invmove-label" value="1:N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" vertex="1" connectable="0" parent="rel-whinv-invmove">
+          <mxGeometry x="-0.1" y="2" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Order → FinancialTransaction -->
+        <mxCell id="rel-order-fintrans" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.8;curved=0;startArrow=ERone;startFill=0;endArrow=ERmany;endFill=0;strokeColor=#6c8ebf;" edge="1" parent="1" source="order" target="financialtransaction">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-order-fintrans-label" value="1:N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" vertex="1" connectable="0" parent="rel-order-fintrans">
+          <mxGeometry x="-0.1" y="2" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Title -->
+        <mxCell id="title" value="&lt;b style=&quot;font-size: 24px;&quot;&gt;RecyConnect Database ERD&lt;/b&gt;&lt;br&gt;&lt;i&gt;Entity Relationship Diagram&lt;/i&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=18;" vertex="1" parent="1">
+          <mxGeometry x="760" y="40" width="400" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Notes -->
+        <mxCell id="notes" value="&lt;b&gt;Notes:&lt;/b&gt;&lt;br&gt;• Dashed lines indicate nullable FK relationships&lt;br&gt;• All timestamps use DATETIME type&lt;br&gt;• JSON fields store complex structured data&lt;br&gt;• Indexes optimize query performance&lt;br&gt;• User entity supports multiple roles: Individual, Warehouse, Company, Collector, Admin" style="text;html=1;strokeColor=#666666;fillColor=#f5f5f5;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="280" y="40" width="440" height="80" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

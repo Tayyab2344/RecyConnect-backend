@@ -1,21 +1,23 @@
 import express from "express";
 import { body } from "express-validator";
 import multer from "multer";
-import { 
-  register, 
-  verifyOtpController, 
-  login, 
-  forgotPassword, 
-  resetPassword, 
-  changePassword, 
-  registerCollector, 
-  me, 
-  updateProfile, 
-  logout, 
+import {
+  register,
+  verifyOtpController,
+  login,
+  forgotPassword,
+  resetPassword,
+  changePassword,
+  registerCollector,
+  createCollector,
+  me,
+  updateProfile,
+  logout,
   refreshToken,
-  resendOtp 
+  resendOtp,
+  analyzeDocument
 } from '../controllers/authController.js'
-import { authenticate } from "../middlewares/authMiddleware.js";
+import { authenticateToken } from "../middlewares/authMiddleware.js";
 
 const upload = multer({ dest: "tmp/" });
 const router = express.Router();
@@ -528,6 +530,12 @@ router.post(
 );
 
 router.post(
+  "/analyze-document",
+  upload.single("document"),
+  analyzeDocument
+);
+
+router.post(
   "/verify-otp",
   [emailValidation, otpValidation],
   verifyOtpController
@@ -546,8 +554,8 @@ router.post(
   login
 );
 router.post(
-  "/forgot-password", 
-  [emailValidation], 
+  "/forgot-password",
+  [emailValidation],
   forgotPassword
 );
 
@@ -567,7 +575,7 @@ router.post(
 
 router.post(
   "/change-password",
-  authenticate,
+  authenticateToken,
   [
     body("currentPassword")
       .notEmpty()
@@ -590,14 +598,24 @@ router.post(
   ],
   registerCollector
 );
-router.get("/me", authenticate, me);
-router.put("/me", authenticate, upload.single("profileImage"), updateProfile);
-router.post("/logout", authenticate, logout);
+router.get("/me", authenticateToken, me);
+router.put("/me", authenticateToken, upload.single("profileImage"), updateProfile);
+router.post("/logout", authenticateToken, logout);
 router.post("/refresh", body("refreshToken").notEmpty(), refreshToken);
 router.post(
-  "/resend-otp", 
-  [emailValidation], 
+  "/resend-otp",
+  [emailValidation],
   resendOtp
+);
+
+router.post(
+  "/create-collector",
+  authenticateToken,
+  [
+    body("name").notEmpty().withMessage("Collector name is required"),
+    body("collectorId").optional().trim().matches(/^[a-zA-Z0-9_-]+$/).withMessage("Invalid ID format")
+  ],
+  createCollector
 );
 
 export default router;

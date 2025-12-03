@@ -1,6 +1,6 @@
 import express from "express";
-import { addCollector } from "../controllers/warehouseController.js";
-import { authenticate } from "../middlewares/authMiddleware.js";
+import { addCollector, getCollectors } from "../controllers/warehouseController.js";
+import { authenticateToken } from "../middlewares/authMiddleware.js";
 import { permit } from "../middlewares/roleMiddleware.js";
 
 const router = express.Router();
@@ -12,33 +12,47 @@ const router = express.Router();
  *   description: Warehouse management endpoints
  */
 
+import multer from "multer";
+
+const upload = multer({ dest: "tmp/" });
+
 /**
  * @swagger
  * /api/warehouse/add-collector:
  *   post:
- *     summary: Create a new collector ID
+ *     summary: Create a new collector
  *     description: |
- *       Warehouse users can create collector IDs for their waste collectors.
- *       A unique collector ID (format: COL-XXXX) is generated automatically.
- *       The collector can later use this ID to complete their registration.
+ *       Warehouse users can create a collector with full details and files.
+ *       Generates and returns credentials.
  *     tags: [Warehouse]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
- *       required: false
+ *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
+ *             required:
+ *               - name
+ *               - address
+ *               - contactNo
  *             properties:
  *               name:
  *                 type: string
- *                 description: Collector's name (optional)
- *             example:
- *               name: "John Doe"
+ *               address:
+ *                 type: string
+ *               contactNo:
+ *                 type: string
+ *               profileImage:
+ *                 type: string
+ *                 format: binary
+ *               cnic:
+ *                 type: string
+ *                 format: binary
  *     responses:
  *       201:
- *         description: Collector ID created successfully
+ *         description: Collector created successfully
  *         content:
  *           application/json:
  *             schema:
@@ -46,27 +60,47 @@ const router = express.Router();
  *               properties:
  *                 success:
  *                   type: boolean
- *                   example: true
  *                 message:
  *                   type: string
- *                   example: "Collector ID created"
- *                 collectorId:
- *                   type: string
- *                   example: "COL-1234"
- *                   description: Generated collector ID
- *       401:
- *         description: Unauthorized - Invalid or missing token
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- *       403:
- *         description: Forbidden - User is not a warehouse
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     collectorId:
+ *                       type: string
+ *                     password:
+ *                       type: string
+ *                     name:
+ *                       type: string
  */
-router.post("/add-collector", authenticate, permit("warehouse"), addCollector);
+router.post(
+    "/add-collector",
+    authenticateToken,
+    permit("warehouse"),
+    upload.fields([
+        { name: "profileImage", maxCount: 1 },
+        { name: "cnic", maxCount: 1 }
+    ]),
+    addCollector
+);
+
+/**
+ * @swagger
+ * /api/warehouse/collectors:
+ *   get:
+ *     summary: Get all collectors
+ *     description: Retrieve all collectors created by the authenticated warehouse
+ *     tags: [Warehouse]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of collectors
+ */
+router.get(
+    "/collectors",
+    authenticateToken,
+    permit("warehouse"),
+    getCollectors
+);
 
 export default router;
