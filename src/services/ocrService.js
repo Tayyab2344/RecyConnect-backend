@@ -1,4 +1,4 @@
-import { createWorker } from "tesseract.js";
+// import { createWorker } from "tesseract.js"; // Removed top-level import
 import { logger } from "../utils/logger.js";
 import fetch from "node-fetch";
 
@@ -8,6 +8,7 @@ async function getWorker() {
   if (!workerPromise) {
     workerPromise = (async () => {
       try {
+        const { createWorker } = await import("tesseract.js"); // Dynamic import
         const worker = await createWorker("eng", 1, {
           workerPath:
             process.env.TESSERACT_WORKER_PATH ||
@@ -30,7 +31,6 @@ async function getWorker() {
       }
     })();
   }
-
   return workerPromise;
 }
 
