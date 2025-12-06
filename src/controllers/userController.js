@@ -293,3 +293,51 @@ export async function requestRoleUpgrade(req, res) {
         sendError(res, 'Failed to process role upgrade request', err);
     }
 }
+
+/**
+ * Check if CNIC is already registered
+ * GET /api/user/check-cnic/:cnic
+ */
+export async function checkCnic(req, res) {
+    try {
+        const { cnic } = req.params;
+
+        if (!cnic) {
+            return sendError(res, 'CNIC is required', null, 400);
+        }
+
+        // Clean the CNIC (remove dashes)
+        const cleanedCnic = cnic.replace(/-/g, '');
+
+        // Validate format (13 digits)
+        if (!/^\d{13}$/.test(cleanedCnic)) {
+            return sendError(res, 'Invalid CNIC format. Must be 13 digits.', null, 400);
+        }
+
+        // Check if CNIC exists in any user (with or without dashes)
+        const existingUser = await prisma.user.findFirst({
+            where: {
+                OR: [
+                    { cnic: cleanedCnic },
+                    { cnic: `${cleanedCnic.slice(0, 5)}-${cleanedCnic.slice(5, 12)}-${cleanedCnic.slice(12)}` }
+                ],
+                deletedAt: null
+            },
+            select: {
+                id: true,
+                role: true
+            }
+        });
+
+        if (existingUser) {
+            return sendSuccess(res, 'CNIC check completed', {
+                exists: true,
+                role: existingUser.role
+            });
+        }
+
+        sendSuccess(res, 'CNIC check completed', { exists: false });
+    } catch (err) {
+        sendError(res, 'Failed to check CNIC', err);
+    }
+}
