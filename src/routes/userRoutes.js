@@ -1,5 +1,5 @@
 import express from "express";
-import { getProfile, changePassword, updateProfile, requestRoleUpgrade } from "../controllers/userController.js";
+import { getProfile, changePassword, updateProfile, requestRoleUpgrade, checkCnic } from "../controllers/userController.js";
 import { authenticateToken } from "../middlewares/authMiddleware.js";
 import multer from "multer";
 
@@ -156,5 +156,38 @@ router.post(
     ]),
     requestRoleUpgrade
 );
+
+/**
+ * @swagger
+ * /api/user/check-cnic/{cnic}:
+ *   get:
+ *     summary: Check if CNIC is already registered
+ *     tags: [User]
+ *     parameters:
+ *       - in: path
+ *         name: cnic
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: CNIC number (13 digits, with or without dashes)
+ *     responses:
+ *       200:
+ *         description: CNIC check result
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     exists:
+ *                       type: boolean
+ *                     role:
+ *                       type: string
+ */
+router.get("/check-cnic/:cnic", checkCnic);
 
 export default router;

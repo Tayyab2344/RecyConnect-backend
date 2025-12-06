@@ -8,26 +8,27 @@ const prisma = new PrismaClient()
 
 async function main() {
   const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10')
-  const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD || 'admin@123'
+  // Strong password: Qx$9mP#kL2vR@nT7wZ!4
+  const adminPassword = 'Qx$9mP#kL2vR@nT7wZ!4'
   const hashed = await bcrypt.hash(adminPassword, saltRounds)
 
   await prisma.user.upsert({
-    where: { email: 'recyconnect5@gmail.com' },
+    where: { email: 'panel.quantix@gmail.com' },
     update: {
       password: hashed,
       role: 'admin',
       emailVerified: true
     },
     create: {
-      name: 'System Admin',
-      email: 'recyconnect5@gmail.com',
+      name: 'Quantix Admin',
+      email: 'panel.quantix@gmail.com',
       password: hashed,
       role: 'admin',
       emailVerified: true
     }
   })
 
-  console.log('Seeded admin user (email: recyconnect5@gmail.com)')
+  console.log('Seeded admin user (email: panel.quantix@gmail.com, password: Qx$9mP#kL2vR@nT7wZ!4)')
 }
 
 main()
