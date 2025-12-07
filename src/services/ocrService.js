@@ -1,4 +1,4 @@
-// import { createWorker } from "tesseract.js"; // Removed top-level import
+
 import { logger } from "../utils/logger.js";
 import fetch from "node-fetch";
 
