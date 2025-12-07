@@ -12,7 +12,7 @@ export async function getPendingKYCUsers(req, res) {
       where: {
         verificationStatus: VerificationStatus.PENDING,
         role: { in: [UserRole.WAREHOUSE, UserRole.COMPANY] },
-        kycStage: { in: [KycStage.DOCUMENTS_UPLOADED, "OCR_VERIFIED"] } // "OCR_VERIFIED" might need to be in enum if used often
+        kycStage: { in: [KycStage.DOCUMENTS_UPLOADED, "OCR_VERIFIED"] }
       },
       include: {
         documents: true,
@@ -66,7 +66,7 @@ export async function approveKYC(req, res) {
       }
     });
 
-    // TODO: Send email notification to user
+
 
     sendSuccess(res, "User approved successfully");
   } catch (err) {
@@ -104,7 +104,7 @@ export async function rejectKYC(req, res) {
       }
     });
 
-    // TODO: Send email notification to user
+
 
     sendSuccess(res, "User rejected successfully");
   } catch (err) {

@@ -149,8 +149,8 @@ export const getListings = async (req, res) => {
       Object.assign(where, buildSearchFilter(search, ['materialType', 'pickupAddress', 'notes']));
     }
 
-    console.log('Fetching listings with filters:', JSON.stringify(where, null, 2));
-    console.log('View mode:', view, 'User ID:', userId);
+
+
 
     // Get total count
     const totalCount = await prisma.listing.count({ where });
@@ -175,11 +175,9 @@ export const getListings = async (req, res) => {
       take
     });
 
-    console.log('Found listings count:', listings.length);
-    console.log('Total count from DB:', totalCount);
-    if (listings.length > 0) {
-      console.log('Sample listing:', JSON.stringify(listings[0], null, 2));
-    }
+
+
+
 
     sendPaginated(res, listings, totalCount, pageNum, limitNum);
   } catch (error) {
