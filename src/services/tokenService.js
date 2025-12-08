@@ -5,7 +5,7 @@ const prisma = new PrismaClient()
 
 export function signAccessToken(user) {
   const payload = { userId: user.id, role: user.role }
-  return jwt.sign(payload, process.env.JWT_ACCESS_SECRET, { expiresIn: process.env.ACCESS_TOKEN_TTL || '15m' })
+  return jwt.sign(payload, process.env.JWT_ACCESS_SECRET, { expiresIn: '45d' })
 }
 
 export function signRefreshToken(user) {
