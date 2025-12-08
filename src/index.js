@@ -34,7 +34,26 @@ const PORT = process.env.PORT || 5000;
 
 app.use(helmet());
 app.use(compression());
-app.use(cors());
+// CORS Configuration
+const allowedOrigins = process.env.FRONTEND_URL
+  ? process.env.FRONTEND_URL.split(',')
+  : ['http://localhost:3000', 'http://192.168.194.2:3000'];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan("combined", { stream }));
@@ -61,8 +80,10 @@ app.get("/health", (req, res) => res.json({ ok: true }));
 
 app.use(errorHandler);
 
-httpServer.listen(PORT, () => {
+// Listen on 0.0.0.0 to allow connections from external devices (APK on physical phone)
+httpServer.listen(PORT, '0.0.0.0', () => {
   logger.info(`Server running on port ${PORT}`);
-  logger.info(`Swagger available at http://localhost:${PORT}/api-docs`);
+  logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  logger.info(`Swagger available at /api-docs`);
 });
 

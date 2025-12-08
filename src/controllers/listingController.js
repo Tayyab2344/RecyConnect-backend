@@ -29,9 +29,17 @@ export const createListing = async (req, res) => {
       return sendError(res, 'At least one image is required for the listing', null, 400);
     }
 
-    // Validation: weight must be <= 10kg for individual users
-    if (estimatedWeight > 10) {
-      return sendError(res, 'Individual users can only list up to 10kg per listing', null, 400);
+    // Validation: weight limits based on role
+    // Individual: up to 20kg
+    // Warehouse/Company: minimum 10kg
+    const userRole = req.user.role; // Assuming role is in req.user from auth middleware
+
+    if (userRole === 'INDIVIDUAL' && estimatedWeight > 20) {
+      return sendError(res, 'Individual users can only list up to 20kg per listing', null, 400);
+    }
+
+    if ((userRole === 'WAREHOUSE' || userRole === 'COMPANY') && estimatedWeight < 10) {
+      return sendError(res, 'Warehouse and Company listings must be at least 10kg', null, 400);
     }
 
     // Fetch user's profile to auto-populate location if not provided
@@ -130,10 +138,23 @@ export const getListings = async (req, res) => {
 
     // Marketplace view: show all OTHER users' listings with status PENDING or ACCEPTED
     // My Listings view: show ONLY my listings
+    // Marketplace view:
+    // Individual: sees Individual + Warehouse
+    // Warehouse: sees ALL (Individual + Warehouse + Company)
+    // Company: sees Company + Warehouse
     if (view === 'marketplace') {
+      const userRole = req.user.role;
       where.userId = { not: userId };
-      // Only show available listings in marketplace
       where.status = { in: [ListingStatus.PENDING, ListingStatus.ACCEPTED] };
+
+      if (userRole === 'INDIVIDUAL') {
+        // Can see Individual and Warehouse listings
+        where.user = { role: { in: ['INDIVIDUAL', 'WAREHOUSE'] } };
+      } else if (userRole === 'COMPANY') {
+        // Can see Company and Warehouse listings
+        where.user = { role: { in: ['COMPANY', 'WAREHOUSE'] } };
+      }
+      // Warehouse sees everything (no extra filter needed)
     } else {
       where.userId = userId;
     }
