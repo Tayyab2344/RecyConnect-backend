@@ -3,7 +3,7 @@ import { getProfile, changePassword, updateProfile, requestRoleUpgrade, checkCni
 import { authenticateToken } from "../middlewares/authMiddleware.js";
 import multer from "multer";
 
-const upload = multer({ dest: "tmp/" });
+const upload = multer({ storage: multer.memoryStorage() });
 const router = express.Router();
 
 /**

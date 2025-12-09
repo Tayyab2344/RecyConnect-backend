@@ -6,7 +6,7 @@ import { UserRole, VerificationStatus, KycStage } from '../constants/enums.js';
 import { sendSuccess, sendError } from '../utils/responseHelper.js';
 
 const prisma = new PrismaClient();
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ storage: multer.memoryStorage() });
 
 async function isCnicUnique(cnic) {
   const existing = await prisma.user.findFirst({ where: { cnic } });

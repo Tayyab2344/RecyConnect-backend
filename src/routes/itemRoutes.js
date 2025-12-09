@@ -3,7 +3,7 @@ import { createItem, getItems, getItem, deleteItem } from "../controllers/itemCo
 import { authenticateToken } from "../middlewares/authMiddleware.js";
 import multer from "multer";
 
-const upload = multer({ dest: "tmp/" });
+const upload = multer({ storage: multer.memoryStorage() });
 const router = express.Router();
 
 router.post("/", authenticateToken, upload.array("images", 5), createItem);
