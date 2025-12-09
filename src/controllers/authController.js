@@ -69,6 +69,13 @@ export async function register(req, res) {
       return sendError(res, "User already exists", null, 400);
     }
 
+    if (req.body.cnic) {
+      const existingCnic = await prisma.user.findUnique({ where: { cnic: req.body.cnic } });
+      if (existingCnic) {
+        return sendError(res, "CNIC already registered", null, 400);
+      }
+    }
+
     // 3. Role-Specific Field Validation
     if (role === UserRole.INDIVIDUAL) {
       if (!name?.trim()) return sendError(res, "Name is required", null, 400);
@@ -138,6 +145,7 @@ export async function register(req, res) {
       contactNo,
       profileImage: profileImageUrl,
       documents: documentsData,
+      cnic: req.body.cnic, // Store CNIC in metadata
       // Don't store verificationStatus/kycStage - they will be set to VERIFIED after OTP
     };
 
@@ -240,7 +248,8 @@ export async function verifyOtpController(req, res) {
           kycStage: KycStage.VERIFIED, // Always VERIFIED after OTP
           documents: {
             create: regData.documents || []
-          }
+          },
+          cnic: regData.cnic,
         }
       });
 
@@ -762,6 +771,26 @@ export async function resendOtp(req, res) {
     sendSuccess(res, "OTP sent successfully");
   } catch (err) {
     sendError(res, "Resend OTP failed", err);
+  }
+}
+
+export async function checkEmailExistence(req, res) {
+  try {
+    if (!validateRequest(req, res)) return;
+    const { email } = req.body;
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (user && user.emailVerified) {
+      return sendSuccess(res, "Email exists", { exists: true });
+    }
+
+    // Also check if there's a pending OTP verification (optional, but good practice)
+    // For now, we only block if fully registered/verified.
+    // If they have a pending OTP but not verified, we allow them to continue (it will resend OTP)
+
+    sendSuccess(res, "Email available", { exists: false });
+  } catch (err) {
+    sendError(res, "Email check failed", err);
   }
 }
 

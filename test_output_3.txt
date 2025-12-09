@@ -1,0 +1,260 @@
+
+> backend@1.0.0 test
+> cross-env NODE_OPTIONS=--experimental-vm-modules jest tests/listing.test.js
+
+(node:2876) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+  console.log
+    Test database connected
+
+      at Object.<anonymous> (tests/setup.js:17:13)
+
+  console.error
+    Error: Missing auth token null
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at authenticateToken (src/middlewares/authMiddleware.js:11:14)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at trimPrefix (node_modules/router/index.js:342:13)
+      at node_modules/router/index.js:297:9
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at Function.handle (node_modules/router/index.js:186:3)
+      at router (node_modules/router/index.js:60:12)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at trimPrefix (node_modules/router/index.js:342:13)
+      at node_modules/router/index.js:297:9
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at node_modules/body-parser/lib/read.js:172:5
+      at invokeCallback (node_modules/raw-body/index.js:238:16)
+      at done (node_modules/raw-body/index.js:227:7)
+      at IncomingMessage.onEnd (node_modules/raw-body/index.js:287:7)
+
+  console.error
+    Error: At least one image is required for the listing null
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at createListing (src/controllers/listingController.js:29:14)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at next (node_modules/router/lib/route.js:157:13)
+      at Route.dispatch (node_modules/router/lib/route.js:117:3)
+      at handle (node_modules/router/index.js:435:11)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at node_modules/router/index.js:295:15
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at authenticateToken (src/middlewares/authMiddleware.js:18:5)
+
+  console.error
+    Error: Missing auth token null
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at authenticateToken (src/middlewares/authMiddleware.js:11:14)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at trimPrefix (node_modules/router/index.js:342:13)
+      at node_modules/router/index.js:297:9
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at Function.handle (node_modules/router/index.js:186:3)
+      at router (node_modules/router/index.js:60:12)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at trimPrefix (node_modules/router/index.js:342:13)
+      at node_modules/router/index.js:297:9
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at read (node_modules/body-parser/lib/read.js:54:5)
+      at jsonParser (node_modules/body-parser/lib/types/json.js:90:5)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at trimPrefix (node_modules/router/index.js:342:13)
+      at node_modules/router/index.js:297:9
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at Function.handle (node_modules/router/index.js:186:3)
+      at Function.handle (node_modules/express/lib/application.js:177:15)
+      at Server.app (node_modules/express/lib/express.js:38:9)
+
+  console.error
+    Error: Failed to fetch listing details PrismaClientValidationError: 
+    Invalid `prisma.listing.findUnique()` invocation in
+    C:\Users\tayya\Desktop\RecyConnect-backend\src\controllers\listingController.js:319:42
+    
+      316 try {
+      317   const { id } = req.params;
+      318 
+    → 319   const listing = await prisma.listing.findUnique({
+              where: {
+            +   id: Int
+              },
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    contactNo: true,
+                    profileImage: true
+                  }
+                }
+              }
+            })
+    
+    Argument `id` is missing.
+        at Nn (C:\Users\tayya\Desktop\RecyConnect-backend\node_modules\@prisma\client\src\runtime\core\errorRendering\throwValidationException.ts:45:9)
+        at ei.throwValidationException [as handleRequestError] (C:\Users\tayya\Desktop\RecyConnect-backend\node_modules\@prisma\client\src\runtime\RequestHandler.ts:202:7)
+        at ei.handleAndLogRequestError (C:\Users\tayya\Desktop\RecyConnect-backend\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+        at ei.request (C:\Users\tayya\Desktop\RecyConnect-backend\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+        at a (C:\Users\tayya\Desktop\RecyConnect-backend\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+        at getListingById (C:\Users\tayya\Desktop\RecyConnect-backend\src\controllers\listingController.js:319:21) {
+      clientVersion: '6.19.0'
+    }
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at getListingById (src/controllers/listingController.js:340:5)
+
+  console.error
+    Error: Listing not found null
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at getListingById (src/controllers/listingController.js:335:14)
+
+  console.error
+    Error: Missing auth token null
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at authenticateToken (src/middlewares/authMiddleware.js:11:14)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at trimPrefix (node_modules/router/index.js:342:13)
+      at node_modules/router/index.js:297:9
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at Function.handle (node_modules/router/index.js:186:3)
+      at router (node_modules/router/index.js:60:12)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at trimPrefix (node_modules/router/index.js:342:13)
+      at node_modules/router/index.js:297:9
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at node_modules/body-parser/lib/read.js:172:5
+      at invokeCallback (node_modules/raw-body/index.js:238:16)
+      at done (node_modules/raw-body/index.js:227:7)
+      at IncomingMessage.onEnd (node_modules/raw-body/index.js:287:7)
+
+  console.error
+    Error: Missing auth token null
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at authenticateToken (src/middlewares/authMiddleware.js:11:14)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at trimPrefix (node_modules/router/index.js:342:13)
+      at node_modules/router/index.js:297:9
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at Function.handle (node_modules/router/index.js:186:3)
+      at router (node_modules/router/index.js:60:12)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at trimPrefix (node_modules/router/index.js:342:13)
+      at node_modules/router/index.js:297:9
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at read (node_modules/body-parser/lib/read.js:54:5)
+      at jsonParser (node_modules/body-parser/lib/types/json.js:90:5)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at trimPrefix (node_modules/router/index.js:342:13)
+      at node_modules/router/index.js:297:9
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at Function.handle (node_modules/router/index.js:186:3)
+      at Function.handle (node_modules/express/lib/application.js:177:15)
+      at Server.app (node_modules/express/lib/express.js:38:9)
+
+  console.log
+    Test database disconnected
+
+      at Object.<anonymous> (tests/setup.js:28:13)
+
+PASS tests/listing.test.js (28.29 s)
+  Listing Controller
+    POST /api/listings
+      √ should fail without authentication (252 ms)
+      √ should fail with missing required fields (2404 ms)
+      √ should create a listing successfully (4701 ms)
+    GET /api/listings
+      √ should return list of active listings (2159 ms)
+      √ should filter by material type (1315 ms)
+      √ should support pagination (1093 ms)
+    GET /api/listings/my
+      √ should fail without authentication (41 ms)
+      √ should return user's own listings (670 ms)
+    GET /api/listings/:id
+      √ should return 404 for non-existent listing (853 ms)
+      √ should return listing details (2054 ms)
+    PUT /api/listings/:id
+      √ should fail without authentication (154 ms)
+      √ should update listing (1746 ms)
+    DELETE /api/listings/:id
+      √ should fail without authentication (45 ms)
+    GET /api/listings/stats
+      √ should return listing statistics (1729 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       14 passed, 14 total
+Snapshots:   0 total
+Time:        28.531 s
+Ran all test suites matching tests/listing.test.js.

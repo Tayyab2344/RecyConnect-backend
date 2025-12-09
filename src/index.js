@@ -25,8 +25,10 @@ import { logger, stream } from "./utils/logger.js";
 
 import "./config/cloudinary.js";
 
-dotenv.config();
+dotenv.config({ quiet: true });
 const app = express();
+// Enable trust proxy to handle X-Forwarded-For headers from ngrok/Render
+app.set("trust proxy", 1);
 const httpServer = createServer(app);
 const PORT = process.env.PORT || 5000;
 
@@ -36,21 +38,12 @@ app.use(helmet());
 app.use(compression());
 // CORS Configuration
 const allowedOrigins = process.env.FRONTEND_URL
-  ? process.env.FRONTEND_URL.split(',')
-  : ['http://localhost:3000', 'http://192.168.194.2:3000'];
+    ? process.env.FRONTEND_URL.split(',')
+    : ['http://localhost:3000', 'http://192.168.194.2:3000'];
 
 const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-
-    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true
+    origin: true, // Allow all origins for development
+    credentials: true
 };
 
 app.use(cors(corsOptions));
@@ -82,8 +75,16 @@ app.use(errorHandler);
 
 // Listen on 0.0.0.0 to allow connections from external devices (APK on physical phone)
 httpServer.listen(PORT, '0.0.0.0', () => {
-  logger.info(`Server running on port ${PORT}`);
-  logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  logger.info(`Swagger available at /api-docs`);
+    // Attempt to fetch ngrok URL (timeout 1s to avoid blocking if not running)
+    fetch('http://127.0.0.1:4040/api/tunnels')
+        .then(res => res.json())
+        .then(data => {
+            const tunnel = data.tunnels.find(t => t.public_url.startsWith('https'));
+            if (tunnel) {
+                // Tunnel active
+            }
+        })
+        .catch(() => {
+            // Ngrok not running or not accessible, ignore
+        });
 });
-

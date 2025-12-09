@@ -15,6 +15,7 @@ import {
   logout,
   refreshToken,
   resendOtp,
+  checkEmailExistence,
   analyzeDocument
 } from '../controllers/authController.js'
 import { authenticateToken } from "../middlewares/authMiddleware.js";
@@ -606,6 +607,13 @@ router.post(
   "/resend-otp",
   [emailValidation],
   resendOtp
+);
+
+// Check if email already exists
+router.post(
+  "/check-email",
+  [emailValidation],
+  checkEmailExistence
 );
 
 router.post(

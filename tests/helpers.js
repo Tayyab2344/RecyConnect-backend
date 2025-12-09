@@ -21,11 +21,11 @@ export function createTestApp(router, basePath = '/api') {
 export function generateTestToken(user) {
     return jwt.sign(
         {
-            id: user.id,
+            userId: user.id,
             email: user.email,
             role: user.role
         },
-        process.env.JWT_SECRET || 'test-secret',
+        process.env.JWT_ACCESS_SECRET || 'test-secret-key-for-jest-testing',
         { expiresIn: '1h' }
     );
 }
