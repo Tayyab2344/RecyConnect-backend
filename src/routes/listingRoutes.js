@@ -1,12 +1,13 @@
 import express from 'express';
 import { authenticateToken } from '../middlewares/authMiddleware.js';
 import {
-    createListing,
-    getListings,
-    getListingStats,
-    exportListings,
-    updateListingStatus,
-    deleteListing
+   createListing,
+   getListings,
+   getListingById,
+   getListingStats,
+   exportListings,
+   updateListingStatus,
+   deleteListing
 } from '../controllers/listingController.js';
 
 const router = express.Router();
@@ -163,6 +164,28 @@ router.get('/stats', getListingStats);
  *               type: string
  */
 router.get('/export', exportListings);
+
+/**
+ * @swagger
+ * /api/listings/{id}:
+ *   get:
+ *     summary: Get listing details
+ *     tags: [Listings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Listing details retrieved successfully
+ *       404:
+ *         description: Listing not found
+ */
+router.get('/:id', getListingById);
 
 /**
  * @swagger

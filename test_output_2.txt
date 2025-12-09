@@ -1,0 +1,23 @@
+
+> backend@1.0.0 test
+> cross-env NODE_OPTIONS=--experimental-vm-modules jest tests/listing.test.js
+
+FAIL tests/listing.test.js
+  ● Test suite failed to run
+
+    SyntaxError: Unexpected token '*'
+
+      at Runtime.loadEsmModule (node_modules/jest-runtime/build/index.js:522:20)
+
+Test Suites: 1 failed, 1 total
+Tests:       0 total
+Snapshots:   0 total
+Time:        2.649 s, estimated 24 s
+Ran all test suites matching tests/listing.test.js.
+(node:15980) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:15980) [JEST-01] DeprecationWarning: 'currentlyRunningTest' property was accessed on [Object] after it was soft deleted
+  Jest deletes objects that were set on the global scope between test files to reduce memory leaks.
+  Currently it only "soft" deletes them and emits this warning if those objects were accessed after their deletion.
+  In future versions of Jest, this behavior will change to "on", which will likely fail tests.
+  You can change the behavior in your test configuration now to reduce memory usage.

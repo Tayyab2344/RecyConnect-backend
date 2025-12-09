@@ -1,0 +1,312 @@
+
+> backend@1.0.0 test
+> cross-env NODE_OPTIONS=--experimental-vm-modules jest tests/admin.test.js tests/item.test.js tests/kyc.test.js
+
+(node:12568) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+  console.log
+    Test database connected
+
+      at Object.<anonymous> (tests/setup.js:17:13)
+
+  console.error
+    Error: Forbidden null
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at src/middlewares/roleMiddleware.js:7:14
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at next (node_modules/router/lib/route.js:157:13)
+      at authenticateToken (src/middlewares/authMiddleware.js:18:5)
+
+info: KYC auto-approved for user 176: CNIC 12345-1234567-1, NTN 1234567-8 {"timestamp":"2025-12-08T18:07:41.132Z"}
+warn: KYC auto-rejected for user 176: CNIC extraction failed {"timestamp":"2025-12-08T18:07:41.921Z"}
+  console.error
+    Error: OCR failed to extract valid CNIC from uploaded documents. Please ensure images are clear and readable. { status: 'REJECTED' }
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at registerKyc (src/controllers/kycController.js:110:9)
+
+  console.error
+    Error: Missing auth token null
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at authenticateToken (src/middlewares/authMiddleware.js:11:14)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at next (node_modules/router/lib/route.js:157:13)
+      at Route.dispatch (node_modules/router/lib/route.js:117:3)
+      at handle (node_modules/router/index.js:435:11)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at node_modules/router/index.js:295:15
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at Function.handle (node_modules/router/index.js:186:3)
+      at router (node_modules/router/index.js:60:12)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at trimPrefix (node_modules/router/index.js:342:13)
+      at node_modules/router/index.js:297:9
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at read (node_modules/body-parser/lib/read.js:54:5)
+      at jsonParser (node_modules/body-parser/lib/types/json.js:90:5)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at trimPrefix (node_modules/router/index.js:342:13)
+      at node_modules/router/index.js:297:9
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at Function.handle (node_modules/router/index.js:186:3)
+      at Function.handle (node_modules/express/lib/application.js:177:15)
+      at Server.app (node_modules/express/lib/express.js:38:9)
+
+  console.log
+    Test database disconnected
+
+      at Object.<anonymous> (tests/setup.js:28:13)
+
+PASS tests/kyc.test.js (13.496 s)
+  KYC Controller
+    POST /api/kyc/register
+      √ should reject individuals trying to do KYC (2305 ms)
+      √ should successfully verify company with valid docs (2985 ms)
+      √ should auto-reject if CNIC extraction fails (569 ms)
+    GET /api/kyc/status
+      √ should return KYC status (769 ms)
+      √ should fail without auth (95 ms)
+
+  console.log
+    Test database connected
+
+      at Object.<anonymous> (tests/setup.js:17:13)
+
+  console.error
+    Error: Missing auth token null
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at authenticateToken (src/middlewares/authMiddleware.js:11:14)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at next (node_modules/router/lib/route.js:157:13)
+      at Route.dispatch (node_modules/router/lib/route.js:117:3)
+      at handle (node_modules/router/index.js:435:11)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at node_modules/router/index.js:295:15
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at Function.handle (node_modules/router/index.js:186:3)
+      at router (node_modules/router/index.js:60:12)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at trimPrefix (node_modules/router/index.js:342:13)
+      at node_modules/router/index.js:297:9
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at read (node_modules/body-parser/lib/read.js:54:5)
+      at jsonParser (node_modules/body-parser/lib/types/json.js:90:5)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at trimPrefix (node_modules/router/index.js:342:13)
+      at node_modules/router/index.js:297:9
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at Function.handle (node_modules/router/index.js:186:3)
+      at Function.handle (node_modules/express/lib/application.js:177:15)
+      at Server.app (node_modules/express/lib/express.js:38:9)
+
+  console.error
+    Error: Forbidden null
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at src/middlewares/roleMiddleware.js:7:14
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at next (node_modules/router/lib/route.js:157:13)
+      at authenticateToken (src/middlewares/authMiddleware.js:18:5)
+
+  console.error
+    Error: User not found null
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at approveKYC (src/controllers/adminController.js:36:23)
+
+  console.error
+    Error: Rejection reason is required null
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at rejectKYC (src/controllers/adminController.js:82:25)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at next (node_modules/router/lib/route.js:157:13)
+      at src/middlewares/roleMiddleware.js:9:5
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at next (node_modules/router/lib/route.js:157:13)
+      at authenticateToken (src/middlewares/authMiddleware.js:18:5)
+
+  console.log
+    Test database disconnected
+
+      at Object.<anonymous> (tests/setup.js:28:13)
+
+PASS tests/admin.test.js (24.076 s)
+  Admin Controller
+    GET /api/admin/kyc/pending
+      √ should return 401 if not authenticated (754 ms)
+      √ should return 403 if not admin (2919 ms)
+      √ should return pending KYC users for admin (3822 ms)
+    POST /api/admin/kyc/approve
+      √ should approve a user KYC (2902 ms)
+      √ should return 404 for non-existent user (998 ms)
+    POST /api/admin/kyc/reject
+      √ should reject a user KYC with reason (1658 ms)
+      √ should fail if reason is missing (709 ms)
+    PUT /api/admin/users/:id/suspend
+      √ should suspend a user (1651 ms)
+      √ should activate a user (1655 ms)
+    PUT /api/admin/rates
+      √ should update rates (1629 ms)
+
+  console.log
+    Test database connected
+
+      at Object.<anonymous> (tests/setup.js:17:13)
+
+  console.log
+    [dotenv@17.2.3] injecting env (0) from .env -- tip: 📡 add observability to secrets: https://dotenvx.com/ops
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+  console.error
+    Error: Missing auth token null
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at authenticateToken (src/middlewares/authMiddleware.js:11:14)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at next (node_modules/router/lib/route.js:157:13)
+      at Route.dispatch (node_modules/router/lib/route.js:117:3)
+      at handle (node_modules/router/index.js:435:11)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at node_modules/router/index.js:295:15
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at Function.handle (node_modules/router/index.js:186:3)
+      at router (node_modules/router/index.js:60:12)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at trimPrefix (node_modules/router/index.js:342:13)
+      at node_modules/router/index.js:297:9
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at node_modules/body-parser/lib/read.js:172:5
+      at invokeCallback (node_modules/raw-body/index.js:238:16)
+      at done (node_modules/raw-body/index.js:227:7)
+      at IncomingMessage.onEnd (node_modules/raw-body/index.js:287:7)
+
+  console.error
+    Error: Item not found null
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at getItem (src/controllers/itemController.js:78:27)
+
+  console.error
+    Error: Unauthorized null
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at deleteItem (src/controllers/itemController.js:95:20)
+
+  console.log
+    Test database disconnected
+
+      at Object.<anonymous> (tests/setup.js:28:13)
+
+PASS tests/item.test.js (20.782 s)
+  Item Controller
+    POST /api/items
+      √ should create a new item with images (5354 ms)
+      √ should fail without authentication (776 ms)
+    GET /api/items
+      √ should list available items (1732 ms)
+      √ should filter items by category (1887 ms)
+    GET /api/items/:id
+      √ should return item details (1460 ms)
+      √ should return 404 for unknown item (965 ms)
+    DELETE /api/items/:id
+      √ should allow seller to delete their item (1915 ms)
+      √ should prevent unauthorized user from deleting item (1180 ms)
+
+Test Suites: 3 passed, 3 total
+Tests:       23 passed, 23 total
+Snapshots:   0 total
+Time:        58.594 s
+Ran all test suites matching tests/admin.test.js|tests/item.test.js|tests/kyc.test.js.

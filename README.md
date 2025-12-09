@@ -2,7 +2,7 @@
 
 A Node.js backend API for the RecyConnect waste management and recycling platform.
 
-## 📋 Prerequisites
+## Prerequisites
 
 Before you begin, ensure you have the following installed:
 
@@ -11,7 +11,7 @@ Before you begin, ensure you have the following installed:
 - **PostgreSQL** (v14 or higher)
 - **Git**
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Clone the Repository
 
@@ -84,7 +84,7 @@ npm start
 
 The server will start on `http://localhost:5000` (or your specified PORT).
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 RecyConnect-backend/
@@ -105,7 +105,7 @@ RecyConnect-backend/
 └── README.md
 ```
 
-## 🔑 API Documentation
+## API Documentation
 
 Once the server is running, access the Swagger API documentation at:
 
@@ -145,7 +145,7 @@ http://localhost:5000/api-docs
 - `GET /api/admin/dashboard` - Dashboard statistics
 - `GET /api/admin/logs` - System activity logs
 
-## 🧪 Testing
+## Testing
 
 ```bash
 # Run all tests
@@ -158,7 +158,7 @@ npm run test:watch
 npm run test:coverage
 ```
 
-## 📦 Available Scripts
+## Available Scripts
 
 | Script | Description |
 |--------|-------------|
@@ -167,7 +167,7 @@ npm run test:coverage
 | `npm test` | Run test suite |
 | `npm run prisma` | Access Prisma CLI |
 
-## 🛠️ Technology Stack
+## Technology Stack
 
 - **Framework:** Express.js
 - **Database:** PostgreSQL with Prisma ORM
@@ -179,7 +179,7 @@ npm run test:coverage
 - **Security:** Helmet, CORS, Rate Limiting
 - **Logging:** Winston & Morgan
 
-## 🔐 Security Features
+## Security Features
 
 - JWT-based authentication with 45-day token expiration
 - Password hashing with bcrypt
@@ -188,7 +188,7 @@ npm run test:coverage
 - CORS configuration
 - Input validation and sanitization
 
-## 🌐 Deployment
+## Deployment
 
 ### Environment Variables for Production
 
@@ -214,7 +214,7 @@ npm start
 ### Deployment
 For detailed instructions on deploying to **Render** with **Neon PostgreSQL**, please refer to [DEPLOYMENT.md](./DEPLOYMENT.md).
 
-## 📱 Mobile App Connection
+## Mobile App Connection
 
 To allow the mobile app (APK) to connect to the backend running on your local machine:
 
@@ -226,7 +226,7 @@ To allow the mobile app (APK) to connect to the backend running on your local ma
 
 3. Update the frontend API base URL to: `http://YOUR_LOCAL_IP:5000/api`
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Database Connection Issues
 ```bash
@@ -246,10 +246,10 @@ To allow the mobile app (APK) to connect to the backend running on your local ma
 npx prisma generate
 ```
 
-## 📞 Support
+## Support
 
 For issues, questions, or contributions, please contact the development team.
 
-## 📄 License
+## License
 
 This project is licensed under the ISC License.

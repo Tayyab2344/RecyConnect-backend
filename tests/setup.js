@@ -6,8 +6,8 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 // Set test-specific environment variables if not already set
-if (!process.env.JWT_SECRET) {
-    process.env.JWT_SECRET = 'test-secret-key-for-jest-testing';
+if (!process.env.JWT_ACCESS_SECRET) {
+    process.env.JWT_ACCESS_SECRET = 'test-secret-key-for-jest-testing';
 }
 
 // Global test setup

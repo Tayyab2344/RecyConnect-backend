@@ -309,6 +309,39 @@ export const exportListings = async (req, res) => {
 };
 
 /**
+ * Get single listing details
+ * GET /api/listings/:id
+ */
+export const getListingById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const listing = await prisma.listing.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            contactNo: true,
+            profileImage: true
+          }
+        }
+      }
+    });
+
+    if (!listing) {
+      return sendError(res, 'Listing not found', null, 404);
+    }
+
+    sendSuccess(res, 'Listing details fetched successfully', listing);
+  } catch (error) {
+    sendError(res, 'Failed to fetch listing details', error);
+  }
+};
+
+/**
  * Update listing status
  * PUT /api/listings/:id
  */

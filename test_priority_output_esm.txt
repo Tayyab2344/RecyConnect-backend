@@ -1,0 +1,494 @@
+
+> backend@1.0.0 test
+> cross-env NODE_OPTIONS=--experimental-vm-modules jest tests/admin.test.js tests/item.test.js tests/kyc.test.js
+
+(node:13244) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+  console.log
+    Test database connected
+
+      at Object.<anonymous> (tests/setup.js:17:13)
+
+  console.log
+    [dotenv@17.2.3] injecting env (0) from .env -- tip: 🔄 add secrets lifecycle management: https://dotenvx.com/ops
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+  console.error
+    Error: Missing auth token null
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at authenticateToken (src/middlewares/authMiddleware.js:11:14)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at next (node_modules/router/lib/route.js:157:13)
+      at Route.dispatch (node_modules/router/lib/route.js:117:3)
+      at handle (node_modules/router/index.js:435:11)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at node_modules/router/index.js:295:15
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at Function.handle (node_modules/router/index.js:186:3)
+      at router (node_modules/router/index.js:60:12)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at trimPrefix (node_modules/router/index.js:342:13)
+      at node_modules/router/index.js:297:9
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at node_modules/body-parser/lib/read.js:172:5
+      at invokeCallback (node_modules/raw-body/index.js:238:16)
+      at done (node_modules/raw-body/index.js:227:7)
+      at IncomingMessage.onEnd (node_modules/raw-body/index.js:287:7)
+
+  console.error
+    Error: Item not found null
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at getItem (src/controllers/itemController.js:78:27)
+
+  console.error
+    Error: Unauthorized null
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at deleteItem (src/controllers/itemController.js:95:20)
+
+  console.log
+    Test database disconnected
+
+      at Object.<anonymous> (tests/setup.js:28:13)
+
+PASS tests/item.test.js (23.057 s)
+  Item Controller
+    POST /api/items
+      √ should create a new item with images (5743 ms)
+      √ should fail without authentication (531 ms)
+    GET /api/items
+      √ should list available items (1638 ms)
+      √ should filter items by category (1858 ms)
+    GET /api/items/:id
+      √ should return item details (1399 ms)
+      √ should return 404 for unknown item (952 ms)
+    DELETE /api/items/:id
+      √ should allow seller to delete their item (1970 ms)
+      √ should prevent unauthorized user from deleting item (1193 ms)
+
+  console.log
+    Test database connected
+
+      at Object.<anonymous> (tests/setup.js:17:13)
+
+  console.error
+    Error: Forbidden null
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at src/middlewares/roleMiddleware.js:7:14
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at next (node_modules/router/lib/route.js:157:13)
+      at authenticateToken (src/middlewares/authMiddleware.js:18:5)
+
+  console.error
+    Error: Missing auth token null
+
+    [0m [90m 48 |[39m [90m */[39m
+     [90m 49 |[39m [36mexport[39m [36mconst[39m sendError [33m=[39m (res[33m,[39m message[33m,[39m error [33m=[39m [36mnull[39m[33m,[39m statusCode [33m=[39m [35m500[39m) [33m=>[39m {
+    [31m[1m>[22m[39m[90m 50 |[39m     console[33m.[39merror([32m`Error: ${message}`[39m[33m,[39m error)[33m;[39m
+     [90m    |[39m             [31m[1m^[22m[39m
+     [90m 51 |[39m
+     [90m 52 |[39m     [36mconst[39m response [33m=[39m {
+     [90m 53 |[39m         success[33m:[39m [36mfalse[39m[33m,[39m[0m
+
+      at sendError (src/utils/responseHelper.js:50:13)
+      at authenticateToken (src/middlewares/authMiddleware.js:11:14)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at next (node_modules/router/lib/route.js:157:13)
+      at Route.dispatch (node_modules/router/lib/route.js:117:3)
+      at handle (node_modules/router/index.js:435:11)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at node_modules/router/index.js:295:15
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at Function.handle (node_modules/router/index.js:186:3)
+      at router (node_modules/router/index.js:60:12)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at trimPrefix (node_modules/router/index.js:342:13)
+      at node_modules/router/index.js:297:9
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at read (node_modules/body-parser/lib/read.js:54:5)
+      at jsonParser (node_modules/body-parser/lib/types/json.js:90:5)
+      at Layer.handleRequest (node_modules/router/lib/layer.js:152:17)
+      at trimPrefix (node_modules/router/index.js:342:13)
+      at node_modules/router/index.js:297:9
+      at processParams (node_modules/router/index.js:582:12)
+      at next (node_modules/router/index.js:291:5)
+      at Function.handle (node_modules/router/index.js:186:3)
+      at Function.handle (node_modules/express/lib/application.js:177:15)
+      at Server.app (node_modules/express/lib/express.js:38:9)
+
+  console.log
+    Test database disconnected
+
+      at Object.<anonymous> (tests/setup.js:28:13)
+
+FAIL tests/kyc.test.js (9.954 s)
+  KYC Controller
+    POST /api/kyc/register
+      √ should reject individuals trying to do KYC (2091 ms)
+      × should successfully verify company with valid docs (2 ms)
+      × should auto-reject if CNIC extraction fails (2 ms)
+    GET /api/kyc/status
+      √ should return KYC status (2332 ms)
+      √ should fail without auth (35 ms)
+
+  ● KYC Controller › POST /api/kyc/register › should successfully verify company with valid docs
+
+    TypeError: ocrService.extractTextFromUrl.mockResolvedValue is not a function
+
+    [0m [90m 78 |[39m
+     [90m 79 |[39m         it([32m'should successfully verify company with valid docs'[39m[33m,[39m [36masync[39m () [33m=>[39m {
+    [31m[1m>[22m[39m[90m 80 |[39m             ocrService[33m.[39mextractTextFromUrl[33m.[39mmockResolvedValue([32m'Valid CNIC: 12345-1234567-1 NTN: 1234567-8'[39m)[33m;[39m
+     [90m    |[39m                                           [31m[1m^[22m[39m
+     [90m 81 |[39m             ocrService[33m.[39mextractCNIC[33m.[39mmockReturnValue([32m'12345-1234567-1'[39m)[33m;[39m
+     [90m 82 |[39m             ocrService[33m.[39mextractNTN[33m.[39mmockReturnValue([32m'1234567-8'[39m)[33m;[39m
+     [90m 83 |[39m[0m
+
+      at Object.<anonymous> (tests/kyc.test.js:80:43)
+
+  ● KYC Controller › POST /api/kyc/register › should auto-reject if CNIC extraction fails
+
+    TypeError: ocrService.extractTextFromUrl.mockResolvedValue is not a function
+
+    [0m [90m  97 |[39m
+     [90m  98 |[39m         it([32m'should auto-reject if CNIC extraction fails'[39m[33m,[39m [36masync[39m () [33m=>[39m {
+    [31m[1m>[22m[39m[90m  99 |[39m             ocrService[33m.[39mextractTextFromUrl[33m.[39mmockResolvedValue([32m'No numbers here'[39m)[33m;[39m
+     [90m     |[39m                                           [31m[1m^[22m[39m
+     [90m 100 |[39m             ocrService[33m.[39mextractCNIC[33m.[39mmockReturnValue([36mnull[39m)[33m;[39m
+     [90m 101 |[39m
+     [90m 102 |[39m             [36mconst[39m res [33m=[39m [36mawait[39m request(app)[0m
+
+      at Object.<anonymous> (tests/kyc.test.js:99:43)
+
+  console.log
+    Test database connected
+
+      at Object.<anonymous> (tests/setup.js:17:13)
+
+  console.log
+    Test database disconnected
+
+      at Object.<anonymous> (tests/setup.js:28:13)
+
+FAIL tests/admin.test.js (8.543 s)
+  Admin Controller
+    GET /api/admin/kyc/pending
+      × should return 401 if not authenticated (468 ms)
+      × should return 403 if not admin (235 ms)
+      × should return pending KYC users for admin (237 ms)
+    POST /api/admin/kyc/approve
+      × should approve a user KYC (240 ms)
+      × should return 404 for non-existent user (233 ms)
+    POST /api/admin/kyc/reject
+      × should reject a user KYC with reason (241 ms)
+      × should fail if reason is missing (238 ms)
+    PUT /api/admin/users/:id/suspend
+      × should suspend a user (232 ms)
+      × should activate a user (233 ms)
+    PUT /api/admin/rates
+      × should update rates (234 ms)
+
+  ● Admin Controller › GET /api/admin/kyc/pending › should return 401 if not authenticated
+
+    PrismaClientKnownRequestError: 
+    Invalid `prisma.user.create()` invocation in
+    C:\Users\tayya\Desktop\RecyConnect-backend\tests\helpers.js:46:24
+
+      43     ...data
+      44 };
+      45 
+    → 46 return prisma.user.create(
+    Unique constraint failed on the fields: (`email`)
+
+    [0m [90m 18 |[39m         adminToken [33m=[39m generateTestToken(adminUser)[33m;[39m
+     [90m 19 |[39m
+    [31m[1m>[22m[39m[90m 20 |[39m         regularUser [33m=[39m [36mawait[39m createTestUser({ email[33m:[39m [32m'regular@test.com'[39m[33m,[39m role[33m:[39m [33mUserRole[39m[33m.[39m[33mINDIVIDUAL[39m })[33m;[39m
+     [90m    |[39m                       [31m[1m^[22m[39m
+     [90m 21 |[39m         userToken [33m=[39m generateTestToken(regularUser)[33m;[39m
+     [90m 22 |[39m     })[33m;[39m
+     [90m 23 |[39m[0m
+
+      at ei.handleRequestError (node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+      at ei.handleAndLogRequestError (node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+      at ei.request (node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+      at a (node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+      at Object.<anonymous> (tests/admin.test.js:20:23)
+
+  ● Admin Controller › GET /api/admin/kyc/pending › should return 403 if not admin
+
+    PrismaClientKnownRequestError: 
+    Invalid `prisma.user.create()` invocation in
+    C:\Users\tayya\Desktop\RecyConnect-backend\tests\helpers.js:46:24
+
+      43     ...data
+      44 };
+      45 
+    → 46 return prisma.user.create(
+    Unique constraint failed on the fields: (`email`)
+
+    [0m [90m 18 |[39m         adminToken [33m=[39m generateTestToken(adminUser)[33m;[39m
+     [90m 19 |[39m
+    [31m[1m>[22m[39m[90m 20 |[39m         regularUser [33m=[39m [36mawait[39m createTestUser({ email[33m:[39m [32m'regular@test.com'[39m[33m,[39m role[33m:[39m [33mUserRole[39m[33m.[39m[33mINDIVIDUAL[39m })[33m;[39m
+     [90m    |[39m                       [31m[1m^[22m[39m
+     [90m 21 |[39m         userToken [33m=[39m generateTestToken(regularUser)[33m;[39m
+     [90m 22 |[39m     })[33m;[39m
+     [90m 23 |[39m[0m
+
+      at ei.handleRequestError (node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+      at ei.handleAndLogRequestError (node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+      at ei.request (node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+      at a (node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+      at Object.<anonymous> (tests/admin.test.js:20:23)
+
+  ● Admin Controller › GET /api/admin/kyc/pending › should return pending KYC users for admin
+
+    PrismaClientKnownRequestError: 
+    Invalid `prisma.user.create()` invocation in
+    C:\Users\tayya\Desktop\RecyConnect-backend\tests\helpers.js:46:24
+
+      43     ...data
+      44 };
+      45 
+    → 46 return prisma.user.create(
+    Unique constraint failed on the fields: (`email`)
+
+    [0m [90m 18 |[39m         adminToken [33m=[39m generateTestToken(adminUser)[33m;[39m
+     [90m 19 |[39m
+    [31m[1m>[22m[39m[90m 20 |[39m         regularUser [33m=[39m [36mawait[39m createTestUser({ email[33m:[39m [32m'regular@test.com'[39m[33m,[39m role[33m:[39m [33mUserRole[39m[33m.[39m[33mINDIVIDUAL[39m })[33m;[39m
+     [90m    |[39m                       [31m[1m^[22m[39m
+     [90m 21 |[39m         userToken [33m=[39m generateTestToken(regularUser)[33m;[39m
+     [90m 22 |[39m     })[33m;[39m
+     [90m 23 |[39m[0m
+
+      at ei.handleRequestError (node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+      at ei.handleAndLogRequestError (node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+      at ei.request (node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+      at a (node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+      at Object.<anonymous> (tests/admin.test.js:20:23)
+
+  ● Admin Controller › POST /api/admin/kyc/approve › should approve a user KYC
+
+    PrismaClientKnownRequestError: 
+    Invalid `prisma.user.create()` invocation in
+    C:\Users\tayya\Desktop\RecyConnect-backend\tests\helpers.js:46:24
+
+      43     ...data
+      44 };
+      45 
+    → 46 return prisma.user.create(
+    Unique constraint failed on the fields: (`email`)
+
+    [0m [90m 18 |[39m         adminToken [33m=[39m generateTestToken(adminUser)[33m;[39m
+     [90m 19 |[39m
+    [31m[1m>[22m[39m[90m 20 |[39m         regularUser [33m=[39m [36mawait[39m createTestUser({ email[33m:[39m [32m'regular@test.com'[39m[33m,[39m role[33m:[39m [33mUserRole[39m[33m.[39m[33mINDIVIDUAL[39m })[33m;[39m
+     [90m    |[39m                       [31m[1m^[22m[39m
+     [90m 21 |[39m         userToken [33m=[39m generateTestToken(regularUser)[33m;[39m
+     [90m 22 |[39m     })[33m;[39m
+     [90m 23 |[39m[0m
+
+      at ei.handleRequestError (node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+      at ei.handleAndLogRequestError (node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+      at ei.request (node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+      at a (node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+      at Object.<anonymous> (tests/admin.test.js:20:23)
+
+  ● Admin Controller › POST /api/admin/kyc/approve › should return 404 for non-existent user
+
+    PrismaClientKnownRequestError: 
+    Invalid `prisma.user.create()` invocation in
+    C:\Users\tayya\Desktop\RecyConnect-backend\tests\helpers.js:46:24
+
+      43     ...data
+      44 };
+      45 
+    → 46 return prisma.user.create(
+    Unique constraint failed on the fields: (`email`)
+
+    [0m [90m 18 |[39m         adminToken [33m=[39m generateTestToken(adminUser)[33m;[39m
+     [90m 19 |[39m
+    [31m[1m>[22m[39m[90m 20 |[39m         regularUser [33m=[39m [36mawait[39m createTestUser({ email[33m:[39m [32m'regular@test.com'[39m[33m,[39m role[33m:[39m [33mUserRole[39m[33m.[39m[33mINDIVIDUAL[39m })[33m;[39m
+     [90m    |[39m                       [31m[1m^[22m[39m
+     [90m 21 |[39m         userToken [33m=[39m generateTestToken(regularUser)[33m;[39m
+     [90m 22 |[39m     })[33m;[39m
+     [90m 23 |[39m[0m
+
+      at ei.handleRequestError (node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+      at ei.handleAndLogRequestError (node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+      at ei.request (node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+      at a (node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+      at Object.<anonymous> (tests/admin.test.js:20:23)
+
+  ● Admin Controller › POST /api/admin/kyc/reject › should reject a user KYC with reason
+
+    PrismaClientKnownRequestError: 
+    Invalid `prisma.user.create()` invocation in
+    C:\Users\tayya\Desktop\RecyConnect-backend\tests\helpers.js:46:24
+
+      43     ...data
+      44 };
+      45 
+    → 46 return prisma.user.create(
+    Unique constraint failed on the fields: (`email`)
+
+    [0m [90m 18 |[39m         adminToken [33m=[39m generateTestToken(adminUser)[33m;[39m
+     [90m 19 |[39m
+    [31m[1m>[22m[39m[90m 20 |[39m         regularUser [33m=[39m [36mawait[39m createTestUser({ email[33m:[39m [32m'regular@test.com'[39m[33m,[39m role[33m:[39m [33mUserRole[39m[33m.[39m[33mINDIVIDUAL[39m })[33m;[39m
+     [90m    |[39m                       [31m[1m^[22m[39m
+     [90m 21 |[39m         userToken [33m=[39m generateTestToken(regularUser)[33m;[39m
+     [90m 22 |[39m     })[33m;[39m
+     [90m 23 |[39m[0m
+
+      at ei.handleRequestError (node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+      at ei.handleAndLogRequestError (node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+      at ei.request (node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+      at a (node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+      at Object.<anonymous> (tests/admin.test.js:20:23)
+
+  ● Admin Controller › POST /api/admin/kyc/reject › should fail if reason is missing
+
+    PrismaClientKnownRequestError: 
+    Invalid `prisma.user.create()` invocation in
+    C:\Users\tayya\Desktop\RecyConnect-backend\tests\helpers.js:46:24
+
+      43     ...data
+      44 };
+      45 
+    → 46 return prisma.user.create(
+    Unique constraint failed on the fields: (`email`)
+
+    [0m [90m 18 |[39m         adminToken [33m=[39m generateTestToken(adminUser)[33m;[39m
+     [90m 19 |[39m
+    [31m[1m>[22m[39m[90m 20 |[39m         regularUser [33m=[39m [36mawait[39m createTestUser({ email[33m:[39m [32m'regular@test.com'[39m[33m,[39m role[33m:[39m [33mUserRole[39m[33m.[39m[33mINDIVIDUAL[39m })[33m;[39m
+     [90m    |[39m                       [31m[1m^[22m[39m
+     [90m 21 |[39m         userToken [33m=[39m generateTestToken(regularUser)[33m;[39m
+     [90m 22 |[39m     })[33m;[39m
+     [90m 23 |[39m[0m
+
+      at ei.handleRequestError (node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+      at ei.handleAndLogRequestError (node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+      at ei.request (node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+      at a (node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+      at Object.<anonymous> (tests/admin.test.js:20:23)
+
+  ● Admin Controller › PUT /api/admin/users/:id/suspend › should suspend a user
+
+    PrismaClientKnownRequestError: 
+    Invalid `prisma.user.create()` invocation in
+    C:\Users\tayya\Desktop\RecyConnect-backend\tests\helpers.js:46:24
+
+      43     ...data
+      44 };
+      45 
+    → 46 return prisma.user.create(
+    Unique constraint failed on the fields: (`email`)
+
+    [0m [90m 18 |[39m         adminToken [33m=[39m generateTestToken(adminUser)[33m;[39m
+     [90m 19 |[39m
+    [31m[1m>[22m[39m[90m 20 |[39m         regularUser [33m=[39m [36mawait[39m createTestUser({ email[33m:[39m [32m'regular@test.com'[39m[33m,[39m role[33m:[39m [33mUserRole[39m[33m.[39m[33mINDIVIDUAL[39m })[33m;[39m
+     [90m    |[39m                       [31m[1m^[22m[39m
+     [90m 21 |[39m         userToken [33m=[39m generateTestToken(regularUser)[33m;[39m
+     [90m 22 |[39m     })[33m;[39m
+     [90m 23 |[39m[0m
+
+      at ei.handleRequestError (node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+      at ei.handleAndLogRequestError (node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+      at ei.request (node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+      at a (node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+      at Object.<anonymous> (tests/admin.test.js:20:23)
+
+  ● Admin Controller › PUT /api/admin/users/:id/suspend › should activate a user
+
+    PrismaClientKnownRequestError: 
+    Invalid `prisma.user.create()` invocation in
+    C:\Users\tayya\Desktop\RecyConnect-backend\tests\helpers.js:46:24
+
+      43     ...data
+      44 };
+      45 
+    → 46 return prisma.user.create(
+    Unique constraint failed on the fields: (`email`)
+
+    [0m [90m 18 |[39m         adminToken [33m=[39m generateTestToken(adminUser)[33m;[39m
+     [90m 19 |[39m
+    [31m[1m>[22m[39m[90m 20 |[39m         regularUser [33m=[39m [36mawait[39m createTestUser({ email[33m:[39m [32m'regular@test.com'[39m[33m,[39m role[33m:[39m [33mUserRole[39m[33m.[39m[33mINDIVIDUAL[39m })[33m;[39m
+     [90m    |[39m                       [31m[1m^[22m[39m
+     [90m 21 |[39m         userToken [33m=[39m generateTestToken(regularUser)[33m;[39m
+     [90m 22 |[39m     })[33m;[39m
+     [90m 23 |[39m[0m
+
+      at ei.handleRequestError (node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+      at ei.handleAndLogRequestError (node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+      at ei.request (node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+      at a (node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+      at Object.<anonymous> (tests/admin.test.js:20:23)
+
+  ● Admin Controller › PUT /api/admin/rates › should update rates
+
+    PrismaClientKnownRequestError: 
+    Invalid `prisma.user.create()` invocation in
+    C:\Users\tayya\Desktop\RecyConnect-backend\tests\helpers.js:46:24
+
+      43     ...data
+      44 };
+      45 
+    → 46 return prisma.user.create(
+    Unique constraint failed on the fields: (`email`)
+
+    [0m [90m 18 |[39m         adminToken [33m=[39m generateTestToken(adminUser)[33m;[39m
+     [90m 19 |[39m
+    [31m[1m>[22m[39m[90m 20 |[39m         regularUser [33m=[39m [36mawait[39m createTestUser({ email[33m:[39m [32m'regular@test.com'[39m[33m,[39m role[33m:[39m [33mUserRole[39m[33m.[39m[33mINDIVIDUAL[39m })[33m;[39m
+     [90m    |[39m                       [31m[1m^[22m[39m
+     [90m 21 |[39m         userToken [33m=[39m generateTestToken(regularUser)[33m;[39m
+     [90m 22 |[39m     })[33m;[39m
+     [90m 23 |[39m[0m
+
+      at ei.handleRequestError (node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+      at ei.handleAndLogRequestError (node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+      at ei.request (node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+      at a (node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+      at Object.<anonymous> (tests/admin.test.js:20:23)
+
+Test Suites: 2 failed, 1 passed, 3 total
+Tests:       12 failed, 11 passed, 23 total
+Snapshots:   0 total
+Time:        41.916 s
+Ran all test suites matching tests/admin.test.js|tests/item.test.js|tests/kyc.test.js.
