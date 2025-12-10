@@ -20,7 +20,7 @@ import {
 } from '../controllers/authController.js'
 import { authenticateToken } from "../middlewares/authMiddleware.js";
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ dest: 'uploads/' });
 const router = express.Router();
 
 /**
