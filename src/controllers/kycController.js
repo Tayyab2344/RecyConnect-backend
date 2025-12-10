@@ -2,11 +2,44 @@ import { PrismaClient } from '@prisma/client';
 import { logger } from '../utils/logger.js';
 import { extractTextFromUrl, extractCNIC, extractNTN } from '../services/ocrService.js';
 import multer from 'multer';
+import cloudinary from "../config/cloudinary.js";
+import fs from "fs/promises";
 import { UserRole, VerificationStatus, KycStage } from '../constants/enums.js';
 import { sendSuccess, sendError } from '../utils/responseHelper.js';
 
 const prisma = new PrismaClient();
 const upload = multer({ storage: multer.memoryStorage() });
+
+// Helper to upload to Cloudinary (Supports both Disk Storage & Memory Storage)
+const uploadToCloudinary = (file, folder) => {
+  return new Promise((resolve, reject) => {
+    // 1. If we have a file path (Disk Storage)
+    if (file.path) {
+      cloudinary.uploader.upload(file.path, { folder })
+        .then((result) => {
+          // Try to clean up local file
+          fs.unlink(file.path).catch((err) => logger.warn(`Failed to delete local file: ${err.message}`));
+          resolve(result);
+        })
+        .catch((err) => reject(err));
+    }
+    // 2. If we have a buffer (Memory Storage)
+    else if (file.buffer) {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder },
+        (error, result) => {
+          if (error) return reject(error);
+          resolve(result);
+        }
+      );
+      stream.end(file.buffer);
+    }
+    // 3. Fallback / Error
+    else {
+      reject(new Error("File upload failed: No path or buffer found"));
+    }
+  });
+};
 
 async function isCnicUnique(cnic) {
   const existing = await prisma.user.findFirst({ where: { cnic } });
@@ -40,14 +73,19 @@ export const registerKyc = [
         return sendError(res, 'Individuals do not require KYC documents', null, 400);
       }
 
-      const frontPath = req.files['frontCnic']?.[0]?.path;
-      const backPath = req.files['backCnic']?.[0]?.path;
-      if (!frontPath || !backPath) {
+      const frontFile = req.files['frontCnic']?.[0];
+      const backFile = req.files['backCnic']?.[0];
+
+      if (!frontFile || !backFile) {
         return sendError(res, 'Both front and back CNIC images are required', null, 400);
       }
 
-      const frontText = await extractTextFromUrl(frontPath);
-      const backText = await extractTextFromUrl(backPath);
+      // Upload to Cloudinary first to get URL for OCR
+      const frontUpload = await uploadToCloudinary(frontFile, `recyconnect/kyc/${req.user.email}`);
+      const backUpload = await uploadToCloudinary(backFile, `recyconnect/kyc/${req.user.email}`);
+
+      const frontText = await extractTextFromUrl(frontUpload.secure_url);
+      const backText = await extractTextFromUrl(backUpload.secure_url);
       const cnic = extractCNIC(frontText) || extractCNIC(backText);
 
       let verificationStatus = VerificationStatus.REJECTED;
@@ -67,9 +105,10 @@ export const registerKyc = [
           logger.warn(`KYC auto-rejected for user ${req.user.id}: Duplicate CNIC - ${cnic}`);
         } else {
           if (role === UserRole.COMPANY) {
-            const ntnPath = req.files['ntn']?.[0]?.path;
-            if (ntnPath) {
-              const ntnText = await extractTextFromUrl(ntnPath);
+            const ntnFile = req.files['ntn']?.[0];
+            if (ntnFile) {
+              const ntnUpload = await uploadToCloudinary(ntnFile, `recyconnect/kyc/${req.user.email}`);
+              const ntnText = await extractTextFromUrl(ntnUpload.secure_url);
               const ntn = extractNTN(ntnText);
 
               if (!ntn || !validateNtnFormat(ntn)) {

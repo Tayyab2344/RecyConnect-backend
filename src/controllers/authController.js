@@ -19,6 +19,37 @@ import { sendSuccess, sendError } from "../utils/responseHelper.js";
 
 const prisma = new PrismaClient();
 
+// Helper to upload to Cloudinary (Supports both Disk Storage & Memory Storage)
+const uploadToCloudinary = (file, folder) => {
+  return new Promise((resolve, reject) => {
+    // 1. If we have a file path (Disk Storage)
+    if (file.path) {
+      cloudinary.uploader.upload(file.path, { folder })
+        .then((result) => {
+          // Try to clean up local file
+          fs.unlink(file.path).catch((err) => logger.warn(`Failed to delete local file: ${err.message}`));
+          resolve(result);
+        })
+        .catch((err) => reject(err));
+    } 
+    // 2. If we have a buffer (Memory Storage)
+    else if (file.buffer) {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder },
+        (error, result) => {
+          if (error) return reject(error);
+          resolve(result);
+        }
+      );
+      stream.end(file.buffer);
+    } 
+    // 3. Fallback / Error
+    else {
+      reject(new Error("File upload failed: No path or buffer found"));
+    }
+  });
+};
+
 function validateRequest(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -89,11 +120,8 @@ export async function register(req, res) {
     let profileImageUrl = null;
     if (req.files?.profileImage?.[0]) {
       const file = req.files.profileImage[0];
-      const uploaded = await cloudinary.uploader.upload(file.path, {
-        folder: `recyconnect/profile/${email}`,
-      });
+      const uploaded = await uploadToCloudinary(file, `recyconnect/profile/${email}`);
       profileImageUrl = uploaded.secure_url;
-      await fs.unlink(file.path);
     } else if (role !== UserRole.INDIVIDUAL) {
       return sendError(res, "Profile picture is mandatory", null, 400);
     }
@@ -108,8 +136,7 @@ export async function register(req, res) {
 
       // Upload CNIC
       const cnicFile = files.cnic[0];
-      const upCnic = await cloudinary.uploader.upload(cnicFile.path, { folder: `recyconnect/docs/${email}` });
-      await fs.unlink(cnicFile.path);
+      const upCnic = await uploadToCloudinary(cnicFile, `recyconnect/docs/${email}`);
       documentsData.push({ docType: "CNIC", fileUrl: upCnic.secure_url, fileName: cnicFile.originalname });
 
       if (role === UserRole.COMPANY) {
@@ -118,10 +145,8 @@ export async function register(req, res) {
         }
         const ntnFile = files.ntn[0];
         const utilFile = files.utility[0];
-        const upNtn = await cloudinary.uploader.upload(ntnFile.path, { folder: `recyconnect/docs/${email}` });
-        const upUtil = await cloudinary.uploader.upload(utilFile.path, { folder: `recyconnect/docs/${email}` });
-        await fs.unlink(ntnFile.path);
-        await fs.unlink(utilFile.path);
+        const upNtn = await uploadToCloudinary(ntnFile, `recyconnect/docs/${email}`);
+        const upUtil = await uploadToCloudinary(utilFile, `recyconnect/docs/${email}`);
 
         documentsData.push(
           { docType: "NTN", fileUrl: upNtn.secure_url, fileName: ntnFile.originalname },
@@ -180,10 +205,7 @@ export async function analyzeDocument(req, res) {
       return sendError(res, "No document provided", null, 400);
     }
 
-    const uploaded = await cloudinary.uploader.upload(req.file.path, {
-      folder: "recyconnect/temp_analysis",
-    });
-    await fs.unlink(req.file.path);
+    const uploaded = await uploadToCloudinary(req.file, "recyconnect/temp_analysis");
 
     logger.info(`Analyzing document: ${uploaded.secure_url}`);
     const text = await extractTextFromUrl(uploaded.secure_url);
@@ -634,10 +656,7 @@ export async function updateProfile(req, res) {
     }
 
     if (req.file) {
-      const uploaded = await cloudinary.uploader.upload(req.file.path, {
-        folder: `recyconnect/profile/${userId}`,
-      });
-      await fs.unlink(req.file.path);
+      const uploaded = await uploadToCloudinary(req.file, `recyconnect/profile/${userId}`);
       updates.profileImage = uploaded.secure_url;
 
       await prisma.activityLog.create({
