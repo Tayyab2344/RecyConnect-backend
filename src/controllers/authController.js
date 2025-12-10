@@ -87,7 +87,12 @@ export async function register(req, res) {
   try {
     if (!validateRequest(req, res)) return;
 
-    const { role, email, password, name, businessName, companyName, address, contactNo } = req.body;
+    const { role, password, name, businessName, companyName, address, contactNo } = req.body;
+    let { email } = req.body;
+    
+    // Sanitize
+    email = email?.toLowerCase().trim();
+    const sanitizedPassword = password?.trim();
 
     // 1. Strict Role Validation
     if (![UserRole.INDIVIDUAL, UserRole.WAREHOUSE, UserRole.COMPANY].includes(role)) {
@@ -156,7 +161,7 @@ export async function register(req, res) {
     }
 
     // 6. Hash password for storage in metadata
-    const hashed = await bcrypt.hash(password, parseInt(process.env.BCRYPT_SALT_ROUNDS || "10"));
+    const hashed = await bcrypt.hash(sanitizedPassword, parseInt(process.env.BCRYPT_SALT_ROUNDS || "10"));
 
     // 7. Prepare registration metadata
     const registrationData = {
@@ -234,7 +239,9 @@ export async function analyzeDocument(req, res) {
 export async function verifyOtpController(req, res) {
   try {
     if (!validateRequest(req, res)) return;
-    const { email, otp } = req.body;
+    if (!validateRequest(req, res)) return;
+    let { email, otp } = req.body;
+    email = email?.toLowerCase().trim();
 
     // Verify OTP (works for both email-based and user-based)
     const otpRecord = await verifyOtp(email, otp, "email_verification");
@@ -383,7 +390,18 @@ export async function verifyOtpController(req, res) {
 export async function login(req, res) {
   try {
     if (!validateRequest(req, res)) return;
-    const { identifier, password } = req.body;
+    if (!validateRequest(req, res)) return;
+    let { identifier, password } = req.body;
+    const sanitizedPassword = password?.trim();
+    
+    // Check if identifier is an email and sanitize it
+    if (identifier.includes('@')) {
+      identifier = identifier.toLowerCase().trim();
+    }
+    // Note: collectorId is case-sensitive usually, but we can trim it
+    else {
+      identifier = identifier.trim();
+    }
     console.log(`[LOGIN DEBUG] Login attempt for: ${identifier}`);
 
     // Allow login with email OR collectorId
@@ -405,7 +423,7 @@ export async function login(req, res) {
 
     console.log(`[LOGIN DEBUG] User found: ${user.email}, Role: ${user.role}, Hash: ${user.password.substring(0, 10)}...`);
 
-    const match = await bcrypt.compare(password, user.password);
+    const match = await bcrypt.compare(sanitizedPassword, user.password);
     console.log(`[LOGIN DEBUG] Password match result: ${match}`);
 
     if (!match) {
@@ -749,7 +767,9 @@ export async function refreshToken(req, res) {
 export async function resendOtp(req, res) {
   try {
     if (!validateRequest(req, res)) return;
-    const { email } = req.body;
+    if (!validateRequest(req, res)) return;
+    let { email } = req.body;
+    email = email?.toLowerCase().trim();
 
     // Check if there's a pending registration OTP (user not created yet)
     const pendingOtp = await prisma.otp.findFirst({
@@ -807,7 +827,9 @@ export async function resendOtp(req, res) {
 export async function checkEmailExistence(req, res) {
   try {
     if (!validateRequest(req, res)) return;
-    const { email } = req.body;
+    if (!validateRequest(req, res)) return;
+    let { email } = req.body;
+    email = email?.toLowerCase().trim();
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (user && user.emailVerified) {
