@@ -33,36 +33,40 @@ export const createOrder = async (req, res) => {
             return sendError(res, 'Weight must be greater than 0', null, 400);
         }
 
+        // Check if listing exists
+        const listingId = req.body.listingId;
+        const listing = await prisma.listing.findUnique({
+            where: { id: parseInt(listingId) }
+        });
+
+        if (!listing) {
+            return sendError(res, 'Listing not found', null, 404);
+        }
+
         // Create order
         const order = await prisma.order.create({
             data: {
                 buyerId,
-                sellerId: parseInt(sellerId),
-                materialType,
-                weight: parseFloat(weight),
-                pickupAddress,
-                latitude: latitude ? parseFloat(latitude) : null,
-                longitude: longitude ? parseFloat(longitude) : null,
-                locationMethod: locationMethod || 'manual',
-                paymentMethod: paymentMethod || PaymentMethod.COD
+                sellerId: listing.userId,
+                status: OrderStatus.PENDING,
+                totalAmount: listing.price * (parseFloat(weight) || 1),
+                items: {
+                    create: {
+                        listingId: listing.id,
+                        quantity: parseFloat(weight) || 1,
+                        price: listing.price
+                    }
+                }
             },
             include: {
                 buyer: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true,
-                        contactNo: true
-                    }
+                    select: { id: true, name: true, email: true, contactNo: true }
                 },
                 seller: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true,
-                        contactNo: true,
-                        address: true
-                    }
+                    select: { id: true, name: true, email: true, contactNo: true, address: true }
+                },
+                items: {
+                    include: { listing: true }
                 }
             }
         });
@@ -130,23 +134,24 @@ export const getOrders = async (req, res) => {
         const { skip, take, page: pageNum, limit: limitNum } = getPaginationParams(page, limit);
 
         const orders = await prisma.order.findMany({
-            where,
-            include: {
-                buyer: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true,
-                        contactNo: true
+            where: {
+                ...where,
+                ...(material && {
+                    items: {
+                        some: {
+                            listing: {
+                                materialType: { equals: material, mode: 'insensitive' }
+                            }
+                        }
                     }
-                },
-                seller: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true,
-                        contactNo: true,
-                        address: true
+                })
+            },
+            include: {
+                buyer: { select: { id: true, name: true, email: true, contactNo: true } },
+                seller: { select: { id: true, name: true, email: true, contactNo: true, address: true } },
+                items: {
+                    include: {
+                        listing: { select: { materialType: true } }
                     }
                 }
             },
@@ -181,26 +186,32 @@ export const getOrderStats = async (req, res) => {
                 ...(role === 'buyer' ? { buyerId: userId } : { sellerId: userId }),
                 status: OrderStatus.COMPLETED
             },
-            select: {
-                weight: true,
-                materialType: true
+            include: {
+                items: {
+                    include: {
+                        listing: { select: { materialType: true } }
+                    }
+                }
             }
         });
 
-        const totalWeight = completedOrders.reduce(
-            (sum, order) => sum + order.weight,
-            0
-        );
+        let totalWeight = 0;
+        const byMaterial = {};
 
-        // Breakdown by material type
-        const byMaterial = completedOrders.reduce((acc, order) => {
-            if (!acc[order.materialType]) {
-                acc[order.materialType] = { count: 0, weight: 0 };
-            }
-            acc[order.materialType].count += 1;
-            acc[order.materialType].weight += order.weight;
-            return acc;
-        }, {});
+        completedOrders.forEach(order => {
+            order.items.forEach(item => {
+                const weight = item.quantity;
+                const material = item.listing.materialType;
+
+                totalWeight += weight;
+
+                if (!byMaterial[material]) {
+                    byMaterial[material] = { count: 0, weight: 0 };
+                }
+                byMaterial[material].count += 1;
+                byMaterial[material].weight += weight;
+            });
+        });
 
         // Get pending orders count
         const pendingCount = await prisma.order.count({
@@ -246,13 +257,25 @@ export const exportOrders = async (req, res) => {
         };
 
         const orders = await prisma.order.findMany({
-            where,
+            where: {
+                ...where,
+                ...(material && {
+                    items: {
+                        some: {
+                            listing: {
+                                materialType: { equals: material, mode: 'insensitive' }
+                            }
+                        }
+                    }
+                })
+            },
             include: {
-                buyer: {
-                    select: { name: true, email: true }
-                },
-                seller: {
-                    select: { name: true, email: true }
+                buyer: { select: { name: true, email: true } },
+                seller: { select: { name: true, email: true } },
+                items: {
+                    include: {
+                        listing: { select: { materialType: true } }
+                    }
                 }
             },
             orderBy: { createdAt: 'desc' }
@@ -260,19 +283,22 @@ export const exportOrders = async (req, res) => {
 
         // Generate CSV
         const csvHeader = 'ID,Material Type,Weight (kg),Buyer,Seller,Pickup Address,Payment Method,Status,Created At\n';
-        const csvRows = orders.map(order =>
-            [
+        const csvRows = orders.map(order => {
+            const materialTypes = order.items.map(i => i.listing.materialType).join('; ');
+            const totalWeight = order.items.reduce((sum, i) => sum + i.quantity, 0);
+
+            return [
                 order.id,
-                order.materialType,
-                order.weight,
+                `"${materialTypes}"`,
+                totalWeight,
                 `"${order.buyer?.name || 'N/A'}"`,
                 `"${order.seller?.name || 'N/A'}"`,
-                `"${order.pickupAddress}"`,
-                order.paymentMethod,
+                `"${order.pickupAddress || 'N/A'}"`,
+                'N/A', // Payment Method
                 order.status,
                 new Date(order.createdAt).toISOString()
-            ].join(',')
-        ).join('\n');
+            ].join(',');
+        }).join('\n');
 
         const csv = csvHeader + csvRows;
 

@@ -34,7 +34,7 @@ describe('Order Controller', () => {
 
     beforeAll(async () => {
         // Create test users
-        const hashedPassword = await bcrypt.hash('TestPassword123', 10);
+        const hashedPassword = await bcrypt.hash('TestPassword123!', 10);
 
         buyer = await prisma.user.create({
             data: {

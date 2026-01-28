@@ -10,6 +10,16 @@ jest.mock('cloudinary', () => ({
         uploader: {
             upload: jest.fn().mockResolvedValue({
                 secure_url: 'https://res.cloudinary.com/demo/image/upload/v1/sample.jpg'
+            }),
+            upload_stream: jest.fn((options, callback) => {
+                const stream = {
+                    end: jest.fn(() => {
+                        callback(null, {
+                            secure_url: 'https://res.cloudinary.com/demo/image/upload/v1/sample.jpg'
+                        });
+                    })
+                };
+                return stream;
             })
         }
     }

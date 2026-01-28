@@ -1,6 +1,5 @@
 import bcrypt from 'bcrypt';
-import fs from 'fs/promises';
-import cloudinary from '../config/cloudinary.js';
+import { uploadToCloudinary } from '../utils/uploadHelper.js';
 import { extractTextFromUrl, extractCNIC, extractNTN } from '../services/ocrService.js';
 import { logger } from '../utils/logger.js';
 import { UserRole, VerificationStatus, KycStage } from '../constants/enums.js';
@@ -123,11 +122,8 @@ export async function updateProfile(req, res) {
         }
 
         if (req.file) {
-            const uploaded = await cloudinary.uploader.upload(req.file.path, {
-                folder: `recyconnect/profile/${userId}`,
-            });
-            updates.profileImage = uploaded.secure_url;
-            await fs.unlink(req.file.path);
+            const result = await uploadToCloudinary(req.file, `recyconnect/profile/${userId}`);
+            updates.profileImage = result.secure_url;
         }
 
         if (Object.keys(updates).length === 0) {
@@ -189,11 +185,8 @@ export async function requestRoleUpgrade(req, res) {
             const frontFile = files.cnicFront[0];
             const backFile = files.cnicBack[0];
 
-            const upFront = await cloudinary.uploader.upload(frontFile.path, { folder: `recyconnect/kyc/${userId}` });
-            const upBack = await cloudinary.uploader.upload(backFile.path, { folder: `recyconnect/kyc/${userId}` });
-
-            await fs.unlink(frontFile.path);
-            await fs.unlink(backFile.path);
+            const upFront = await uploadToCloudinary(frontFile, `recyconnect/kyc/${userId}`);
+            const upBack = await uploadToCloudinary(backFile, `recyconnect/kyc/${userId}`);
 
             documentsData.push(
                 { docType: "CNIC_FRONT", fileUrl: upFront.secure_url, fileName: frontFile.originalname },
@@ -220,11 +213,8 @@ export async function requestRoleUpgrade(req, res) {
             const ntnFile = files.ntn[0];
             const regFile = files.registration[0];
 
-            const upNtn = await cloudinary.uploader.upload(ntnFile.path, { folder: `recyconnect/kyc/${userId}` });
-            const upReg = await cloudinary.uploader.upload(regFile.path, { folder: `recyconnect/kyc/${userId}` });
-
-            await fs.unlink(ntnFile.path);
-            await fs.unlink(regFile.path);
+            const upNtn = await uploadToCloudinary(ntnFile, `recyconnect/kyc/${userId}`);
+            const upReg = await uploadToCloudinary(regFile, `recyconnect/kyc/${userId}`);
 
             documentsData.push(
                 { docType: "NTN", fileUrl: upNtn.secure_url, fileName: ntnFile.originalname },
@@ -243,8 +233,7 @@ export async function requestRoleUpgrade(req, res) {
         // Utility Bill (Required for both)
         if (files.utility?.[0]) {
             const utilFile = files.utility[0];
-            const upUtil = await cloudinary.uploader.upload(utilFile.path, { folder: `recyconnect/kyc/${userId}` });
-            await fs.unlink(utilFile.path);
+            const upUtil = await uploadToCloudinary(utilFile, `recyconnect/kyc/${userId}`);
             documentsData.push({ docType: "UTILITY", fileUrl: upUtil.secure_url, fileName: utilFile.originalname });
         } else {
             return sendError(res, 'Utility Bill is required', null, 400);

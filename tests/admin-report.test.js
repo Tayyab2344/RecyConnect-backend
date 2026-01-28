@@ -31,7 +31,7 @@ describe('Admin Report Controller', () => {
     let adminToken, userToken;
 
     beforeAll(async () => {
-        const hashedPassword = await bcrypt.hash('TestPassword123', 10);
+        const hashedPassword = await bcrypt.hash('TestPassword123!', 10);
 
         // Create admin user
         adminUser = await prisma.user.create({

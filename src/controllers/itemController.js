@@ -1,6 +1,5 @@
 import prisma from '../lib/prisma.js';
-import cloudinary from '../config/cloudinary.js';
-import fs from 'fs/promises';
+import { uploadToCloudinary } from '../utils/uploadHelper.js';
 import { ItemStatus } from '../constants/enums.js';
 import { sendSuccess, sendError } from '../utils/responseHelper.js';
 import { buildSearchFilter } from '../utils/queryHelper.js';
@@ -12,13 +11,10 @@ export async function createItem(req, res) {
         const { title, description, price, quantity, category, unit } = req.body;
 
         const images = [];
-        if (req.files) {
+        if (req.files && Array.isArray(req.files)) {
             for (const file of req.files) {
-                const uploaded = await cloudinary.uploader.upload(file.path, {
-                    folder: `recyconnect/items/${sellerId}`,
-                });
-                images.push(uploaded.secure_url);
-                await fs.unlink(file.path);
+                const result = await uploadToCloudinary(file, `recyconnect/items/${sellerId}`);
+                images.push(result.secure_url);
             }
         }
 

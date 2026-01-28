@@ -42,6 +42,12 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
 model User {
   id            Int       @id @default(autoincrement())
   name          String?
@@ -95,12 +101,21 @@ model User {
   sellerOrders  Order[]        @relation("SellerOrders")
   buyerReservations ListingReservation[] @relation("BuyerReservations")
 
+  // Chat Relations
+  conversations1   Conversation[] @relation("Participant1")
+  conversations2   Conversation[] @relation("Participant2")
+  sentMessages     Message[]      @relation("SentMessages")
+
   // Warehouse ERP Relations
   warehouseInventory    WarehouseInventory[]   @relation("WarehouseInventory")
   suppliedInventory     WarehouseInventory[]   @relation("SupplierInventory")
   expenses              Expense[]
   financialTransactions FinancialTransaction[]
   inventoryMovements    InventoryMovement[]
+
+  // Transaction Relations
+  buyerTransactions    Transaction[] @relation("BuyerTransactions")
+  sellerTransactions   Transaction[] @relation("SellerTransactions")
 
   @@index([role])
   @@index([contactNo])
@@ -182,6 +197,8 @@ model Item {
   status      String   @default("AVAILABLE") // AVAILABLE, SOLD, REMOVED
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  transactions Transaction[]
 
   @@index([status])
   @@index([category])
@@ -395,4 +412,53 @@ model FinancialTransaction {
 
   @@index([warehouseId, type, createdAt])
   @@index([warehouseId, createdAt])
+}
+
+model Conversation {
+  id             Int       @id @default(autoincrement())
+  participant1Id Int
+  participant1   User      @relation("Participant1", fields: [participant1Id], references: [id])
+  participant2Id Int
+  participant2   User      @relation("Participant2", fields: [participant2Id], references: [id])
+  messages       Message[]
+  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime  @default(now())
+
+  @@index([participant1Id])
+  @@index([participant2Id])
+}
+
+model Message {
+  id             Int          @id @default(autoincrement())
+  conversationId Int
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  senderId       Int
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id])
+  content        String
+  imageUrl       String?
+  isRead         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+  @@index([senderId])
+}
+
+model Transaction {
+  id          Int      @id @default(autoincrement())
+  buyerId     Int
+  buyer       User     @relation("BuyerTransactions", fields: [buyerId], references: [id])
+  sellerId    Int
+  seller      User     @relation("SellerTransactions", fields: [sellerId], references: [id])
+  itemId      Int
+  item        Item     @relation(fields: [itemId], references: [id])
+  quantity    Float
+  totalAmount Float
+  status      TransactionStatus @default(PENDING)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([itemId])
+  @@index([status])
 }

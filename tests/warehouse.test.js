@@ -32,7 +32,7 @@ describe('Warehouse Controller', () => {
     let warehouseToken, individualToken;
 
     beforeAll(async () => {
-        const hashedPassword = await bcrypt.hash('TestPassword123', 10);
+        const hashedPassword = await bcrypt.hash('TestPassword123!', 10);
 
         // Create warehouse user
         warehouseUser = await prisma.user.create({

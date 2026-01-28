@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { ListingStatus, OrderStatus } from '../constants/enums.js';
 import { sendSuccess, sendError } from '../utils/responseHelper.js';
-
-const prisma = new PrismaClient();
 
 /**
  * Get system-wide overview statistics for admin dashboard
@@ -14,16 +12,15 @@ export const getSystemOverview = async (req, res) => {
         const usersByRole = await prisma.user.groupBy({
             by: ['role'],
             _count: { id: true },
-            where: { deletedAt: null }
         });
 
         // Total listings count
         const totalListings = await prisma.listing.count();
         const pendingListings = await prisma.listing.count({
-            where: { status: ListingStatus.PENDING }
+            where: { status: ListingStatus.DRAFT } // Changed from PENDING if DRAFT is initial
         });
         const completedListings = await prisma.listing.count({
-            where: { status: ListingStatus.COMPLETED }
+            where: { status: ListingStatus.SOLD } // Changed from COMPLETED if SOLD is the terminal status
         });
 
         // Total orders count
@@ -35,15 +32,17 @@ export const getSystemOverview = async (req, res) => {
             where: { status: OrderStatus.COMPLETED }
         });
 
-        // Total weight recycled (completed listings)
-        const completedListingsData = await prisma.listing.findMany({
-            where: { status: ListingStatus.COMPLETED },
-            select: { estimatedWeight: true }
+        // Total weight recycled (completed orders)
+        const completedOrdersData = await prisma.order.findMany({
+            where: { status: OrderStatus.COMPLETED },
+            include: {
+                items: true
+            }
         });
-        const totalWeightRecycled = completedListingsData.reduce(
-            (sum, listing) => sum + listing.estimatedWeight,
-            0
-        );
+        const totalWeightRecycled = completedOrdersData.reduce((sum, order) => {
+            const orderWeight = order.items.reduce((iSum, item) => iSum + item.quantity, 0);
+            return sum + orderWeight;
+        }, 0);
 
         // Active users (users with listings or orders in last 30 days)
         const thirtyDaysAgo = new Date();
@@ -103,8 +102,7 @@ export const getMaterialBreakdown = async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
 
-        const where = {
-            status: ListingStatus.COMPLETED,
+        const dateFilter = {
             ...(startDate || endDate
                 ? {
                     createdAt: {
@@ -117,7 +115,7 @@ export const getMaterialBreakdown = async (req, res) => {
 
         // Listings by material
         const listings = await prisma.listing.findMany({
-            where,
+            where: dateFilter,
             select: {
                 materialType: true,
                 estimatedWeight: true
@@ -135,21 +133,30 @@ export const getMaterialBreakdown = async (req, res) => {
 
         // Orders by material
         const orders = await prisma.order.findMany({
-            where,
-            select: {
-                materialType: true,
-                weight: true
+            where: {
+                ...dateFilter,
+                status: OrderStatus.COMPLETED
+            },
+            include: {
+                items: {
+                    include: {
+                        listing: { select: { materialType: true } }
+                    }
+                }
             }
         });
 
-        const ordersByMaterial = orders.reduce((acc, order) => {
-            if (!acc[order.materialType]) {
-                acc[order.materialType] = { count: 0, weight: 0 };
-            }
-            acc[order.materialType].count += 1;
-            acc[order.materialType].weight += order.weight;
-            return acc;
-        }, {});
+        const ordersByMaterial = {};
+        orders.forEach(order => {
+            order.items.forEach(item => {
+                const mType = item.listing.materialType;
+                if (!ordersByMaterial[mType]) {
+                    ordersByMaterial[mType] = { count: 0, weight: 0 };
+                }
+                ordersByMaterial[mType].count += 1;
+                ordersByMaterial[mType].weight += item.quantity;
+            });
+        });
 
         sendSuccess(res, 'Material breakdown fetched', {
             listings: listingsByMaterial,
@@ -168,50 +175,64 @@ export const getUserActivity = async (req, res) => {
     try {
         const { limit = 10 } = req.query;
 
-        // Top sellers (by completed listings count)
-        const topSellers = await prisma.listing.groupBy({
-            by: ['userId'],
-            where: { status: ListingStatus.COMPLETED },
+        // Top sellers (by completed items weight in orders)
+        const sellerStats = await prisma.order.groupBy({
+            by: ['sellerId'],
+            where: { status: OrderStatus.COMPLETED },
             _count: { id: true },
-            _sum: { estimatedWeight: true },
             orderBy: { _count: { id: 'desc' } },
             take: parseInt(limit)
         });
 
         const topSellersWithInfo = await Promise.all(
-            topSellers.map(async (seller) => {
+            sellerStats.map(async (stat) => {
                 const user = await prisma.user.findUnique({
-                    where: { id: seller.userId },
-                    select: { id: true, name: true, email: true, role: true }
+                    where: { id: stat.sellerId },
+                    select: { id: true, name: true, email: true, role: true, businessName: true }
                 });
+
+                // Calculate total weight for this seller
+                const orders = await prisma.order.findMany({
+                    where: { sellerId: stat.sellerId, status: OrderStatus.COMPLETED },
+                    include: { items: true }
+                });
+                const totalWeight = orders.reduce((sum, o) => sum + o.items.reduce((iSum, i) => iSum + i.quantity, 0), 0);
+
                 return {
                     user,
-                    listingsCount: seller._count.id,
-                    totalWeight: parseFloat((seller._sum.estimatedWeight || 0).toFixed(2))
+                    ordersCount: stat._count.id,
+                    totalWeight: parseFloat(totalWeight.toFixed(2))
                 };
             })
         );
 
-        // Top buyers (by completed orders count)
-        const topBuyers = await prisma.order.groupBy({
+        // Top buyers (by completed orders weight)
+        const buyerStats = await prisma.order.groupBy({
             by: ['buyerId'],
             where: { status: OrderStatus.COMPLETED },
             _count: { id: true },
-            _sum: { weight: true },
             orderBy: { _count: { id: 'desc' } },
             take: parseInt(limit)
         });
 
         const topBuyersWithInfo = await Promise.all(
-            topBuyers.map(async (buyer) => {
+            buyerStats.map(async (stat) => {
                 const user = await prisma.user.findUnique({
-                    where: { id: buyer.buyerId },
+                    where: { id: stat.buyerId },
                     select: { id: true, name: true, email: true, role: true }
                 });
+
+                // Calculate total weight for this buyer
+                const orders = await prisma.order.findMany({
+                    where: { buyerId: stat.buyerId, status: OrderStatus.COMPLETED },
+                    include: { items: true }
+                });
+                const totalWeight = orders.reduce((sum, o) => sum + o.items.reduce((iSum, i) => iSum + i.quantity, 0), 0);
+
                 return {
                     user,
-                    ordersCount: buyer._count.id,
-                    totalWeight: parseFloat((buyer._sum.weight || 0).toFixed(2))
+                    ordersCount: stat._count.id,
+                    totalWeight: parseFloat(totalWeight.toFixed(2))
                 };
             })
         );
@@ -252,7 +273,7 @@ export const getTimeSeries = async (req, res) => {
                 acc[month] = { total: 0, completed: 0, weight: 0 };
             }
             acc[month].total += 1;
-            if (listing.status === ListingStatus.COMPLETED) {
+            if (listing.status === ListingStatus.SOLD) {
                 acc[month].completed += 1;
                 acc[month].weight += listing.estimatedWeight;
             }
@@ -262,10 +283,8 @@ export const getTimeSeries = async (req, res) => {
         // Orders by month
         const orders = await prisma.order.findMany({
             where: { createdAt: { gte: startDate } },
-            select: {
-                createdAt: true,
-                status: true,
-                weight: true
+            include: {
+                items: true
             }
         });
 
@@ -277,7 +296,8 @@ export const getTimeSeries = async (req, res) => {
             acc[month].total += 1;
             if (order.status === OrderStatus.COMPLETED) {
                 acc[month].completed += 1;
-                acc[month].weight += order.weight;
+                const weight = order.items.reduce((sum, i) => sum + i.quantity, 0);
+                acc[month].weight += weight;
             }
             return acc;
         }, {});
@@ -310,24 +330,39 @@ export const getLocationAnalytics = async (req, res) => {
                 status: true,
                 pickupAddress: true
             },
-            take: 1000 // Limit to prevent overload
+            take: 1000
         });
 
-        // Orders with location data
-        const ordersWithLocation = await prisma.order.findMany({
-            where: {
-                latitude: { not: null },
-                longitude: { not: null }
-            },
-            select: {
-                latitude: true,
-                longitude: true,
-                materialType: true,
-                status: true,
-                pickupAddress: true
+        // Orders with location data (via their first item's listing)
+        const orders = await prisma.order.findMany({
+            include: {
+                items: {
+                    include: {
+                        listing: {
+                            select: {
+                                latitude: true,
+                                longitude: true,
+                                materialType: true,
+                                pickupAddress: true
+                            }
+                        }
+                    },
+                    take: 1
+                }
             },
             take: 1000
         });
+
+        const ordersWithLocation = orders
+            .filter(o => o.items.length > 0 && o.items[0].listing.latitude !== null)
+            .map(o => ({
+                id: o.id,
+                latitude: o.items[0].listing.latitude,
+                longitude: o.items[0].listing.longitude,
+                materialType: o.items[0].listing.materialType,
+                status: o.status,
+                pickupAddress: o.items[0].listing.pickupAddress
+            }));
 
         sendSuccess(res, 'Location analytics fetched', {
             listings: listingsWithLocation,
@@ -348,7 +383,7 @@ export const exportSystemReport = async (req, res) => {
     try {
         const { type = 'listings', startDate, endDate } = req.query;
 
-        const where = {
+        const dateFilter = {
             ...(startDate || endDate
                 ? {
                     createdAt: {
@@ -363,7 +398,7 @@ export const exportSystemReport = async (req, res) => {
 
         if (type === 'listings') {
             const listings = await prisma.listing.findMany({
-                where,
+                where: dateFilter,
                 include: {
                     user: {
                         select: { name: true, email: true, role: true }
@@ -387,33 +422,35 @@ export const exportSystemReport = async (req, res) => {
             ).join('\n');
         } else if (type === 'orders') {
             const orders = await prisma.order.findMany({
-                where,
+                where: dateFilter,
                 include: {
-                    buyer: {
-                        select: { name: true, email: true }
-                    },
-                    seller: {
-                        select: { name: true, email: true }
+                    buyer: { select: { name: true, email: true } },
+                    seller: { select: { name: true, email: true } },
+                    items: {
+                        include: {
+                            listing: { select: { materialType: true } }
+                        }
                     }
                 },
                 orderBy: { createdAt: 'desc' }
             });
 
-            csv = 'ID,Buyer Name,Buyer Email,Seller Name,Seller Email,Material,Weight (kg),Payment,Status,Created At\n';
-            csv += orders.map(o =>
-                [
+            csv = 'ID,Buyer Name,Buyer Email,Seller Name,Seller Email,Materials,Total Weight (kg),Status,Created At\n';
+            csv += orders.map(o => {
+                const materials = o.items.map(i => i.listing.materialType).join('; ');
+                const totalWeight = o.items.reduce((sum, i) => sum + i.quantity, 0);
+                return [
                     o.id,
                     `"${o.buyer?.name || 'N/A'}"`,
                     `"${o.buyer?.email || 'N/A'}"`,
                     `"${o.seller?.name || 'N/A'}"`,
                     `"${o.seller?.email || 'N/A'}"`,
-                    o.materialType,
-                    o.weight,
-                    o.paymentMethod,
+                    `"${materials}"`,
+                    totalWeight,
                     o.status,
                     new Date(o.createdAt).toISOString()
-                ].join(',')
-            ).join('\n');
+                ].join(',');
+            }).join('\n');
         }
 
         res.setHeader('Content-Type', 'text/csv');

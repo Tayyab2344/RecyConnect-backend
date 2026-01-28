@@ -75,7 +75,7 @@ describe('Auth Controller', () => {
                 .send({
                     name: 'Test User',
                     email: testEmail,
-                    password: 'TestPassword123',
+                    password: 'TestPassword123!',
                     role: 'individual',
                     contactNo: '03001234567',
                     address: 'Test Address, Lahore'
@@ -91,7 +91,7 @@ describe('Auth Controller', () => {
                 .send({
                     name: 'Test User 2',
                     email: testEmail, // Same email
-                    password: 'TestPassword123',
+                    password: 'TestPassword123!',
                     role: 'individual'
                 });
 
