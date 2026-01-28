@@ -10,6 +10,9 @@ import { createServer } from "http";
 import { swaggerSpec } from "./utils/swagger.js";
 import authRoutes from "./routes/authRoute.js";
 import warehouseRoutes from "./routes/warehouseRoute.js";
+import transactionRoutes from './routes/transactionRoutes.js';
+import reservationRoutes from './routes/reservationRoutes.js';
+import { initCronJobs } from './services/cronService.js';
 import collectorRoutes from "./routes/collectorRoutes.js";
 import adminRoutes from "./routes/adminRoute.js";
 import kycRoutes from "./routes/kycRoute.js";
@@ -76,6 +79,8 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/kyc", kycRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/items", itemRoutes);
+app.use('/api/transactions', transactionRoutes);
+app.use('/api/reservations', reservationRoutes);
 app.use("/api/listings", listingRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/reports", reportRoutes);
@@ -90,6 +95,10 @@ app.use(errorHandler);
 httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`\x1b[32m[SERVER] Running successfully on http://localhost:${PORT}\x1b[0m`);
     console.log(`\x1b[36m[SWAGGER] Documentation available at http://localhost:${PORT}/api-docs\x1b[0m`);
+
+    // Initialize background tasks
+    initCronJobs();
+
     logger.info(`Server started on port ${PORT}`);
 
     // Attempt to fetch ngrok URL (timeout 1s to avoid blocking if not running)

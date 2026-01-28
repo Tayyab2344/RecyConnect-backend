@@ -22,6 +22,8 @@ enum ReservationStatus {
   EXPIRED
   COMPLETED
   CANCELLED
+  PENDING
+  CONFIRMED
 }
 
 enum OrderStatus {
@@ -237,7 +239,7 @@ model ListingReservation {
   orderId         Int?              @unique // Reservation must reference an order if it proceeds
   order           Order?            @relation(fields: [orderId], references: [id])
   quantity        Float             // Quantity reserved
-  status          ReservationStatus @default(PENDING)
+  status          ReservationStatus @default(ACTIVE)
   expiresAt       DateTime
   
   createdAt       DateTime          @default(now())

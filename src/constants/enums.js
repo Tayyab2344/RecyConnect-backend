@@ -21,7 +21,9 @@ export const ReservationStatus = {
     RELEASED: 'RELEASED',
     EXPIRED: 'EXPIRED',
     COMPLETED: 'COMPLETED',
-    CANCELLED: 'CANCELLED'
+    CANCELLED: 'CANCELLED',
+    PENDING: 'PENDING',
+    CONFIRMED: 'CONFIRMED'
 };
 
 export const PaymentMethod = {
