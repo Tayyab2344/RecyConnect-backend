@@ -1,14 +1,25 @@
 export const ListingStatus = {
-    PENDING: 'PENDING',
-    ACCEPTED: 'ACCEPTED',
-    COMPLETED: 'COMPLETED',
+    DRAFT: 'DRAFT',
+    PUBLISHED: 'PUBLISHED',
+    PAUSED: 'PAUSED',
+    RESERVED: 'RESERVED',
+    SOLD: 'SOLD',
     CANCELLED: 'CANCELLED'
 };
 
 export const OrderStatus = {
     PENDING: 'PENDING',
-    ACCEPTED: 'ACCEPTED',
-    IN_PROGRESS: 'IN_PROGRESS',
+    PROCESSING: 'PROCESSING',
+    SHIPPED: 'SHIPPED',
+    DELIVERED: 'DELIVERED',
+    CANCELLED: 'CANCELLED',
+    COMPLETED: 'COMPLETED'
+};
+
+export const ReservationStatus = {
+    ACTIVE: 'ACTIVE',
+    RELEASED: 'RELEASED',
+    EXPIRED: 'EXPIRED',
     COMPLETED: 'COMPLETED',
     CANCELLED: 'CANCELLED'
 };

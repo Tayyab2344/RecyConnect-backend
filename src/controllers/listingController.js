@@ -1,9 +1,8 @@
-import { PrismaClient } from '@prisma/client';
 import { ListingStatus } from '../constants/enums.js';
 import { buildDateFilter, buildSearchFilter, getPaginationParams } from '../utils/queryHelper.js';
 import { sendSuccess, sendPaginated, sendError } from '../utils/responseHelper.js';
-
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma.js';
+import { logActivity } from '../utils/activityLogger.js';
 
 /**
  * Create a new listing
@@ -13,103 +12,77 @@ export const createListing = async (req, res) => {
   try {
     const {
       materialType,
+      category,
       estimatedWeight,
+      price,
+      quantity,
       pickupAddress,
       latitude,
       longitude,
       locationMethod,
       notes,
-      images
+      images,
+      title,
+      description
     } = req.body;
 
     const userId = req.user.id;
 
-    // Validation: at least one image is required
+    // Save as DRAFT by default (handled by schema default, but explicit for clarity)
+    const status = ListingStatus.DRAFT;
+
+    // Validation
+    if (!materialType || !estimatedWeight) {
+      return sendError(res, 'Material type and estimated weight are required', null, 400);
+    }
+
+    if (parseFloat(estimatedWeight) <= 0) {
+      return sendError(res, 'Estimated weight must be greater than zero', null, 400);
+    }
+
+    if (price && parseFloat(price) < 0) {
+      return sendError(res, 'Price cannot be negative', null, 400);
+    }
+
+    if (quantity && parseFloat(quantity) <= 0) {
+      return sendError(res, 'Quantity must be greater than zero', null, 400);
+    }
+
     if (!images || (Array.isArray(images) && images.length === 0)) {
-      return sendError(res, 'At least one image is required for the listing', null, 400);
+      return sendError(res, 'At least one image is required', null, 400);
     }
 
-    // Validation: weight limits based on role
-    // Individual: up to 20kg
-    // Warehouse/Company: minimum 10kg
-    const userRole = req.user.role; // Assuming role is in req.user from auth middleware
-
-    if (userRole === 'INDIVIDUAL' && estimatedWeight > 20) {
-      return sendError(res, 'Individual users can only list up to 20kg per listing', null, 400);
-    }
-
-    if ((userRole === 'WAREHOUSE' || userRole === 'COMPANY') && estimatedWeight < 10) {
-      return sendError(res, 'Warehouse and Company listings must be at least 10kg', null, 400);
-    }
-
-    // Fetch user's profile to auto-populate location if not provided
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        latitude: true,
-        longitude: true,
-        address: true,
-        city: true,
-        area: true,
-        locationMethod: true
-      }
-    });
-
-    // Auto-populate location from user profile if not explicitly provided
-    let finalPickupAddress = pickupAddress;
-    let finalLatitude = latitude ? parseFloat(latitude) : null;
-    let finalLongitude = longitude ? parseFloat(longitude) : null;
-    let finalLocationMethod = locationMethod;
-
-    // If no location provided in request, use user's profile location
-    if (!pickupAddress && user) {
-      if (user.city || user.area || user.address) {
-        // Build human-readable address from city and area
-        const addressParts = [];
-        if (user.address) addressParts.push(user.address);
-        if (user.area) addressParts.push(user.area);
-        if (user.city) addressParts.push(user.city);
-        finalPickupAddress = addressParts.join(', ');
-      }
-
-      finalLatitude = finalLatitude ?? user.latitude;
-      finalLongitude = finalLongitude ?? user.longitude;
-      finalLocationMethod = finalLocationMethod ?? user.locationMethod ?? 'manual';
-    }
-
-    // Final validation: location is required (either from request or user profile)
-    if (!finalPickupAddress) {
-      return sendError(res, 'Pickup address is required. Please update your profile location or provide a pickup address.', null, 400);
-    }
-
-    // Create listing
     const listing = await prisma.listing.create({
       data: {
         userId,
+        category: category || materialType,
+        title,
+        description,
         materialType,
         estimatedWeight: parseFloat(estimatedWeight),
-        pickupAddress: finalPickupAddress,
-        latitude: finalLatitude,
-        longitude: finalLongitude,
-        locationMethod: finalLocationMethod || 'manual',
+        price: parseFloat(price) || 0,
+        quantity: parseFloat(quantity) || 1,
+        pickupAddress,
+        latitude: parseFloat(latitude) || null,
+        longitude: parseFloat(longitude) || null,
+        locationMethod: locationMethod || 'manual',
         notes: notes || null,
-        images: images // Save images to database
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            contactNo: true,
-            city: true,
-            area: true
-          }
-        }
+        images: images,
+        status
       }
     });
 
-    sendSuccess(res, 'Listing created successfully', listing, 201);
+    await logActivity({
+      userId,
+      role: req.user.role,
+      action: "CREATE_LISTING",
+      resourceType: "listing",
+      resourceId: listing.id,
+      meta: { materialType, price, quantity },
+      req
+    });
+
+    sendSuccess(res, 'Listing created as DRAFT', listing, 201);
   } catch (error) {
     sendError(res, 'Failed to create listing', error);
   }
@@ -123,61 +96,72 @@ export const getListings = async (req, res) => {
   try {
     const userId = req.user.id;
     const {
-      material,
+      materialType,
       status,
       startDate,
       endDate,
-      search,
       page = 1,
-      limit = 10,
-      view // 'marketplace' or 'my_listings' (default)
+      limit = 10
     } = req.query;
 
-    // Build filter conditions
-    const where = {};
+    const where = { userId };
 
-    // Marketplace view: show all OTHER users' listings with status PENDING or ACCEPTED
-    // My Listings view: show ONLY my listings
-    // Marketplace view:
-    // Individual: sees Individual + Warehouse
-    // Warehouse: sees ALL (Individual + Warehouse + Company)
-    // Company: sees Company + Warehouse
-    if (view === 'marketplace') {
-      const userRole = req.user.role;
-      where.userId = { not: userId };
-      where.status = { in: [ListingStatus.PENDING, ListingStatus.ACCEPTED] };
-
-      if (userRole === 'INDIVIDUAL') {
-        // Can see Individual and Warehouse listings
-        where.user = { role: { in: ['INDIVIDUAL', 'WAREHOUSE'] } };
-      } else if (userRole === 'COMPANY') {
-        // Can see Company and Warehouse listings
-        where.user = { role: { in: ['COMPANY', 'WAREHOUSE'] } };
-      }
-      // Warehouse sees everything (no extra filter needed)
-    } else {
-      where.userId = userId;
-    }
-
-    // Add other filters
-    if (material) where.materialType = { equals: material, mode: 'insensitive' };
+    if (materialType) where.materialType = { equals: materialType, mode: 'insensitive' };
     if (status) where.status = status;
-
-    // Use helpers for date and search
     Object.assign(where, buildDateFilter(startDate, endDate));
 
-    if (search) {
-      Object.assign(where, buildSearchFilter(search, ['materialType', 'pickupAddress', 'notes']));
+    const totalCount = await prisma.listing.count({ where });
+    const { skip, take, page: pageNum, limit: limitNum } = getPaginationParams(page, limit);
+
+    const listings = await prisma.listing.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take
+    });
+
+    sendPaginated(res, listings, totalCount, pageNum, limitNum);
+  } catch (error) {
+    sendError(res, 'Failed to fetch your listings', error);
+  }
+};
+
+/**
+ * Get Public Listings (Buyer View)
+ * GET /api/listings/public
+ */
+export const getPublicListings = async (req, res) => {
+  try {
+    const {
+      materialType,
+      city,
+      minPrice,
+      maxPrice,
+      sortBy = 'createdAt', // createdAt, price
+      sortOrder = 'desc',
+      page = 1,
+      limit = 10
+    } = req.query;
+
+    const where = {
+      status: ListingStatus.PUBLISHED,
+      // Buyers shouldn't necessarily see their own listings in public view, but let's keep it simple
+    };
+
+    if (materialType) where.materialType = { equals: materialType, mode: 'insensitive' };
+
+    if (city) {
+      where.user = { city: { equals: city, mode: 'insensitive' } };
     }
 
+    if (minPrice || maxPrice) {
+      where.price = {};
+      if (minPrice) where.price.gte = parseFloat(minPrice);
+      if (maxPrice) where.price.lte = parseFloat(maxPrice);
+    }
 
-
-
-    // Get total count
     const totalCount = await prisma.listing.count({ where });
-
-    // Get paginated listings
-    const { skip, take, page: pageNum, limit: limitNum } = getPaginationParams(page, limit);
+    const { skip, take, page: pageNum, limit: limitNum } = getPaginationParams(page, Math.min(limit, 50));
 
     const listings = await prisma.listing.findMany({
       where,
@@ -186,23 +170,20 @@ export const getListings = async (req, res) => {
           select: {
             id: true,
             name: true,
-            email: true,
-            contactNo: true
+            city: true,
+            area: true,
+            profileImage: true
           }
         }
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { [sortBy]: sortOrder },
       skip,
       take
     });
 
-
-
-
-
     sendPaginated(res, listings, totalCount, pageNum, limitNum);
   } catch (error) {
-    sendError(res, 'Failed to fetch listings', error);
+    sendError(res, 'Failed to fetch public listings', error);
   }
 };
 
@@ -342,36 +323,138 @@ export const getListingById = async (req, res) => {
 };
 
 /**
- * Update listing status
+ * Update listing details
  * PUT /api/listings/:id
+ * Only allowed for DRAFT listings
  */
-export const updateListingStatus = async (req, res) => {
+export const updateListing = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, buyerInfo } = req.body;
     const userId = req.user.id;
+    const updateData = req.body;
 
-    // Check if listing belongs to the user
-    const listing = await prisma.listing.findFirst({
-      where: { id: parseInt(id), userId }
+    const listing = await prisma.listing.findUnique({
+      where: { id: parseInt(id) }
     });
 
-    if (!listing) {
-      return sendError(res, 'Listing not found', null, 404);
+    if (!listing) return sendError(res, 'Listing not found', null, 404);
+    if (listing.userId !== userId) return sendError(res, 'Unauthorized', null, 403);
+
+    // Validation for updates
+    if (updateData.estimatedWeight && parseFloat(updateData.estimatedWeight) <= 0) {
+      return sendError(res, 'Estimated weight must be greater than zero', null, 400);
+    }
+    if (updateData.price && parseFloat(updateData.price) < 0) {
+      return sendError(res, 'Price cannot be negative', null, 400);
+    }
+    if (updateData.quantity && parseFloat(updateData.quantity) <= 0) {
+      return sendError(res, 'Quantity must be greater than zero', null, 400);
     }
 
-    // Update listing
+    // Allow update only if status = DRAFT
+    if (listing.status !== ListingStatus.DRAFT) {
+      return sendError(res, 'Only DRAFT listings can be updated', null, 400);
+    }
+
+    // Perform update
     const updated = await prisma.listing.update({
       where: { id: parseInt(id) },
       data: {
-        status,
-        ...(buyerInfo && { buyerInfo })
+        ...updateData,
+        // Ensure some fields aren't accidentally changed here if we want stricter control
+        status: ListingStatus.DRAFT // Keep it as draft
       }
+    });
+
+    await logActivity({
+      userId,
+      role: req.user.role,
+      action: "UPDATE_LISTING",
+      resourceType: "listing",
+      resourceId: id,
+      meta: updateData,
+      req
     });
 
     sendSuccess(res, 'Listing updated successfully', updated);
   } catch (error) {
     sendError(res, 'Failed to update listing', error);
+  }
+};
+
+/**
+ * Publish Listing
+ * PUT /api/listings/:id/publish
+ */
+export const publishListing = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const listing = await prisma.listing.findUnique({
+      where: { id: parseInt(id) }
+    });
+
+    if (!listing) return sendError(res, 'Listing not found', null, 404);
+    if (listing.userId !== userId) return sendError(res, 'Unauthorized', null, 403);
+
+    if (listing.status !== ListingStatus.DRAFT && listing.status !== ListingStatus.PAUSED) {
+      return sendError(res, 'Only DRAFT or PAUSED listings can be published', null, 400);
+    }
+
+    const updated = await prisma.listing.update({
+      where: { id: parseInt(id) },
+      data: { status: ListingStatus.PUBLISHED }
+    });
+
+    await logActivity({
+      action: "PUBLISH_LISTING",
+      resourceType: "listing",
+      resourceId: id,
+      req
+    });
+
+    sendSuccess(res, 'Listing published successfully', updated);
+  } catch (error) {
+    sendError(res, 'Failed to publish listing', error);
+  }
+};
+
+/**
+ * Pause Listing
+ * PUT /api/listings/:id/pause
+ */
+export const pauseListing = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const listing = await prisma.listing.findUnique({
+      where: { id: parseInt(id) }
+    });
+
+    if (!listing) return sendError(res, 'Listing not found', null, 404);
+    if (listing.userId !== userId) return sendError(res, 'Unauthorized', null, 403);
+
+    if (listing.status !== ListingStatus.PUBLISHED) {
+      return sendError(res, 'Only PUBLISHED listings can be paused', null, 400);
+    }
+
+    const updated = await prisma.listing.update({
+      where: { id: parseInt(id) },
+      data: { status: ListingStatus.PAUSED }
+    });
+
+    await logActivity({
+      action: "PAUSE_LISTING",
+      resourceType: "listing",
+      resourceId: id,
+      req
+    });
+
+    sendSuccess(res, 'Listing paused successfully', updated);
+  } catch (error) {
+    sendError(res, 'Failed to pause listing', error);
   }
 };
 
@@ -393,9 +476,18 @@ export const deleteListing = async (req, res) => {
       return sendError(res, 'Listing not found', null, 404);
     }
 
-    // Delete listing
+    // Optionally allow deletion only if DRAFT? The requirements didn't specify.
+    // Let's allow deletion anytime for now, or just DRAFT/PAUSED.
+
     await prisma.listing.delete({
       where: { id: parseInt(id) }
+    });
+
+    await logActivity({
+      action: "DELETE_LISTING",
+      resourceType: "listing",
+      resourceId: id,
+      req
     });
 
     sendSuccess(res, 'Listing deleted successfully');

@@ -1,10 +1,8 @@
-import { PrismaClient } from "@prisma/client";
-import { logger } from "../utils/logger.js";
 import { UserRole, VerificationStatus, KycStage } from "../constants/enums.js";
 import { sendSuccess, sendPaginated, sendError } from "../utils/responseHelper.js";
 import { getPaginationParams, buildSearchFilter } from "../utils/queryHelper.js";
-
-const prisma = new PrismaClient();
+import prisma from "../lib/prisma.js";
+import { logActivity } from "../utils/activityLogger.js";
 
 export async function getPendingKYCUsers(req, res) {
   try {
@@ -52,18 +50,17 @@ export async function approveKYC(req, res) {
       data: updateData
     });
 
-    await prisma.activityLog.create({
-      data: {
-        userId: adminId,
-        actorRole: UserRole.ADMIN,
-        action: "KYC_APPROVED",
-        resourceType: "user",
-        resourceId: userId.toString(),
-        meta: {
-          previousRole: user.role,
-          newRole: updateData.role || user.role
-        }
-      }
+    await logActivity({
+      userId: adminId,
+      role: UserRole.ADMIN,
+      action: "KYC_APPROVED",
+      resourceType: "user",
+      resourceId: userId.toString(),
+      meta: {
+        previousRole: user.role,
+        newRole: updateData.role || user.role
+      },
+      req
     });
 
 
@@ -93,15 +90,14 @@ export async function rejectKYC(req, res) {
       }
     });
 
-    await prisma.activityLog.create({
-      data: {
-        userId: adminId,
-        actorRole: UserRole.ADMIN,
-        action: "KYC_REJECTED",
-        resourceType: "user",
-        resourceId: userId.toString(),
-        meta: { reason }
-      }
+    await logActivity({
+      userId: adminId,
+      role: UserRole.ADMIN,
+      action: "KYC_REJECTED",
+      resourceType: "user",
+      resourceId: userId.toString(),
+      meta: { reason },
+      req
     });
 
 
@@ -190,6 +186,14 @@ export async function suspendUser(req, res) {
       data: { verificationStatus: status }
     });
 
+    await logActivity({
+      action: suspended ? "USER_SUSPENDED" : "USER_ACTIVATED",
+      resourceType: "user",
+      resourceId: id,
+      meta: { status },
+      req
+    });
+
     sendSuccess(res, `User ${suspended ? 'suspended' : 'activated'} successfully`);
   } catch (err) {
     sendError(res, "Failed to suspend/activate user", err);
@@ -204,6 +208,14 @@ export async function updateRates(req, res) {
       where: { category },
       update: { pricePerUnit: parseFloat(pricePerUnit) },
       create: { category, pricePerUnit: parseFloat(pricePerUnit) }
+    });
+
+    await logActivity({
+      action: "UPDATE_RATES",
+      resourceType: "rate",
+      resourceId: category,
+      meta: { pricePerUnit },
+      req
     });
 
     sendSuccess(res, "Rates updated", rate);

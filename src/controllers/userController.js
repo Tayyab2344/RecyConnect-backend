@@ -1,4 +1,3 @@
-import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import fs from 'fs/promises';
 import cloudinary from '../config/cloudinary.js';
@@ -6,8 +5,8 @@ import { extractTextFromUrl, extractCNIC, extractNTN } from '../services/ocrServ
 import { logger } from '../utils/logger.js';
 import { UserRole, VerificationStatus, KycStage } from '../constants/enums.js';
 import { sendSuccess, sendError } from '../utils/responseHelper.js';
-
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma.js';
+import { logActivity } from '../utils/activityLogger.js';
 
 // Helper to validate allowed transitions
 function isValidTransition(currentRole, requestedRole) {
@@ -90,11 +89,16 @@ export async function changePassword(req, res) {
         // Hash new password and update
         const hashedPassword = await bcrypt.hash(newPassword, 10);
         await prisma.user.update({
-            where: { id: userId },
+            where: { id: req.user.id },
             data: { password: hashedPassword }
         });
 
-        sendSuccess(res, 'Password changed successfully');
+        await logActivity({
+            action: "CHANGE_PASSWORD",
+            req
+        });
+
+        sendSuccess(res, "Password changed successfully");
     } catch (err) {
         sendError(res, 'Failed to change password', err);
     }
@@ -133,6 +137,11 @@ export async function updateProfile(req, res) {
         const updatedUser = await prisma.user.update({
             where: { id: userId },
             data: updates,
+        });
+
+        await logActivity({
+            action: "UPDATE_PROFILE",
+            req
         });
 
         const { password: _, ...userWithoutPassword } = updatedUser;

@@ -1,7 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { sendSuccess, sendError } from '../utils/responseHelper.js';
-
-const prisma = new PrismaClient();
+import { logActivity } from '../utils/activityLogger.js';
 
 /**
  * Get all conversations for the authenticated user
@@ -110,6 +109,16 @@ export async function getOrCreateConversation(req, res) {
                     },
                 },
             });
+
+            await logActivity({
+                userId,
+                role: req.user.role,
+                action: "CREATE_CONVERSATION",
+                resourceType: "conversation",
+                resourceId: conversation.id,
+                meta: { otherUserId },
+                req
+            });
         }
 
         const otherParticipant = conversation.participant1Id === userId
@@ -217,6 +226,16 @@ export async function sendMessage(req, res) {
                     select: { id: true, name: true, profileImage: true }
                 },
             },
+        });
+
+        await logActivity({
+            userId,
+            role: req.user.role,
+            action: "SEND_MESSAGE",
+            resourceType: "message",
+            resourceId: message.id,
+            meta: { conversationId },
+            req
         });
 
         // Update conversation timestamp

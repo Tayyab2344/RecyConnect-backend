@@ -1,11 +1,10 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import cloudinary from '../config/cloudinary.js';
 import fs from 'fs/promises';
 import { ItemStatus } from '../constants/enums.js';
 import { sendSuccess, sendError } from '../utils/responseHelper.js';
 import { buildSearchFilter } from '../utils/queryHelper.js';
-
-const prisma = new PrismaClient();
+import { logActivity } from '../utils/activityLogger.js';
 
 export async function createItem(req, res) {
     try {
@@ -35,6 +34,16 @@ export async function createItem(req, res) {
                 images,
                 status: ItemStatus.AVAILABLE
             }
+        });
+
+        await logActivity({
+            userId: sellerId,
+            role: req.user.role,
+            action: "CREATE_ITEM",
+            resourceType: "item",
+            resourceId: item.id,
+            meta: { title, price, quantity },
+            req
         });
 
         sendSuccess(res, 'Item created successfully', item, 201);
@@ -98,6 +107,13 @@ export async function deleteItem(req, res) {
         await prisma.item.update({
             where: { id: parseInt(id) },
             data: { status: ItemStatus.REMOVED }
+        });
+
+        await logActivity({
+            action: "DELETE_ITEM",
+            resourceType: "item",
+            resourceId: id,
+            req
         });
 
         sendSuccess(res, 'Item removed successfully');

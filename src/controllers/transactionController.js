@@ -1,8 +1,7 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { ItemStatus, TransactionStatus, UserRole } from '../constants/enums.js';
 import { sendSuccess, sendError } from '../utils/responseHelper.js';
-
-const prisma = new PrismaClient();
+import { logActivity } from '../utils/activityLogger.js';
 
 export async function createTransaction(req, res) {
     try {
@@ -39,6 +38,16 @@ export async function createTransaction(req, res) {
             });
 
             return txRecord;
+        });
+
+        await logActivity({
+            userId: buyerId,
+            role: req.user.role,
+            action: "CREATE_TRANSACTION",
+            resourceType: "transaction",
+            resourceId: transaction.id,
+            meta: { itemId, quantity, totalAmount },
+            req
         });
 
         sendSuccess(res, 'Transaction created successfully', transaction, 201);
@@ -96,6 +105,14 @@ export async function updateTransactionStatus(req, res) {
         const updated = await prisma.transaction.update({
             where: { id: parseInt(id) },
             data: { status }
+        });
+
+        await logActivity({
+            action: "UPDATE_TRANSACTION_STATUS",
+            resourceType: "transaction",
+            resourceId: id,
+            meta: { status },
+            req
         });
 
         sendSuccess(res, 'Transaction status updated', updated);

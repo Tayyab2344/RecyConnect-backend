@@ -7,6 +7,39 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum ListingStatus {
+  DRAFT
+  PUBLISHED
+  PAUSED
+  RESERVED
+  SOLD
+  CANCELLED
+}
+
+enum ReservationStatus {
+  ACTIVE
+  RELEASED
+  EXPIRED
+  COMPLETED
+  CANCELLED
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  COMPLETED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
 model User {
   id            Int       @id @default(autoincrement())
   name          String?
@@ -58,6 +91,7 @@ model User {
   listings      Listing[]
   buyerOrders   Order[]        @relation("BuyerOrders")
   sellerOrders  Order[]        @relation("SellerOrders")
+  buyerReservations ListingReservation[] @relation("BuyerReservations")
 
   // Warehouse ERP Relations
   warehouseInventory    WarehouseInventory[]   @relation("WarehouseInventory")
@@ -161,57 +195,128 @@ model Rate {
 }
 
 model Listing {
-  id              Int      @id @default(autoincrement())
+  id              Int           @id @default(autoincrement())
   userId          Int
-  user            User     @relation(fields: [userId], references: [id])
-  materialType    String // plastic, paper, metal, e-waste
-  estimatedWeight Float // in kg, max 10kg for individuals
-  pickupAddress   String
-  images          String[] // Array of image URLs or base64 strings
+  user            User          @relation(fields: [userId], references: [id])
+  category        String        // Category of items (e.g., Plastic, Metal)
+  title           String?       // Optional title
+  description     String?       // Optional description
+  materialType    String        // plastic, paper, metal, e-waste
+  estimatedWeight Float         // in kg, max 10kg for individuals
+  price           Float         @default(0.0) // Price per kg or total price
+  quantity        Float         @default(1.0) // Quantity available
+  pickupAddress   String?
+  images          String[]      // Array of image URLs or base64 strings
   latitude        Float?
   longitude       Float?
-  locationMethod  String? // "auto" or "manual"
+  locationMethod  String?       // "auto" or "manual"
   notes           String?
-  status          String   @default("PENDING") // PENDING, COLLECTED, COMPLETED, CANCELLED
-  buyerInfo       String? // Buyer details when matched
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  status          ListingStatus @default(DRAFT)
+  
+  reservations    ListingReservation[]
+  orderItems      OrderItem[]
 
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([category])
+  @@index([status])
+  @@index([price])
+  @@index([createdAt])
   @@index([userId, status])
   @@index([materialType])
+  @@index([userId])
+}
+
+model ListingReservation {
+  id              Int               @id @default(autoincrement())
+  listingId       Int
+  listing         Listing           @relation(fields: [listingId], references: [id])
+  buyerId         Int
+  buyer           User              @relation("BuyerReservations", fields: [buyerId], references: [id])
+  orderId         Int?              @unique // Reservation must reference an order if it proceeds
+  order           Order?            @relation(fields: [orderId], references: [id])
+  quantity        Float             // Quantity reserved
+  status          ReservationStatus @default(PENDING)
+  expiresAt       DateTime
+  
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([listingId])
+  @@index([buyerId])
   @@index([status])
+  @@index([createdAt])
 }
 
 model Order {
-  id             Int     @id @default(autoincrement())
+  id             Int           @id @default(autoincrement())
   buyerId        Int
-  buyer          User    @relation("BuyerOrders", fields: [buyerId], references: [id])
+  buyer          User          @relation("BuyerOrders", fields: [buyerId], references: [id])
   sellerId       Int
-  seller         User    @relation("SellerOrders", fields: [sellerId], references: [id])
-  materialType   String
-  weight         Float // in kg
-  pickupAddress  String
-  latitude       Float?
-  longitude      Float?
-  locationMethod String? // "auto" or "manual"
-  paymentMethod  String  @default("COD") // COD, WALLET, STRIPE
-  status         String  @default("PENDING") // PENDING, COLLECTED, COMPLETED, CANCELLED
+  seller         User          @relation("SellerOrders", fields: [sellerId], references: [id])
+  
+  status         OrderStatus   @default(PENDING)
+  totalAmount    Float         @default(0.0)
+  
+  // Link to reservation
+  reservation    ListingReservation?
+  
+  // Items in this order
+  items          OrderItem[]
+  
+  // Payment for this order
+  payment        Payment?
 
-  // Financial Tracking Fields
-  totalAmount     Float? // Total order value
+  // Legacy/Financial Tracking Fields
   cogs            Float? // Cost of Goods Sold
-  stripeFee       Float? // Stripe processing fee (2.9% + $0.30)
+  stripeFee       Float? // Stripe processing fee
   collectorCost   Float? // Cost paid to collector
-  netProfit       Float? // totalAmount - (cogs + stripeFee + collectorCost)
+  netProfit       Float? // totalAmount - costs
   stripePaymentId String? // Stripe payment intent ID
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  financialTransactions FinancialTransaction[]
+
+  @@index([status])
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  order     Order    @relation(fields: [orderId], references: [id])
+  listingId Int
+  listing   Listing  @relation(fields: [listingId], references: [id])
+  quantity  Float    // Checked by application logic (no negative)
+  price     Float    // At time of purchase
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  financialTransactions FinancialTransaction[]
+  @@index([orderId])
+  @@index([listingId])
+}
 
-  @@index([buyerId, status])
-  @@index([sellerId, status])
+model Payment {
+  id              Int           @id @default(autoincrement())
+  orderId         Int           @unique // one order -> one payment
+  order           Order         @relation(fields: [orderId], references: [id])
+  amount          Float
+  currency        String        @default("PKR")
+  paymentMethod   String        // COD, STRIPE, WALLET
+  status          PaymentStatus @default(PENDING)
+  transactionId   String?       @unique
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([status])
+  @@index([orderId])
 }
 
 // ========================================

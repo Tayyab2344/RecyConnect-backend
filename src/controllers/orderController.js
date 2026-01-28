@@ -1,9 +1,8 @@
-import { PrismaClient } from '@prisma/client';
 import { OrderStatus, PaymentMethod } from '../constants/enums.js';
 import { buildDateFilter, buildSearchFilter, getPaginationParams } from '../utils/queryHelper.js';
 import { sendSuccess, sendPaginated, sendError } from '../utils/responseHelper.js';
-
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma.js';
+import { logActivity } from '../utils/activityLogger.js';
 
 /**
  * Create a new order
@@ -68,7 +67,17 @@ export const createOrder = async (req, res) => {
             }
         });
 
-        sendSuccess(res, 'Order placed successfully', order, 201);
+        await logActivity({
+            userId: req.user.id,
+            role: req.user.role,
+            action: "CREATE_ORDER",
+            resourceType: "order",
+            resourceId: order.id,
+            meta: { sellerId, materialType, weight, totalAmount: order.totalAmount },
+            req
+        });
+
+        sendSuccess(res, 'Order created successfully', order, 201);
     } catch (error) {
         sendError(res, 'Failed to create order', error);
     }
@@ -303,23 +312,15 @@ export const updateOrderStatus = async (req, res) => {
         // Update order
         const updated = await prisma.order.update({
             where: { id: parseInt(id) },
-            data: { status },
-            include: {
-                buyer: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true
-                    }
-                },
-                seller: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true
-                    }
-                }
-            }
+            data: { status }
+        });
+
+        await logActivity({
+            action: "UPDATE_ORDER_STATUS",
+            resourceType: "order",
+            resourceId: id,
+            meta: { status },
+            req
         });
 
         sendSuccess(res, 'Order updated successfully', updated);

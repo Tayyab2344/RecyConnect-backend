@@ -1,5 +1,4 @@
 import { validationResult } from "express-validator";
-import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 import fs from "fs/promises";
 import cloudinary from "../config/cloudinary.js";
@@ -16,8 +15,8 @@ import { extractTextFromUrl, extractCNIC, extractNTN } from "../services/ocrServ
 import { logger } from "../utils/logger.js";
 import { UserRole, VerificationStatus, KycStage } from "../constants/enums.js";
 import { sendSuccess, sendError } from "../utils/responseHelper.js";
-
-const prisma = new PrismaClient();
+import prisma from "../lib/prisma.js";
+import { logActivity } from "../utils/activityLogger.js";
 
 // Helper to upload to Cloudinary (Supports both Disk Storage & Memory Storage)
 const uploadToCloudinary = (file, folder) => {
@@ -31,7 +30,7 @@ const uploadToCloudinary = (file, folder) => {
           resolve(result);
         })
         .catch((err) => reject(err));
-    } 
+    }
     // 2. If we have a buffer (Memory Storage)
     else if (file.buffer) {
       const stream = cloudinary.uploader.upload_stream(
@@ -42,7 +41,7 @@ const uploadToCloudinary = (file, folder) => {
         }
       );
       stream.end(file.buffer);
-    } 
+    }
     // 3. Fallback / Error
     else {
       reject(new Error("File upload failed: No path or buffer found"));
@@ -89,7 +88,7 @@ export async function register(req, res) {
 
     const { role, password, name, businessName, companyName, address, contactNo } = req.body;
     let { email } = req.body;
-    
+
     // Sanitize
     email = email?.toLowerCase().trim();
     const sanitizedPassword = password?.trim();
@@ -196,6 +195,12 @@ export async function register(req, res) {
       to: email,
       subject: "Verify your RecyConnect email",
       text: `Your OTP: ${otp}`,
+    });
+
+    await logActivity({
+      action: "REGISTER_INITIATED",
+      meta: { email, role },
+      req
     });
 
     sendSuccess(res, "Registration initiated. Please verify your email.", { email }, 201);
@@ -315,8 +320,11 @@ export async function verifyOtpController(req, res) {
         }
       }
 
-      await prisma.activityLog.create({
-        data: { userId: user.id, actorRole: user.role, action: "EMAIL_VERIFIED_AND_REGISTERED" },
+      await logActivity({
+        userId: user.id,
+        actorRole: user.role,
+        action: "EMAIL_VERIFIED_AND_REGISTERED",
+        req
       });
 
       sendSuccess(res, "Email verified successfully. You can now login.");
@@ -376,8 +384,11 @@ export async function verifyOtpController(req, res) {
         }
       }
 
-      await prisma.activityLog.create({
-        data: { userId: user.id, actorRole: user.role, action: "EMAIL_VERIFIED" },
+      await logActivity({
+        userId: user.id,
+        actorRole: user.role,
+        action: "EMAIL_VERIFIED",
+        req
       });
 
       sendSuccess(res, "Email verified successfully. You can now login.");
@@ -393,7 +404,7 @@ export async function login(req, res) {
     if (!validateRequest(req, res)) return;
     let { identifier, password } = req.body;
     const sanitizedPassword = password?.trim();
-    
+
     // Check if identifier is an email and sanitize it
     if (identifier.includes('@')) {
       identifier = identifier.toLowerCase().trim();
@@ -465,8 +476,11 @@ export async function login(req, res) {
     const refreshToken = signRefreshToken(user);
     await saveRefreshToken(user.id, refreshToken);
 
-    await prisma.activityLog.create({
-      data: { userId: user.id, actorRole: user.role, action: "LOGIN" },
+    await logActivity({
+      userId: user.id,
+      actorRole: user.role,
+      action: "LOGIN",
+      req
     });
 
     sendSuccess(res, "Login successful", {
