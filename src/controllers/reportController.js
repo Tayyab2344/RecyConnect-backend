@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { ListingStatus, OrderStatus } from '../constants/enums.js';
 import { sendSuccess, sendError } from '../utils/responseHelper.js';
-
-const prisma = new PrismaClient();
 
 /**
  * Get dashboard statistics
@@ -15,14 +13,6 @@ export const getDashboardStats = async (req, res) => {
         // Get listing stats
         const totalListings = await prisma.listing.count({
             where: { userId }
-        });
-
-        const pendingListings = await prisma.listing.count({
-            where: { userId, status: ListingStatus.PENDING }
-        });
-
-        const completedListings = await prisma.listing.count({
-            where: { userId, status: ListingStatus.COMPLETED }
         });
 
         // Get order stats (as buyer)
@@ -40,32 +30,34 @@ export const getDashboardStats = async (req, res) => {
         });
 
         // Get total weight sold
-        const soldListings = await prisma.listing.findMany({
-            where: { userId, status: ListingStatus.COMPLETED },
-            select: { estimatedWeight: true }
+        const soldOrders = await prisma.order.findMany({
+            where: { sellerId: userId, status: OrderStatus.COMPLETED },
+            include: {
+                items: true
+            }
         });
 
-        const totalWeightSold = soldListings.reduce(
-            (sum, listing) => sum + listing.estimatedWeight,
-            0
-        );
+        const totalWeightSold = soldOrders.reduce((sum, order) => {
+            const orderWeight = order.items.reduce((iSum, item) => iSum + item.quantity, 0);
+            return sum + orderWeight;
+        }, 0);
 
         // Get total weight purchased
         const purchasedOrders = await prisma.order.findMany({
             where: { buyerId: userId, status: OrderStatus.COMPLETED },
-            select: { weight: true }
+            include: {
+                items: true
+            }
         });
 
-        const totalWeightPurchased = purchasedOrders.reduce(
-            (sum, order) => sum + order.weight,
-            0
-        );
+        const totalWeightPurchased = purchasedOrders.reduce((sum, order) => {
+            const orderWeight = order.items.reduce((iSum, item) => iSum + item.quantity, 0);
+            return sum + orderWeight;
+        }, 0);
 
         sendSuccess(res, 'Dashboard stats fetched', {
             selling: {
                 totalListings,
-                pendingListings,
-                completedListings,
                 totalWeightSold: parseFloat(totalWeightSold.toFixed(2))
             },
             buying: {
@@ -93,26 +85,21 @@ export const getActivity = async (req, res) => {
         const recentListings = await prisma.listing.findMany({
             where: { userId },
             orderBy: { createdAt: 'desc' },
-            take: parseInt(limit) / 2,
-            select: {
-                id: true,
-                materialType: true,
-                estimatedWeight: true,
-                status: true,
-                createdAt: true
-            }
+            take: Math.ceil(parseInt(limit) / 2),
         });
 
         // Get recent orders (as buyer)
         const recentOrders = await prisma.order.findMany({
             where: { buyerId: userId },
             orderBy: { createdAt: 'desc' },
-            take: parseInt(limit) / 2,
+            take: Math.ceil(parseInt(limit) / 2),
             include: {
                 seller: {
-                    select: {
-                        name: true,
-                        email: true
+                    select: { name: true, businessName: true }
+                },
+                items: {
+                    include: {
+                        listing: { select: { materialType: true } }
                     }
                 }
             }
@@ -128,14 +115,18 @@ export const getActivity = async (req, res) => {
                 status: listing.status,
                 timestamp: listing.createdAt
             })),
-            ...recentOrders.map(order => ({
-                id: `order-${order.id}`,
-                type: 'ORDER',
-                action: 'Placed order',
-                details: `${order.materialType} - ${order.weight}kg from ${order.seller?.name || 'Unknown'}`,
-                status: order.status,
-                timestamp: order.createdAt
-            }))
+            ...recentOrders.map(order => {
+                const materialTypes = order.items.map(i => i.listing.materialType).join(', ');
+                const totalWeight = order.items.reduce((sum, i) => sum + i.quantity, 0);
+                return {
+                    id: `order-${order.id}`,
+                    type: 'ORDER',
+                    action: 'Placed order',
+                    details: `${materialTypes} - ${totalWeight}kg from ${order.seller?.businessName || order.seller?.name || 'Unknown'}`,
+                    status: order.status,
+                    timestamp: order.createdAt
+                };
+            })
         ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
             .slice(0, parseInt(limit));
 
@@ -162,12 +153,6 @@ export const getTrends = async (req, res) => {
             where: {
                 userId,
                 createdAt: { gte: startDate }
-            },
-            select: {
-                materialType: true,
-                estimatedWeight: true,
-                status: true,
-                createdAt: true
             }
         });
 
@@ -177,20 +162,19 @@ export const getTrends = async (req, res) => {
                 buyerId: userId,
                 createdAt: { gte: startDate }
             },
-            select: {
-                materialType: true,
-                weight: true,
-                status: true,
-                createdAt: true
+            include: {
+                items: {
+                    include: {
+                        listing: { select: { materialType: true } }
+                    }
+                }
             }
         });
 
         // Group by month and material
         const listingsByMonth = listings.reduce((acc, listing) => {
             const month = new Date(listing.createdAt).toISOString().slice(0, 7); // YYYY-MM
-            if (!acc[month]) {
-                acc[month] = {};
-            }
+            if (!acc[month]) acc[month] = {};
             if (!acc[month][listing.materialType]) {
                 acc[month][listing.materialType] = { count: 0, weight: 0 };
             }
@@ -201,14 +185,16 @@ export const getTrends = async (req, res) => {
 
         const ordersByMonth = orders.reduce((acc, order) => {
             const month = new Date(order.createdAt).toISOString().slice(0, 7); // YYYY-MM
-            if (!acc[month]) {
-                acc[month] = {};
-            }
-            if (!acc[month][order.materialType]) {
-                acc[month][order.materialType] = { count: 0, weight: 0 };
-            }
-            acc[month][order.materialType].count += 1;
-            acc[month][order.materialType].weight += order.weight;
+            if (!acc[month]) acc[month] = {};
+
+            order.items.forEach(item => {
+                const mType = item.listing.materialType;
+                if (!acc[month][mType]) {
+                    acc[month][mType] = { count: 0, weight: 0 };
+                }
+                acc[month][mType].count += 1;
+                acc[month][mType].weight += item.quantity;
+            });
             return acc;
         }, {});
 

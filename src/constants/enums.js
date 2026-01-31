@@ -1,21 +1,54 @@
 export const ListingStatus = {
-    PENDING: 'PENDING',
-    ACCEPTED: 'ACCEPTED',
-    COMPLETED: 'COMPLETED',
+    DRAFT: 'DRAFT',
+    PUBLISHED: 'PUBLISHED',
+    PAUSED: 'PAUSED',
+    RESERVED: 'RESERVED',
+    SOLD: 'SOLD',
     CANCELLED: 'CANCELLED'
 };
 
 export const OrderStatus = {
+    CREATED: 'CREATED',
+    CONFIRMED: 'CONFIRMED',
     PENDING: 'PENDING',
-    ACCEPTED: 'ACCEPTED',
-    IN_PROGRESS: 'IN_PROGRESS',
+    PROCESSING: 'PROCESSING',
+    SHIPPED: 'SHIPPED',
+    DELIVERED: 'DELIVERED',
+    CANCELLED: 'CANCELLED',
+    COMPLETED: 'COMPLETED'
+};
+
+export const ReservationStatus = {
+    ACTIVE: 'ACTIVE',
+    RELEASED: 'RELEASED',
+    EXPIRED: 'EXPIRED',
     COMPLETED: 'COMPLETED',
-    CANCELLED: 'CANCELLED'
+    CANCELLED: 'CANCELLED',
+    PENDING: 'PENDING',
+    CONFIRMED: 'CONFIRMED'
+};
+
+export const PaymentStatus = {
+    INITIATED: 'INITIATED',
+    AUTHORIZED: 'AUTHORIZED',
+    CAPTURED: 'CAPTURED',
+    RELEASED: 'RELEASED',
+    REFUNDED: 'REFUNDED',
+    FAILED: 'FAILED',
+    // Legacy statuses for backwards compatibility
+    PENDING: 'PENDING',
+    COMPLETED: 'COMPLETED'
 };
 
 export const PaymentMethod = {
     COD: 'COD',
-    ONLINE: 'ONLINE'
+    ONLINE: 'ONLINE',
+    STRIPE: 'STRIPE'
+};
+
+export const PaymentProvider = {
+    STRIPE: 'STRIPE',
+    COD: 'COD'
 };
 
 export const UserRole = {

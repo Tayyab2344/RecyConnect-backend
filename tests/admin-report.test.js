@@ -11,14 +11,13 @@ import jwt from 'jsonwebtoken';
 
 const prisma = new PrismaClient();
 
-// Import routes
+
 import adminReportRoutes from '../src/routes/adminReportRoutes.js';
 
 const app = express();
 app.use(express.json());
 app.use('/api/admin/reports', adminReportRoutes);
 
-// Helper to generate token - MUST match auth middleware expectations
 function generateToken(user) {
     return jwt.sign(
         { userId: user.id, email: user.email, role: user.role },
@@ -32,7 +31,7 @@ describe('Admin Report Controller', () => {
     let adminToken, userToken;
 
     beforeAll(async () => {
-        const hashedPassword = await bcrypt.hash('TestPassword123', 10);
+        const hashedPassword = await bcrypt.hash('TestPassword123!', 10);
 
         // Create admin user
         adminUser = await prisma.user.create({
@@ -46,7 +45,7 @@ describe('Admin Report Controller', () => {
         });
         adminToken = generateToken(adminUser);
 
-        // Create regular user
+
         regularUser = await prisma.user.create({
             data: {
                 name: 'Regular User',

@@ -3,16 +3,58 @@ import { authenticateToken } from '../middlewares/authMiddleware.js';
 import {
    createListing,
    getListings,
+   getPublicListings,
    getListingById,
    getListingStats,
    exportListings,
-   updateListingStatus,
+   updateListing,
+   publishListing,
+   pauseListing,
    deleteListing
 } from '../controllers/listingController.js';
 
 const router = express.Router();
 
-// All routes require authentication
+/**
+ * @swagger
+ * /api/listings/public:
+ *   get:
+ *     summary: Get all published listings (Buyer View)
+ *     tags: [Listings]
+ *     parameters:
+ *       - in: query
+ *         name: materialType
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: city
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: minPrice
+ *         schema:
+ *           type: number
+ *       - in: query
+ *         name: maxPrice
+ *         schema:
+ *           type: number
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           enum: [createdAt, price]
+ *       - in: query
+ *         name: sortOrder
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *     responses:
+ *       200:
+ *         description: Public listings retrieved successfully
+ */
+router.get('/public', getPublicListings);
+
+// All routes below require authentication
 router.use(authenticateToken);
 
 /**
@@ -191,7 +233,7 @@ router.get('/:id', getListingById);
  * @swagger
  * /api/listings/{id}:
  *   put:
- *     summary: Update listing status
+ *     summary: Update listing details (Only if DRAFT)
  *     tags: [Listings]
  *     security:
  *       - bearerAuth: []
@@ -207,19 +249,53 @@ router.get('/:id', getListingById);
  *         application/json:
  *           schema:
  *             type: object
- *             properties:
- *               status:
- *                 type: string
- *                 enum: [PENDING, COLLECTED, COMPLETED, CANCELLED]
- *               buyerInfo:
- *                 type: string
  *     responses:
  *       200:
  *         description: Listing updated successfully
- *       404:
- *         description: Listing not found
+ *       400:
+ *         description: Cannot update non-DRAFT listing
  */
-router.put('/:id', updateListingStatus);
+router.put('/:id', updateListing);
+
+/**
+ * @swagger
+ * /api/listings/{id}/publish:
+ *   put:
+ *     summary: Publish a DRAFT or PAUSED listing
+ *     tags: [Listings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Listing published
+ */
+router.put('/:id/publish', publishListing);
+
+/**
+ * @swagger
+ * /api/listings/{id}/pause:
+ *   put:
+ *     summary: Pause a PUBLISHED listing
+ *     tags: [Listings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Listing paused
+ */
+router.put('/:id/pause', pauseListing);
 
 /**
  * @swagger

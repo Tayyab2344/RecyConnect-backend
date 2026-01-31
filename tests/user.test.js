@@ -33,7 +33,7 @@ describe('User Controller', () => {
 
     beforeAll(async () => {
         // Create test user
-        const hashedPassword = await bcrypt.hash('TestPassword123', 10);
+        const hashedPassword = await bcrypt.hash('TestPassword123!', 10);
         testUser = await prisma.user.create({
             data: {
                 name: 'User Test',
@@ -129,7 +129,7 @@ describe('User Controller', () => {
                 .put('/api/user/profile/password')
                 .set('Authorization', `Bearer ${testToken}`)
                 .send({
-                    currentPassword: 'TestPassword123',
+                    currentPassword: 'TestPassword123!',
                     newPassword: '123'
                 });
 
@@ -141,7 +141,7 @@ describe('User Controller', () => {
                 .put('/api/user/profile/password')
                 .set('Authorization', `Bearer ${testToken}`)
                 .send({
-                    currentPassword: 'TestPassword123',
+                    currentPassword: 'TestPassword123!',
                     newPassword: 'NewPassword123'
                 });
 

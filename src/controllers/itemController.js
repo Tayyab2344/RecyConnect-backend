@@ -1,11 +1,9 @@
-import { PrismaClient } from '@prisma/client';
-import cloudinary from '../config/cloudinary.js';
-import fs from 'fs/promises';
+import prisma from '../lib/prisma.js';
+import { uploadToCloudinary } from '../utils/uploadHelper.js';
 import { ItemStatus } from '../constants/enums.js';
 import { sendSuccess, sendError } from '../utils/responseHelper.js';
 import { buildSearchFilter } from '../utils/queryHelper.js';
-
-const prisma = new PrismaClient();
+import { logActivity } from '../utils/activityLogger.js';
 
 export async function createItem(req, res) {
     try {
@@ -13,13 +11,10 @@ export async function createItem(req, res) {
         const { title, description, price, quantity, category, unit } = req.body;
 
         const images = [];
-        if (req.files) {
+        if (req.files && Array.isArray(req.files)) {
             for (const file of req.files) {
-                const uploaded = await cloudinary.uploader.upload(file.path, {
-                    folder: `recyconnect/items/${sellerId}`,
-                });
-                images.push(uploaded.secure_url);
-                await fs.unlink(file.path);
+                const result = await uploadToCloudinary(file, `recyconnect/items/${sellerId}`);
+                images.push(result.secure_url);
             }
         }
 
@@ -35,6 +30,16 @@ export async function createItem(req, res) {
                 images,
                 status: ItemStatus.AVAILABLE
             }
+        });
+
+        await logActivity({
+            userId: sellerId,
+            role: req.user.role,
+            action: "CREATE_ITEM",
+            resourceType: "item",
+            resourceId: item.id,
+            meta: { title, price, quantity },
+            req
         });
 
         sendSuccess(res, 'Item created successfully', item, 201);
@@ -98,6 +103,13 @@ export async function deleteItem(req, res) {
         await prisma.item.update({
             where: { id: parseInt(id) },
             data: { status: ItemStatus.REMOVED }
+        });
+
+        await logActivity({
+            action: "DELETE_ITEM",
+            resourceType: "item",
+            resourceId: id,
+            req
         });
 
         sendSuccess(res, 'Item removed successfully');

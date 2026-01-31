@@ -1,12 +1,10 @@
-import { PrismaClient } from '@prisma/client'
-import { logger } from '../utils/logger.js'
-import bcrypt from 'bcrypt'
-import fs from 'fs/promises'
-import cloudinary from '../config/cloudinary.js'
-import { UserRole, VerificationStatus } from '../constants/enums.js'
-import { sendSuccess, sendError } from '../utils/responseHelper.js'
-
-const prisma = new PrismaClient()
+import bcrypt from 'bcrypt';
+import fs from 'fs/promises';
+import cloudinary from '../config/cloudinary.js';
+import { UserRole, VerificationStatus } from '../constants/enums.js';
+import { sendSuccess, sendError } from '../utils/responseHelper.js';
+import prisma from '../lib/prisma.js';
+import { logActivity } from '../utils/activityLogger.js';
 
 function generateCollectorId() {
   const n = Math.floor(1000 + Math.random() * 9000)
@@ -84,15 +82,14 @@ export async function addCollector(req, res) {
       }
     })
 
-    await prisma.activityLog.create({
-      data: {
-        userId: warehouseId,
-        actorRole: UserRole.WAREHOUSE,
-        action: 'COLLECTOR_CREATED',
-        resourceType: 'collector',
-        resourceId: id,
-        meta: { name }
-      }
+    await logActivity({
+      userId: warehouseId,
+      role: UserRole.WAREHOUSE,
+      action: 'COLLECTOR_CREATED',
+      resourceType: 'collector',
+      resourceId: id,
+      meta: { name },
+      req
     })
 
     sendSuccess(res, 'Collector created successfully', {

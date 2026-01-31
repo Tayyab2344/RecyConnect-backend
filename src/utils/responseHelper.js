@@ -45,16 +45,24 @@ export const sendPaginated = (res, data, totalCount, page, limit) => {
  * @param {string} message Error message
  * @param {object} error Error object or details
  * @param {number} statusCode HTTP status code (default 500)
+ * @param {string} errorCode Optional standardized error code
  */
-export const sendError = (res, message, error = null, statusCode = 500) => {
-    console.error(`Error: ${message}`, error);
+export const sendError = (res, message, error = null, statusCode = 500, errorCode = null) => {
+    // Only log in non-test environment
+    if (process.env.NODE_ENV !== 'test') {
+        console.error(`Error: ${message}`, error);
+    }
 
     const response = {
         success: false,
         message
     };
 
-    if (error) {
+    if (errorCode) {
+        response.code = errorCode;
+    }
+
+    if (error && process.env.NODE_ENV !== 'production') {
         response.error = error.message || error;
     }
 

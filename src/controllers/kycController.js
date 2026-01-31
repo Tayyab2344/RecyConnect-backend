@@ -1,45 +1,13 @@
-import { PrismaClient } from '@prisma/client';
+import { uploadToCloudinary } from '../utils/uploadHelper.js';
 import { logger } from '../utils/logger.js';
 import { extractTextFromUrl, extractCNIC, extractNTN } from '../services/ocrService.js';
 import multer from 'multer';
-import cloudinary from "../config/cloudinary.js";
-import fs from "fs/promises";
 import { UserRole, VerificationStatus, KycStage } from '../constants/enums.js';
 import { sendSuccess, sendError } from '../utils/responseHelper.js';
-
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma.js';
+import { logActivity } from '../utils/activityLogger.js';
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Helper to upload to Cloudinary (Supports both Disk Storage & Memory Storage)
-const uploadToCloudinary = (file, folder) => {
-  return new Promise((resolve, reject) => {
-    // 1. If we have a file path (Disk Storage)
-    if (file.path) {
-      cloudinary.uploader.upload(file.path, { folder })
-        .then((result) => {
-          // Try to clean up local file
-          fs.unlink(file.path).catch((err) => logger.warn(`Failed to delete local file: ${err.message}`));
-          resolve(result);
-        })
-        .catch((err) => reject(err));
-    }
-    // 2. If we have a buffer (Memory Storage)
-    else if (file.buffer) {
-      const stream = cloudinary.uploader.upload_stream(
-        { folder },
-        (error, result) => {
-          if (error) return reject(error);
-          resolve(result);
-        }
-      );
-      stream.end(file.buffer);
-    }
-    // 3. Fallback / Error
-    else {
-      reject(new Error("File upload failed: No path or buffer found"));
-    }
-  });
-};
 
 async function isCnicUnique(cnic) {
   const existing = await prisma.user.findFirst({ where: { cnic } });
@@ -140,6 +108,14 @@ export const registerKyc = [
         },
       });
 
+      await logActivity({
+        userId: req.user.id,
+        role: req.user.role,
+        action: verificationStatus === VerificationStatus.VERIFIED ? "KYC_AUTO_APPROVED" : "KYC_AUTO_REJECTED",
+        meta: { cnic, rejectionReason },
+        req
+      });
+
       if (verificationStatus === VerificationStatus.VERIFIED) {
         sendSuccess(res, 'KYC approved! Your documents have been verified successfully.', {
           status: VerificationStatus.VERIFIED,
@@ -179,6 +155,13 @@ export async function approveKyc(req, res) {
         rejectionReason: null
       }
     });
+
+    await logActivity({
+      action: "KYC_MANUAL_APPROVED",
+      resourceType: "user",
+      resourceId: userId,
+      req
+    });
     logger.info(`Admin manually approved KYC for user ${userId}`);
     sendSuccess(res, 'KYC approved');
   } catch (err) {
@@ -197,6 +180,14 @@ export async function rejectKyc(req, res) {
         kycStage: VerificationStatus.REJECTED, // Keeping consistent with previous logic, though maybe should be a stage
         rejectionReason: reason || 'Rejected by admin'
       },
+    });
+
+    await logActivity({
+      action: "KYC_MANUAL_REJECTED",
+      resourceType: "user",
+      resourceId: userId,
+      meta: { reason },
+      req
     });
     logger.info(`Admin manually rejected KYC for user ${userId}: ${reason}`);
     sendSuccess(res, 'KYC rejected');

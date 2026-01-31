@@ -7,6 +7,53 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum ListingStatus {
+  DRAFT
+  PUBLISHED
+  PAUSED
+  RESERVED
+  SOLD
+  CANCELLED
+}
+
+enum ReservationStatus {
+  ACTIVE
+  RELEASED
+  EXPIRED
+  COMPLETED
+  CANCELLED
+  PENDING
+  CONFIRMED
+}
+
+enum OrderStatus {
+  CREATED
+  CONFIRMED
+  PENDING
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  COMPLETED
+}
+
+enum PaymentStatus {
+  INITIATED
+  AUTHORIZED
+  CAPTURED
+  RELEASED
+  REFUNDED
+  FAILED
+  PENDING    // Legacy
+  COMPLETED  // Legacy
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
 model User {
   id            Int       @id @default(autoincrement())
   name          String?
@@ -58,6 +105,12 @@ model User {
   listings      Listing[]
   buyerOrders   Order[]        @relation("BuyerOrders")
   sellerOrders  Order[]        @relation("SellerOrders")
+  buyerReservations ListingReservation[] @relation("BuyerReservations")
+
+  // Chat Relations
+  conversations1   Conversation[] @relation("Participant1")
+  conversations2   Conversation[] @relation("Participant2")
+  sentMessages     Message[]      @relation("SentMessages")
 
   // Warehouse ERP Relations
   warehouseInventory    WarehouseInventory[]   @relation("WarehouseInventory")
@@ -65,6 +118,10 @@ model User {
   expenses              Expense[]
   financialTransactions FinancialTransaction[]
   inventoryMovements    InventoryMovement[]
+
+  // Transaction Relations
+  buyerTransactions    Transaction[] @relation("BuyerTransactions")
+  sellerTransactions   Transaction[] @relation("SellerTransactions")
 
   @@index([role])
   @@index([contactNo])
@@ -147,6 +204,8 @@ model Item {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  transactions Transaction[]
+
   @@index([status])
   @@index([category])
   @@index([sellerId, status])
@@ -161,57 +220,131 @@ model Rate {
 }
 
 model Listing {
-  id              Int      @id @default(autoincrement())
+  id              Int           @id @default(autoincrement())
   userId          Int
-  user            User     @relation(fields: [userId], references: [id])
-  materialType    String // plastic, paper, metal, e-waste
-  estimatedWeight Float // in kg, max 10kg for individuals
-  pickupAddress   String
-  images          String[] // Array of image URLs or base64 strings
+  user            User          @relation(fields: [userId], references: [id])
+  category        String        // Category of items (e.g., Plastic, Metal)
+  title           String?       // Optional title
+  description     String?       // Optional description
+  materialType    String        // plastic, paper, metal, e-waste
+  estimatedWeight Float         // in kg, max 10kg for individuals
+  price           Float         @default(0.0) // Price per kg or total price
+  quantity        Float         @default(1.0) // Quantity available
+  pickupAddress   String?
+  images          String[]      // Array of image URLs or base64 strings
   latitude        Float?
   longitude       Float?
-  locationMethod  String? // "auto" or "manual"
+  locationMethod  String?       // "auto" or "manual"
   notes           String?
-  status          String   @default("PENDING") // PENDING, COLLECTED, COMPLETED, CANCELLED
-  buyerInfo       String? // Buyer details when matched
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  status          ListingStatus @default(DRAFT)
+  
+  reservations    ListingReservation[]
+  orderItems      OrderItem[]
 
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([category])
+  @@index([status])
+  @@index([price])
+  @@index([createdAt])
   @@index([userId, status])
   @@index([materialType])
+  @@index([userId])
+}
+
+model ListingReservation {
+  id              Int               @id @default(autoincrement())
+  listingId       Int
+  listing         Listing           @relation(fields: [listingId], references: [id])
+  buyerId         Int
+  buyer           User              @relation("BuyerReservations", fields: [buyerId], references: [id])
+  orderId         Int?              @unique // Reservation must reference an order if it proceeds
+  order           Order?            @relation(fields: [orderId], references: [id])
+  quantity        Float             // Quantity reserved
+  status          ReservationStatus @default(ACTIVE)
+  expiresAt       DateTime
+  
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([listingId])
+  @@index([buyerId])
   @@index([status])
+  @@index([createdAt])
 }
 
 model Order {
-  id             Int     @id @default(autoincrement())
+  id             Int           @id @default(autoincrement())
   buyerId        Int
-  buyer          User    @relation("BuyerOrders", fields: [buyerId], references: [id])
+  buyer          User          @relation("BuyerOrders", fields: [buyerId], references: [id])
   sellerId       Int
-  seller         User    @relation("SellerOrders", fields: [sellerId], references: [id])
-  materialType   String
-  weight         Float // in kg
-  pickupAddress  String
-  latitude       Float?
-  longitude      Float?
-  locationMethod String? // "auto" or "manual"
-  paymentMethod  String  @default("COD") // COD, WALLET, STRIPE
-  status         String  @default("PENDING") // PENDING, COLLECTED, COMPLETED, CANCELLED
+  seller         User          @relation("SellerOrders", fields: [sellerId], references: [id])
+  
+  status         OrderStatus   @default(PENDING)
+  totalAmount    Float         @default(0.0)
+  
+  // Link to reservation
+  reservation    ListingReservation?
+  
+  // Items in this order
+  items          OrderItem[]
+  
+  // Payment for this order
+  payment        Payment?
 
-  // Financial Tracking Fields
-  totalAmount     Float? // Total order value
+  // Legacy/Financial Tracking Fields
   cogs            Float? // Cost of Goods Sold
-  stripeFee       Float? // Stripe processing fee (2.9% + $0.30)
+  stripeFee       Float? // Stripe processing fee
   collectorCost   Float? // Cost paid to collector
-  netProfit       Float? // totalAmount - (cogs + stripeFee + collectorCost)
+  netProfit       Float? // totalAmount - costs
   stripePaymentId String? // Stripe payment intent ID
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  financialTransactions FinancialTransaction[]
+
+  @@index([status])
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([createdAt])
+  @@index([buyerId, status])
+  @@index([sellerId, status])
+}
+
+model OrderItem {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  order     Order    @relation(fields: [orderId], references: [id])
+  listingId Int
+  listing   Listing  @relation(fields: [listingId], references: [id])
+  quantity  Float    // Checked by application logic (no negative)
+  price     Float    // At time of purchase
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  financialTransactions FinancialTransaction[]
+  @@index([orderId])
+  @@index([listingId])
+}
 
-  @@index([buyerId, status])
-  @@index([sellerId, status])
+model Payment {
+  id              Int           @id @default(autoincrement())
+  orderId         Int           @unique // one order -> one payment
+  order           Order         @relation(fields: [orderId], references: [id])
+  amount          Float
+  currency        String        @default("PKR")
+  provider        String        @default("STRIPE")  // STRIPE, COD
+  paymentMethod   String?       // card, bank_transfer, etc.
+  status          PaymentStatus @default(INITIATED)
+  paymentIntentId String?       @unique  // Stripe PaymentIntent ID
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([status])
+  @@index([orderId])
 }
 
 // ========================================
@@ -288,4 +421,53 @@ model FinancialTransaction {
 
   @@index([warehouseId, type, createdAt])
   @@index([warehouseId, createdAt])
+}
+
+model Conversation {
+  id             Int       @id @default(autoincrement())
+  participant1Id Int
+  participant1   User      @relation("Participant1", fields: [participant1Id], references: [id])
+  participant2Id Int
+  participant2   User      @relation("Participant2", fields: [participant2Id], references: [id])
+  messages       Message[]
+  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime  @default(now())
+
+  @@index([participant1Id])
+  @@index([participant2Id])
+}
+
+model Message {
+  id             Int          @id @default(autoincrement())
+  conversationId Int
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  senderId       Int
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id])
+  content        String
+  imageUrl       String?
+  isRead         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+  @@index([senderId])
+}
+
+model Transaction {
+  id          Int      @id @default(autoincrement())
+  buyerId     Int
+  buyer       User     @relation("BuyerTransactions", fields: [buyerId], references: [id])
+  sellerId    Int
+  seller      User     @relation("SellerTransactions", fields: [sellerId], references: [id])
+  itemId      Int
+  item        Item     @relation(fields: [itemId], references: [id])
+  quantity    Float
+  totalAmount Float
+  status      TransactionStatus @default(PENDING)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([itemId])
+  @@index([status])
 }
