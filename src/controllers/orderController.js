@@ -1,13 +1,16 @@
-import { OrderStatus, ReservationStatus, ListingStatus } from '../constants/enums.js';
+import { OrderStatus, ReservationStatus, ListingStatus, PaymentStatus } from '../constants/enums.js';
+import { ErrorCodes } from '../constants/errorCodes.js';
 import { buildDateFilter, getPaginationParams } from '../utils/queryHelper.js';
 import { sendSuccess, sendPaginated, sendError } from '../utils/responseHelper.js';
 import prisma from '../lib/prisma.js';
 import { logActivity } from '../utils/activityLogger.js';
+import * as stripeService from '../services/stripeService.js';
 
 // Valid state transitions for orders
 const VALID_TRANSITIONS = {
     [OrderStatus.CREATED]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
-    [OrderStatus.CONFIRMED]: [], // No transitions allowed from CONFIRMED in Day 4
+    [OrderStatus.CONFIRMED]: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
+    [OrderStatus.COMPLETED]: [], // Terminal state
     [OrderStatus.CANCELLED]: [], // Terminal state
 };
 
@@ -201,18 +204,23 @@ export const confirmOrder = async (req, res) => {
 /**
  * Cancel an order
  * POST /api/orders/:id/cancel
- * Transition: CREATED → CANCELLED
+ * Transition: CREATED → CANCELLED or CONFIRMED → CANCELLED
+ * Handles payment refunds automatically if payment exists
  */
 export const cancelOrder = async (req, res) => {
     try {
         const { id } = req.params;
+        const { reason } = req.body;
         const userId = req.user.id;
 
         const result = await prisma.$transaction(async (tx) => {
-            // 1. Fetch order with reservation
+            // 1. Fetch order with reservation and payment
             const order = await tx.order.findUnique({
                 where: { id: parseInt(id) },
-                include: { reservation: true }
+                include: {
+                    reservation: true,
+                    payment: true
+                }
             });
 
             if (!order) {
@@ -224,9 +232,9 @@ export const cancelOrder = async (req, res) => {
                 throw new Error('You do not have permission to cancel this order');
             }
 
-            // 3. Validate current status is CREATED
-            if (order.status !== OrderStatus.CREATED) {
-                throw new Error(`Cannot cancel order. Current status: ${order.status}. Orders can only be cancelled when status is CREATED.`);
+            // 3. Validate order can be cancelled (CREATED or CONFIRMED only)
+            if (order.status !== OrderStatus.CREATED && order.status !== OrderStatus.CONFIRMED) {
+                throw new Error(`Cannot cancel order. Current status: ${order.status}. Only CREATED or CONFIRMED orders can be cancelled.`);
             }
 
             // 4. Validate state transition
@@ -234,7 +242,54 @@ export const cancelOrder = async (req, res) => {
                 throw new Error('Invalid state transition');
             }
 
-            // 5. Update order status to CANCELLED
+            // 5. Handle payment if exists (for CONFIRMED orders with payment)
+            let paymentRefunded = false;
+            if (order.payment) {
+                const payment = order.payment;
+
+                // Can only refund if payment is AUTHORIZED or CAPTURED (not RELEASED or already REFUNDED)
+                if (payment.status === PaymentStatus.RELEASED) {
+                    throw new Error('Cannot cancel order. Payment has already been released.');
+                }
+
+                if (payment.status === PaymentStatus.REFUNDED) {
+                    // Already refunded, continue with cancellation
+                    paymentRefunded = true;
+                } else if (payment.status === PaymentStatus.AUTHORIZED) {
+                    // Cancel the PaymentIntent (no capture happened)
+                    await stripeService.cancelPaymentIntent(payment.paymentIntentId);
+                    await tx.payment.update({
+                        where: { id: payment.id },
+                        data: { status: PaymentStatus.FAILED }
+                    });
+                    paymentRefunded = true;
+                } else if (payment.status === PaymentStatus.CAPTURED) {
+                    // Issue refund for captured payment
+                    await stripeService.createRefund(
+                        payment.paymentIntentId,
+                        null, // Full refund
+                        reason || 'requested_by_customer'
+                    );
+                    await tx.payment.update({
+                        where: { id: payment.id },
+                        data: { status: PaymentStatus.REFUNDED }
+                    });
+                    paymentRefunded = true;
+                } else if (payment.status === PaymentStatus.INITIATED) {
+                    // Payment initiated but not authorized - just cancel Stripe intent
+                    try {
+                        await stripeService.cancelPaymentIntent(payment.paymentIntentId);
+                    } catch (e) {
+                        // Ignore if already cancelled
+                    }
+                    await tx.payment.update({
+                        where: { id: payment.id },
+                        data: { status: PaymentStatus.FAILED }
+                    });
+                }
+            }
+
+            // 6. Update order status to CANCELLED
             const updatedOrder = await tx.order.update({
                 where: { id: order.id },
                 data: { status: OrderStatus.CANCELLED },
@@ -242,11 +297,12 @@ export const cancelOrder = async (req, res) => {
                     buyer: { select: { id: true, name: true, email: true, contactNo: true } },
                     seller: { select: { id: true, name: true, email: true, contactNo: true, address: true } },
                     items: { include: { listing: true } },
-                    reservation: true
+                    reservation: true,
+                    payment: true
                 }
             });
 
-            // 6. Release reservation and restore listing quantity
+            // 7. Release reservation and restore listing quantity
             if (order.reservation) {
                 // Update reservation status to RELEASED
                 await tx.listingReservation.update({
@@ -266,7 +322,7 @@ export const cancelOrder = async (req, res) => {
                 });
             }
 
-            return updatedOrder;
+            return { order: updatedOrder, paymentRefunded };
         });
 
         await logActivity({
@@ -275,12 +331,97 @@ export const cancelOrder = async (req, res) => {
             action: 'CANCEL_ORDER',
             resourceType: 'order',
             resourceId: id,
+            meta: { paymentRefunded: result.paymentRefunded, reason },
             req
         });
 
-        sendSuccess(res, 'Order cancelled successfully. Reservation released and stock restored.', result);
+        const message = result.paymentRefunded
+            ? 'Order cancelled successfully. Payment refunded and reservation released.'
+            : 'Order cancelled successfully. Reservation released and stock restored.';
+
+        sendSuccess(res, message, result.order);
     } catch (error) {
-        sendError(res, error.message || 'Failed to cancel order', null, 400);
+        sendError(res, error.message || 'Failed to cancel order', null, 400, ErrorCodes.ORDER_NOT_CANCELLABLE);
+    }
+};
+
+/**
+ * Complete an order (seller action, after payment captured)
+ * POST /api/orders/:id/complete
+ * Transition: CONFIRMED → COMPLETED
+ * Requires: payment.status = CAPTURED
+ */
+export const completeOrder = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.id;
+
+        const result = await prisma.$transaction(async (tx) => {
+            // 1. Fetch order with payment
+            const order = await tx.order.findUnique({
+                where: { id: parseInt(id) },
+                include: {
+                    payment: true,
+                    reservation: true
+                }
+            });
+
+            if (!order) {
+                throw new Error('Order not found');
+            }
+
+            // 2. Validate seller owns this order
+            if (order.sellerId !== userId) {
+                throw new Error('Only the seller can complete this order');
+            }
+
+            // 3. Validate current status is CONFIRMED
+            if (order.status !== OrderStatus.CONFIRMED) {
+                throw new Error(`Cannot complete order. Current status: ${order.status}. Must be CONFIRMED.`);
+            }
+
+            // 4. Validate state transition
+            if (!isValidTransition(order.status, OrderStatus.COMPLETED)) {
+                throw new Error('Invalid state transition');
+            }
+
+            // 5. Validate payment is CAPTURED
+            if (!order.payment) {
+                throw new Error('Cannot complete order. No payment found.');
+            }
+
+            if (order.payment.status !== PaymentStatus.CAPTURED) {
+                throw new Error(`Cannot complete order. Payment must be CAPTURED. Current payment status: ${order.payment.status}`);
+            }
+
+            // 6. Update order status to COMPLETED
+            const updatedOrder = await tx.order.update({
+                where: { id: order.id },
+                data: { status: OrderStatus.COMPLETED },
+                include: {
+                    buyer: { select: { id: true, name: true, email: true, contactNo: true } },
+                    seller: { select: { id: true, name: true, email: true, contactNo: true, address: true } },
+                    items: { include: { listing: true } },
+                    reservation: true,
+                    payment: true
+                }
+            });
+
+            return updatedOrder;
+        });
+
+        await logActivity({
+            userId,
+            role: req.user.role,
+            action: 'COMPLETE_ORDER',
+            resourceType: 'order',
+            resourceId: id,
+            req
+        });
+
+        sendSuccess(res, 'Order completed successfully. You can now release the payment.', result);
+    } catch (error) {
+        sendError(res, error.message || 'Failed to complete order', null, 400, ErrorCodes.INVALID_STATE);
     }
 };
 

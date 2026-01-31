@@ -2,6 +2,7 @@ import prisma from '../lib/prisma.js';
 import { ReservationStatus, ListingStatus } from '../constants/enums.js';
 import { sendSuccess, sendError } from '../utils/responseHelper.js';
 import { logActivity } from '../utils/activityLogger.js';
+import { ErrorCodes } from '../constants/errorCodes.js';
 
 /**
  * Reserve weight from a listing
@@ -14,7 +15,7 @@ export const reserveListing = async (req, res) => {
         const requestedWeight = parseFloat(quantity);
 
         if (!listingId || isNaN(requestedWeight) || requestedWeight <= 0) {
-            return sendError(res, 'Valid listingId and positive quantity are required', null, 400);
+            return sendError(res, 'Valid listingId and positive quantity are required', null, 400, ErrorCodes.INVALID_INPUT);
         }
 
         // Use interactive transaction to ensure atomicity
@@ -28,16 +29,40 @@ export const reserveListing = async (req, res) => {
                 throw new Error('Listing not found');
             }
 
+            // 1.5 Prevent self-reservation (buyer cannot be seller)
+            if (listing.userId === buyerId) {
+                const err = new Error('You cannot reserve your own listing');
+                err.code = ErrorCodes.SELF_TRANSACTION;
+                throw err;
+            }
+
             if (listing.status !== ListingStatus.PUBLISHED) {
                 throw new Error('Listing is not available for reservation');
             }
 
-            // 2. Check Available Weight
-            if (listing.quantity < requestedWeight) {
-                throw new Error('Requested quantity exceeds available stock');
+            // 2. Idempotency check - prevent duplicate ACTIVE reservations
+            const existingReservation = await tx.listingReservation.findFirst({
+                where: {
+                    buyerId,
+                    listingId: parseInt(listingId),
+                    status: ReservationStatus.ACTIVE
+                }
+            });
+
+            if (existingReservation) {
+                const err = new Error('You already have an active reservation for this listing');
+                err.code = ErrorCodes.DUPLICATE_OPERATION;
+                throw err;
             }
 
-            // 3. Create Reservation
+            // 3. Check Available Weight
+            if (listing.quantity < requestedWeight) {
+                const err = new Error('Requested quantity exceeds available stock');
+                err.code = ErrorCodes.INSUFFICIENT_QUANTITY;
+                throw err;
+            }
+
+            // 4. Create Reservation
             const expiresAt = new Date();
             expiresAt.setMinutes(expiresAt.getMinutes() + 20); // 20 min TTL
 

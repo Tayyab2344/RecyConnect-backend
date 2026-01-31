@@ -4,6 +4,7 @@ import {
     createOrder,
     confirmOrder,
     cancelOrder,
+    completeOrder,
     getBuyerOrders,
     getSellerOrders,
     getOrderById,
@@ -307,7 +308,48 @@ router.post('/:id/confirm', confirmOrder);
  * /api/orders/{id}/cancel:
  *   post:
  *     summary: Cancel an order
- *     description: Transition order from CREATED to CANCELLED. Releases reservation and restores listing quantity.
+ *     description: |
+ *       Transition order from CREATED or CONFIRMED to CANCELLED.
+ *       - Releases reservation and restores listing quantity
+ *       - If payment exists, automatically triggers refund (CAPTURED) or cancellation (AUTHORIZED)
+ *       - Cannot cancel if payment has been RELEASED
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 description: Reason for cancellation (used for Stripe refund)
+ *     responses:
+ *       200:
+ *         description: Order cancelled successfully, reservation released, payment refunded if applicable
+ *       400:
+ *         description: Invalid state transition or payment already released
+ *       404:
+ *         description: Order not found
+ */
+router.post('/:id/cancel', cancelOrder);
+
+/**
+ * @swagger
+ * /api/orders/{id}/complete:
+ *   post:
+ *     summary: Complete an order (seller action)
+ *     description: |
+ *       Transition order from CONFIRMED to COMPLETED.
+ *       Requires payment to be CAPTURED first.
+ *       After completion, seller can release the payment.
  *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
@@ -319,13 +361,13 @@ router.post('/:id/confirm', confirmOrder);
  *           type: integer
  *     responses:
  *       200:
- *         description: Order cancelled successfully, reservation released
+ *         description: Order completed successfully
  *       400:
- *         description: Invalid state transition (order not in CREATED status)
+ *         description: Payment not captured or invalid state transition
  *       404:
  *         description: Order not found
  */
-router.post('/:id/cancel', cancelOrder);
+router.post('/:id/complete', completeOrder);
 
 /**
  * @swagger

@@ -1,255 +1,433 @@
 # RecyConnect Backend
 
-A Node.js backend API for the RecyConnect waste management and recycling platform.
+A complete backend API for the RecyConnect waste management and recycling marketplace platform. This system enables individuals, warehouses, and companies to buy and sell recyclable materials with integrated Stripe payments and COD support.
+
+---
+
+## Table of Contents
+
+1. [Project Scope](#project-scope)
+2. [Entity Relationships](#entity-relationships)
+3. [Order & Payment Flow](#order--payment-flow)
+4. [Payment Rules (COD vs Stripe)](#payment-rules-cod-vs-stripe)
+5. [Prerequisites](#prerequisites)
+6. [Quick Start](#quick-start)
+7. [API Endpoints](#api-endpoints)
+8. [Testing](#testing)
+9. [Known Limitations](#known-limitations)
+10. [Viva Talking Points](#viva-talking-points)
+
+---
+
+## Project Scope
+
+### What's Included ✅
+
+| Feature | Description |
+|---------|-------------|
+| **User Authentication** | Registration, login, email OTP verification, JWT tokens |
+| **Role-Based Access** | Individual, Warehouse, Company, Admin, Collector |
+| **Listing Management** | Create, update, delete, publish/pause listings |
+| **Inventory Reservation** | Time-limited reservation (20 min TTL) with quantity lock |
+| **Order Management** | Create from reservation, confirm, complete, cancel |
+| **Stripe Payments** | PaymentIntent flow with manual capture |
+| **COD Payments** | Cash on Delivery for individual sellers |
+| **Auto Refunds** | Automatic refund on order cancellation |
+| **State Machine** | Strict state transitions with validation |
+| **Idempotency** | Prevents duplicate payments, reservations |
+| **Activity Logging** | All actions are logged for audit |
+| **Admin Dashboard** | User management, KYC approval, reports |
+
+### What's Excluded ❌
+
+| Feature | Reason |
+|---------|--------|
+| **Wallet System** | Out of scope for MVP; adds complexity |
+| **Real-time Chat** | Requires WebSocket infrastructure |
+| **Push Notifications** | Requires Firebase/FCM integration |
+| **Delivery Tracking** | Would need third-party logistics API |
+| **Multi-currency** | Single currency (PKR) for simplicity |
+| **Partial Refunds** | Full refund only for MVP |
+
+---
+
+## Entity Relationships
+
+```
+┌──────────────┐       ┌──────────────┐       ┌──────────────┐
+│     User     │       │   Listing    │       │ Reservation  │
+│──────────────│       │──────────────│       │──────────────│
+│ id           │◄──────┤ userId       │◄──────┤ listingId    │
+│ name         │       │ category     │       │ buyerId      │
+│ email        │       │ materialType │       │ quantity     │
+│ role         │       │ price        │       │ status       │
+│ password     │       │ quantity     │       │ expiresAt    │
+│ emailVerified│       │ status       │       │ orderId      │
+└──────────────┘       │ images       │       └──────┬───────┘
+        │              └──────────────┘              │
+        │                                            │
+        ▼                                            ▼
+┌──────────────┐       ┌──────────────┐       ┌──────────────┐
+│    Order     │◄──────┤  OrderItem   │       │   Payment    │
+│──────────────│       │──────────────│       │──────────────│
+│ id           │       │ orderId      │       │ orderId      │
+│ buyerId      │       │ listingId    │       │ amount       │
+│ sellerId     │       │ quantity     │       │ currency     │
+│ totalAmount  │       │ priceAtTime  │       │ provider     │
+│ status       │◄──────┼──────────────┘       │ status       │
+└──────────────┘       │                      │ paymentIntentId
+                       └──────────────────────┤              │
+                                              └──────────────┘
+```
+
+### Key Relationships
+
+- **User → Listings**: One-to-Many (seller creates listings)
+- **User → Orders**: One-to-Many (as buyer or seller)
+- **Listing → Reservations**: One-to-Many (multiple buyers can reserve)
+- **Reservation → Order**: One-to-One (reservation becomes order)
+- **Order → Payment**: One-to-One (one payment per order)
+- **Order → OrderItems**: One-to-Many (order can have multiple items)
+
+---
+
+## Order & Payment Flow
+
+### Complete Flow Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           SELLING FLOW                                   │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Seller: Create Listing → Publish → [Listing PUBLISHED]                  │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         RESERVATION FLOW                                 │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Buyer: Reserve Quantity → [Reservation ACTIVE, Listing qty decreases]   │
+│        ↳ If TTL expires: [Reservation EXPIRED, qty restored]            │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           BUYING FLOW                                    │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Buyer: Create Order → [Order CREATED]                                   │
+│ Seller: Confirm Order → [Order CONFIRMED, Reservation locked]           │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                    ┌───────────────┴───────────────┐
+                    ▼                               ▼
+┌─────────────────────────────┐   ┌─────────────────────────────────────┐
+│     COD PAYMENT FLOW        │   │         STRIPE PAYMENT FLOW          │
+│ (Individual sellers only)   │   │    (Warehouse/Company sellers)       │
+├─────────────────────────────┤   ├─────────────────────────────────────┤
+│ Buyer: Create COD Payment   │   │ Buyer: Create PaymentIntent          │
+│ → [Payment INITIATED]       │   │ → [Payment INITIATED]                │
+│                             │   │ Buyer: Confirm Card (Stripe.js)      │
+│ (Cash exchanged on delivery)│   │ Buyer: Authorize → [AUTHORIZED]      │
+│                             │   │ Seller: Capture → [CAPTURED]         │
+│ Seller: Confirm COD Receipt │   │                                      │
+│ → [Payment CAPTURED]        │   │                                      │
+└─────────────────────────────┘   └─────────────────────────────────────┘
+                    │                               │
+                    └───────────────┬───────────────┘
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         COMPLETION FLOW                                  │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Seller: Complete Order → [Order COMPLETED] (requires Payment CAPTURED)  │
+│ Seller: Release Payment → [Payment RELEASED] ✓                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### State Transitions
+
+#### Order States
+
+| Current | Allowed Next | Trigger |
+|---------|--------------|---------|
+| - | CREATED | Buyer creates order |
+| CREATED | CONFIRMED | Seller confirms |
+| CREATED | CANCELLED | Buyer/Seller cancels |
+| CONFIRMED | COMPLETED | Seller completes (payment captured) |
+| CONFIRMED | CANCELLED | Buyer/Seller cancels (auto refund) |
+
+#### Payment States
+
+| Current | Allowed Next | Trigger |
+|---------|--------------|---------|
+| - | INITIATED | PaymentIntent or COD created |
+| INITIATED | AUTHORIZED | Stripe card authorized |
+| INITIATED | CAPTURED | COD cash received |
+| INITIATED | FAILED | Payment declined/cancelled |
+| AUTHORIZED | CAPTURED | Seller captures Stripe |
+| AUTHORIZED | REFUNDED | Order cancelled |
+| CAPTURED | RELEASED | Order completed |
+| CAPTURED | REFUNDED | Order cancelled |
+
+---
+
+## Payment Rules (COD vs Stripe)
+
+### Rule Matrix
+
+| Seller Role | Buyer Role | COD | Stripe |
+|-------------|------------|-----|--------|
+| **Individual** | Any | ✅ | ✅ |
+| **Warehouse** | Any | ❌ | ✅ |
+| **Company** | Any | ❌ | ✅ |
+
+### Why This Design?
+
+1. **Individuals need cash**: They don't have business bank accounts or payment processing setup
+2. **Warehouses/Companies need tracking**: Digital payments provide audit trail
+3. **Security**: Large B2B transactions require traceable payments
+4. **Simplicity**: No wallet system needed for MVP
+
+### API Endpoint to Check
+
+```http
+GET /api/payments/methods/:orderId
+```
+
+Returns:
+```json
+{
+  "sellerRole": "individual",
+  "methods": [
+    { "provider": "STRIPE", "available": true },
+    { "provider": "COD", "available": true }
+  ]
+}
+```
+
+---
 
 ## Prerequisites
 
-Before you begin, ensure you have the following installed:
+- **Node.js** v18+
+- **npm** v9+
+- **PostgreSQL** v14+
+- **Stripe Account** (for test keys)
 
-- **Node.js** (v18 or higher)
-- **npm** (v9 or higher)
-- **PostgreSQL** (v14 or higher)
-- **Git**
+---
 
 ## Quick Start
 
-### 1. Clone the Repository
+### 1. Clone & Install
 
 ```bash
 git clone <repository-url>
 cd RecyConnect-backend
-```
-
-### 2. Install Dependencies
-
-```bash
 npm install
 ```
 
-### 3. Environment Configuration
+### 2. Environment Configuration
 
-Create a `.env` file in the root directory with the following variables:
+Create `.env` file:
 
 ```env
 # Database
-DATABASE_URL="postgresql://username:password@localhost:5432/recyconnect?schema=public"
+DATABASE_URL="postgresql://user:pass@localhost:5432/recyconnect"
 
-# JWT Secrets
-JWT_ACCESS_SECRET=your_access_secret_key_here
-JWT_REFRESH_SECRET=your_refresh_secret_key_here
+# JWT (use strong random strings)
+JWT_ACCESS_SECRET=your_access_secret_here
+JWT_REFRESH_SECRET=your_refresh_secret_here
 
 # Server
 PORT=5000
 NODE_ENV=development
 
-# Cloudinary (Image Upload)
-CLOUDINARY_CLOUD_NAME=your_cloud_name
-CLOUDINARY_API_KEY=your_api_key
-CLOUDINARY_API_SECRET=your_api_secret
+# Stripe
+STRIPE_SECRET_KEY=sk_test_your_stripe_key
+STRIPE_CURRENCY=pkr
 
-# Email (Nodemailer)
+# Cloudinary
+CLOUDINARY_CLOUD_NAME=your_cloud
+CLOUDINARY_API_KEY=your_key
+CLOUDINARY_API_SECRET=your_secret
+
+# Email
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
 EMAIL_USER=your_email@gmail.com
 EMAIL_PASSWORD=your_app_password
 
-# Frontend URL (CORS)
+# CORS
 FRONTEND_URL=http://localhost:3000
 ```
 
-### 4. Database Setup
+### 3. Database Setup
 
 ```bash
-# Generate Prisma Client
 npx prisma generate
-
-# Run database migrations
 npx prisma db push
-
-# (Optional) Seed the database
-npm run prisma db seed
+npx prisma db seed   # Optional: seed with test data
 ```
 
-### 5. Run the Application
+### 4. Run Server
 
-**Development Mode:**
 ```bash
-npm run dev
+npm run dev     # Development
+npm start       # Production
 ```
 
-**Production Mode:**
-```bash
-npm start
-```
+Server runs at `http://localhost:5000`
 
-The server will start on `http://localhost:5000` (or your specified PORT).
+API docs at `http://localhost:5000/api-docs`
 
-## Project Structure
+---
 
-```
-RecyConnect-backend/
-├── prisma/
-│   ├── schema.prisma          # Database schema
-│   └── seed.js                # Database seeding script
-├── src/
-│   ├── config/                # Configuration files
-│   ├── constants/             # Enums and constants
-│   ├── controllers/           # Request handlers
-│   ├── middlewares/           # Auth, error, and validation middleware
-│   ├── routes/                # API routes
-│   ├── services/              # Business logic
-│   ├── utils/                 # Helper functions
-│   └── index.js               # Application entry point
-├── .env                       # Environment variables
-├── package.json
-└── README.md
-```
+## API Endpoints
 
-## API Documentation
+### Authentication
 
-Once the server is running, access the Swagger API documentation at:
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/auth/register` | Register user |
+| POST | `/api/auth/login` | Login |
+| POST | `/api/auth/verify-otp` | Verify email |
+| POST | `/api/auth/refresh-token` | Refresh JWT |
 
-```
-http://localhost:5000/api-docs
-```
+### Listings
 
-### Key Endpoints
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/listings` | Get all (with filters) |
+| POST | `/api/listings` | Create listing |
+| GET | `/api/listings/:id` | Get by ID |
+| PUT | `/api/listings/:id` | Update |
+| DELETE | `/api/listings/:id` | Delete |
+| POST | `/api/listings/:id/publish` | Publish |
+| POST | `/api/listings/:id/pause` | Pause |
 
-#### Authentication
-- `POST /api/auth/register` - User registration
-- `POST /api/auth/login` - User login
-- `POST /api/auth/verify-otp` - Email verification
-- `POST /api/auth/refresh-token` - Refresh access token
-- `POST /api/auth/logout` - User logout
+### Reservations
 
-#### User Management
-- `GET /api/user/profile` - Get user profile
-- `PUT /api/user/profile` - Update user profile
-- `PUT /api/user/change-password` - Change password
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/reservations` | Reserve quantity |
+| POST | `/api/reservations/:id/release` | Release reservation |
+| GET | `/api/reservations/buyer` | Buyer's reservations |
 
-#### Listings
-- `GET /api/listings` - Get all listings (with filters)
-- `POST /api/listings` - Create new listing
-- `GET /api/listings/:id` - Get listing details
-- `PUT /api/listings/:id` - Update listing
-- `DELETE /api/listings/:id` - Delete listing
+### Orders
 
-#### Orders
-- `GET /api/orders` - Get user orders
-- `POST /api/orders` - Create new order
-- `PUT /api/orders/:id/status` - Update order status
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/orders` | Create from reservation |
+| POST | `/api/orders/:id/confirm` | Seller confirms |
+| POST | `/api/orders/:id/complete` | Complete (after payment) |
+| POST | `/api/orders/:id/cancel` | Cancel (auto refund) |
+| GET | `/api/orders/buyer` | Buyer's orders |
+| GET | `/api/orders/seller` | Seller's orders |
 
-#### Admin
-- `GET /api/admin/users` - Get all users
-- `PUT /api/admin/users/:id/suspend` - Suspend/activate user
-- `GET /api/admin/dashboard` - Dashboard statistics
-- `GET /api/admin/logs` - System activity logs
+### Payments
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/payments/methods/:orderId` | Get available methods |
+| POST | `/api/payments/create-intent` | Create Stripe payment |
+| POST | `/api/payments/create-cod` | Create COD payment |
+| POST | `/api/payments/:id/authorize` | Authorize Stripe |
+| POST | `/api/payments/:id/capture` | Capture Stripe |
+| POST | `/api/payments/:id/confirm-cod` | Confirm COD receipt |
+| POST | `/api/payments/:id/release` | Release payment |
+| POST | `/api/payments/:id/refund` | Refund payment |
+
+---
 
 ## Testing
 
+### Run Tests
+
 ```bash
-# Run all tests
-npm test
-
-# Run tests in watch mode
-npm run test:watch
-
-# Generate coverage report
-npm run test:coverage
+npm test                    # All tests
+npm test -- tests/payment.test.js   # Specific file
+npm run test:coverage       # Coverage report
 ```
 
-## Available Scripts
+### Postman Testing
 
-| Script | Description |
-|--------|-------------|
-| `npm start` | Run the server in production mode |
-| `npm run dev` | Run the server in development mode with nodemon |
-| `npm test` | Run test suite |
-| `npm run prisma` | Access Prisma CLI |
+Import the Postman collection from `/postman/RecyConnect.postman_collection.json`
+
+Test scenarios:
+1. Individual seller + COD ✅
+2. Individual seller + Stripe ✅
+3. Warehouse seller + Stripe ✅
+4. Warehouse seller + COD ❌ (must fail)
+
+---
+
+## Known Limitations
+
+| Limitation | Reason | Future Improvement |
+|------------|--------|-------------------|
+| No wallet | Complex for MVP | Add balance system |
+| No partial refund | Stripe complexity | Support partial amounts |
+| Single currency | Regional focus | Multi-currency support |
+| 20-min reservation | Fixed TTL | Configurable TTL |
+| No dispute resolution | Out of scope | Add mediation flow |
+| Manual capture only | Seller control needed | Auto-capture option |
+
+---
+
+## Viva Talking Points
+
+### Why no wallet system?
+
+> "A wallet adds significant complexity: balance tracking, withdrawal flows, and reconciliation. For MVP, direct payments (Stripe for tracking, COD for individuals) meet all requirements without the overhead."
+
+### Why COD only for individuals?
+
+> "Individual sellers often don't have business bank accounts or payment processing setup. They need immediate cash. Warehouses and companies have business infrastructure for digital payments."
+
+### Why Stripe for warehouses/companies?
+
+> "B2B transactions need audit trails. Stripe provides: traceable payments, dispute resolution, automatic accounting, and compliance. Cash between businesses is difficult to track."
+
+### How is inventory protected?
+
+> "Three-layer protection:
+> 1. **Reservation decrements quantity** atomically in a transaction
+> 2. **20-minute TTL** auto-releases if order not created
+> 3. **Unique constraints** prevent duplicate reservations per buyer+listing"
+
+### How is payment integrity ensured?
+
+> "Five mechanisms:
+> 1. **State machine** prevents invalid transitions
+> 2. **Idempotency** blocks duplicate payments (paymentIntentId unique)
+> 3. **Manual capture** gives sellers control
+> 4. **Auto-refund** on cancellation
+> 5. **Database transactions** ensure atomicity"
+
+---
 
 ## Technology Stack
 
-- **Framework:** Express.js
-- **Database:** PostgreSQL with Prisma ORM
-- **Authentication:** JWT (JSON Web Tokens)
-- **File Upload:** Cloudinary
-- **Email:** Nodemailer
-- **Validation:** Express Validator
-- **Documentation:** Swagger
-- **Security:** Helmet, CORS, Rate Limiting
-- **Logging:** Winston & Morgan
+| Layer | Technology |
+|-------|------------|
+| Runtime | Node.js v18+ |
+| Framework | Express.js |
+| Database | PostgreSQL + Prisma ORM |
+| Auth | JWT with refresh tokens |
+| Payments | Stripe API |
+| File Upload | Cloudinary |
+| Email | Nodemailer |
+| Docs | Swagger/OpenAPI |
+| Testing | Jest + Supertest |
+| Security | Helmet, CORS, Rate Limiting |
 
-## Security Features
-
-- JWT-based authentication with 45-day token expiration
-- Password hashing with bcrypt
-- Rate limiting to prevent abuse
-- Helmet for HTTP header security
-- CORS configuration
-- Input validation and sanitization
-
-## Deployment
-
-### Environment Variables for Production
-
-Ensure all environment variables are properly set in your production environment, especially:
-- `NODE_ENV=production`
-- `DATABASE_URL` (production database)
-- Strong `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET`
-- Valid Cloudinary credentials
-
-### Running on Production
-
-```bash
-# Install dependencies
-npm install --production
-
-# Run database migrations
-npx prisma db push
-
-# Start the server
-npm start
-```
-
-### Deployment
-For detailed instructions on deploying to **Render** with **Neon PostgreSQL**, please refer to [DEPLOYMENT.md](./DEPLOYMENT.md).
-
-## Mobile App Connection
-
-To allow the mobile app (APK) to connect to the backend running on your local machine:
-
-1. Find your local IP address:
-   - Windows: `ipconfig` → Look for IPv4 Address
-   - Mac/Linux: `ifconfig` → Look for inet address
-
-2. The server is configured to listen on `0.0.0.0`, allowing external connections.
-
-3. Update the frontend API base URL to: `http://YOUR_LOCAL_IP:5000/api`
-
-## Troubleshooting
-
-### Database Connection Issues
-```bash
-# Verify database is running
-# Check DATABASE_URL in .env
-# Run: npx prisma db push
-```
-
-### Port Already in Use
-```bash
-# Change PORT in .env file
-# Or kill the process using the port
-```
-
-### Prisma Client Not Found
-```bash
-npx prisma generate
-```
-
-## Support
-
-For issues, questions, or contributions, please contact the development team.
+---
 
 ## License
 
-This project is licensed under the ISC License.
+ISC License
+
+---
+
+## Support
+
+For questions or issues, contact the development team.

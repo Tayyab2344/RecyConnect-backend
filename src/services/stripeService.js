@@ -1,12 +1,28 @@
 import Stripe from 'stripe';
 
 // Initialize Stripe with secret key from environment
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: '2023-10-16'
-});
+// Use a dummy key in test mode to prevent initialization errors
+const stripeKey = process.env.STRIPE_SECRET_KEY || (process.env.NODE_ENV === 'test' ? 'sk_test_dummy' : null);
+
+let stripe = null;
+if (stripeKey) {
+    stripe = new Stripe(stripeKey, {
+        apiVersion: '2023-10-16'
+    });
+}
 
 // Default currency from environment or fallback to PKR
 const DEFAULT_CURRENCY = process.env.STRIPE_CURRENCY || 'pkr';
+
+/**
+ * Helper to ensure stripe is initialized
+ */
+const ensureStripe = () => {
+    if (!stripe) {
+        throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
+    }
+    return stripe;
+};
 
 /**
  * Create a PaymentIntent
@@ -18,7 +34,7 @@ const DEFAULT_CURRENCY = process.env.STRIPE_CURRENCY || 'pkr';
  */
 export const createPaymentIntent = async (amount, currency = DEFAULT_CURRENCY, metadata = {}, captureManual = true) => {
     try {
-        const paymentIntent = await stripe.paymentIntents.create({
+        const paymentIntent = await ensureStripe().paymentIntents.create({
             amount: Math.round(amount * 100), // Convert to smallest currency unit
             currency: currency.toLowerCase(),
             metadata,
@@ -43,7 +59,7 @@ export const createPaymentIntent = async (amount, currency = DEFAULT_CURRENCY, m
  */
 export const retrievePaymentIntent = async (paymentIntentId) => {
     try {
-        const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+        const paymentIntent = await ensureStripe().paymentIntents.retrieve(paymentIntentId);
         return paymentIntent;
     } catch (error) {
         console.error('Stripe retrievePaymentIntent error:', error);
@@ -64,7 +80,7 @@ export const confirmPaymentIntent = async (paymentIntentId, paymentMethodId = nu
             params.payment_method = paymentMethodId;
         }
 
-        const paymentIntent = await stripe.paymentIntents.confirm(paymentIntentId, params);
+        const paymentIntent = await ensureStripe().paymentIntents.confirm(paymentIntentId, params);
         return paymentIntent;
     } catch (error) {
         console.error('Stripe confirmPaymentIntent error:', error);
@@ -85,7 +101,7 @@ export const capturePaymentIntent = async (paymentIntentId, amountToCapture = nu
             params.amount_to_capture = Math.round(amountToCapture * 100);
         }
 
-        const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId, params);
+        const paymentIntent = await ensureStripe().paymentIntents.capture(paymentIntentId, params);
         return paymentIntent;
     } catch (error) {
         console.error('Stripe capturePaymentIntent error:', error);
@@ -100,7 +116,7 @@ export const capturePaymentIntent = async (paymentIntentId, amountToCapture = nu
  */
 export const cancelPaymentIntent = async (paymentIntentId) => {
     try {
-        const paymentIntent = await stripe.paymentIntents.cancel(paymentIntentId);
+        const paymentIntent = await ensureStripe().paymentIntents.cancel(paymentIntentId);
         return paymentIntent;
     } catch (error) {
         console.error('Stripe cancelPaymentIntent error:', error);
@@ -126,7 +142,7 @@ export const createRefund = async (paymentIntentId, amount = null, reason = 'req
             params.amount = Math.round(amount * 100);
         }
 
-        const refund = await stripe.refunds.create(params);
+        const refund = await ensureStripe().refunds.create(params);
         return refund;
     } catch (error) {
         console.error('Stripe createRefund error:', error);
@@ -141,7 +157,7 @@ export const createRefund = async (paymentIntentId, amount = null, reason = 'req
  */
 export const listRefunds = async (paymentIntentId) => {
     try {
-        const refunds = await stripe.refunds.list({
+        const refunds = await ensureStripe().refunds.list({
             payment_intent: paymentIntentId
         });
         return refunds;

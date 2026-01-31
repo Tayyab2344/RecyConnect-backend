@@ -1,0 +1,39 @@
+/**
+ * Standardized Error Codes for API responses
+ * These provide machine-readable error identifiers for client-side handling
+ */
+
+export const ErrorCodes = {
+    // State errors
+    INVALID_STATE: 'INVALID_STATE',
+    INVALID_TRANSITION: 'INVALID_TRANSITION',
+
+    // Resource errors
+    NOT_FOUND: 'NOT_FOUND',
+    ALREADY_EXISTS: 'ALREADY_EXISTS',
+    DUPLICATE_OPERATION: 'DUPLICATE_OPERATION',
+
+    // Validation errors
+    INVALID_INPUT: 'INVALID_INPUT',
+    MISSING_REQUIRED_FIELD: 'MISSING_REQUIRED_FIELD',
+    INSUFFICIENT_QUANTITY: 'INSUFFICIENT_QUANTITY',
+    INVALID_AMOUNT: 'INVALID_AMOUNT',
+
+    // Auth errors
+    UNAUTHORIZED: 'UNAUTHORIZED',
+    FORBIDDEN: 'FORBIDDEN',
+    TOKEN_EXPIRED: 'TOKEN_EXPIRED',
+
+    // Payment errors
+    PAYMENT_FAILED: 'PAYMENT_FAILED',
+    PAYMENT_REQUIRED: 'PAYMENT_REQUIRED',
+    PAYMENT_NOT_CAPTURED: 'PAYMENT_NOT_CAPTURED',
+    REFUND_NOT_ALLOWED: 'REFUND_NOT_ALLOWED',
+
+    // Business logic errors
+    SELF_TRANSACTION: 'SELF_TRANSACTION',
+    RESERVATION_EXPIRED: 'RESERVATION_EXPIRED',
+    ORDER_NOT_CANCELLABLE: 'ORDER_NOT_CANCELLABLE'
+};
+
+export default ErrorCodes;

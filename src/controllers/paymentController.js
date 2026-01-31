@@ -1,8 +1,21 @@
-import { PaymentStatus, PaymentProvider, OrderStatus } from '../constants/enums.js';
+import { PaymentStatus, PaymentProvider, OrderStatus, UserRole } from '../constants/enums.js';
+import { ErrorCodes } from '../constants/errorCodes.js';
 import { sendSuccess, sendError } from '../utils/responseHelper.js';
 import prisma from '../lib/prisma.js';
 import { logActivity } from '../utils/activityLogger.js';
 import * as stripeService from '../services/stripeService.js';
+
+// Roles that require Stripe payments between each other
+const STRIPE_ONLY_ROLES = [UserRole.WAREHOUSE, UserRole.COMPANY];
+
+/**
+ * Check if COD is allowed for this transaction
+ * COD is allowed when seller is an individual (they need cash)
+ * Warehouse/Company to Warehouse/Company = Stripe only
+ */
+const isCodAllowed = (sellerRole) => {
+    return sellerRole === UserRole.INDIVIDUAL;
+};
 
 // Valid payment state transitions
 const VALID_TRANSITIONS = {
@@ -112,6 +125,211 @@ export const createPaymentIntent = async (req, res) => {
         }, 201);
     } catch (error) {
         sendError(res, error.message || 'Failed to create PaymentIntent', null, 400);
+    }
+};
+
+/**
+ * Create a COD (Cash on Delivery) payment for individual sellers
+ * POST /api/payments/create-cod
+ * Only allowed when seller is an individual
+ */
+export const createCodPayment = async (req, res) => {
+    try {
+        const { orderId } = req.body;
+        const userId = req.user.id;
+
+        if (!orderId) {
+            return sendError(res, 'Order ID is required', null, 400, ErrorCodes.MISSING_REQUIRED_FIELD);
+        }
+
+        const result = await prisma.$transaction(async (tx) => {
+            // 1. Fetch order with seller info
+            const order = await tx.order.findUnique({
+                where: { id: parseInt(orderId) },
+                include: {
+                    payment: true,
+                    seller: { select: { id: true, role: true, name: true } }
+                }
+            });
+
+            if (!order) {
+                throw new Error('Order not found');
+            }
+
+            // 2. Validate user is the buyer
+            if (order.buyerId !== userId) {
+                throw new Error('Only the buyer can initiate payment');
+            }
+
+            // 3. Validate order status is CONFIRMED
+            if (order.status !== OrderStatus.CONFIRMED) {
+                throw new Error(`Cannot create payment. Order status must be CONFIRMED. Current: ${order.status}`);
+            }
+
+            // 4. Check if payment already exists
+            if (order.payment) {
+                throw new Error('Payment already exists for this order.');
+            }
+
+            // 5. Validate COD is allowed for this seller
+            if (!isCodAllowed(order.seller.role)) {
+                throw new Error(`COD is not available for orders from ${order.seller.role} sellers. Please use Stripe payment.`);
+            }
+
+            // 6. Create COD Payment record (status = INITIATED, needs seller confirmation)
+            const payment = await tx.payment.create({
+                data: {
+                    orderId: order.id,
+                    amount: order.totalAmount,
+                    currency: process.env.DEFAULT_CURRENCY || 'PKR',
+                    provider: PaymentProvider.COD,
+                    paymentMethod: 'cash',
+                    status: PaymentStatus.INITIATED,
+                    paymentIntentId: null // No Stripe for COD
+                }
+            });
+
+            return { payment, order };
+        });
+
+        await logActivity({
+            userId,
+            role: req.user.role,
+            action: 'CREATE_COD_PAYMENT',
+            resourceType: 'payment',
+            resourceId: result.payment.id,
+            meta: { orderId },
+            req
+        });
+
+        sendSuccess(res, 'COD payment initiated. Seller will confirm upon cash receipt.', {
+            paymentId: result.payment.id,
+            amount: result.payment.amount,
+            currency: result.payment.currency,
+            provider: result.payment.provider,
+            status: result.payment.status
+        }, 201);
+    } catch (error) {
+        sendError(res, error.message || 'Failed to create COD payment', null, 400);
+    }
+};
+
+/**
+ * Confirm COD payment received (seller action)
+ * POST /api/payments/:id/confirm-cod
+ * Transition: INITIATED → CAPTURED (for COD)
+ */
+export const confirmCodPayment = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.id;
+
+        const result = await prisma.$transaction(async (tx) => {
+            // 1. Fetch payment with order
+            const payment = await tx.payment.findUnique({
+                where: { id: parseInt(id) },
+                include: { order: true }
+            });
+
+            if (!payment) {
+                throw new Error('Payment not found');
+            }
+
+            // 2. Validate this is a COD payment
+            if (payment.provider !== PaymentProvider.COD) {
+                throw new Error('This endpoint is only for COD payments');
+            }
+
+            // 3. Validate user is the seller
+            if (payment.order.sellerId !== userId) {
+                throw new Error('Only the seller can confirm COD payment receipt');
+            }
+
+            // 4. Validate current status
+            if (payment.status !== PaymentStatus.INITIATED) {
+                throw new Error(`Cannot confirm COD payment. Current status: ${payment.status}`);
+            }
+
+            // 5. Update payment status to CAPTURED (cash received)
+            const updatedPayment = await tx.payment.update({
+                where: { id: payment.id },
+                data: { status: PaymentStatus.CAPTURED },
+                include: { order: true }
+            });
+
+            return updatedPayment;
+        });
+
+        await logActivity({
+            userId,
+            role: req.user.role,
+            action: 'CONFIRM_COD_PAYMENT',
+            resourceType: 'payment',
+            resourceId: id,
+            req
+        });
+
+        sendSuccess(res, 'COD payment confirmed. Cash received.', result);
+    } catch (error) {
+        sendError(res, error.message || 'Failed to confirm COD payment', null, 400);
+    }
+};
+
+/**
+ * Get available payment methods for an order
+ * GET /api/payments/methods/:orderId
+ * Returns available methods based on seller role
+ */
+export const getPaymentMethods = async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const userId = req.user.id;
+
+        const order = await prisma.order.findUnique({
+            where: { id: parseInt(orderId) },
+            include: {
+                seller: { select: { id: true, role: true, name: true } },
+                buyer: { select: { id: true, role: true } }
+            }
+        });
+
+        if (!order) {
+            return sendError(res, 'Order not found', null, 404, ErrorCodes.NOT_FOUND);
+        }
+
+        // Validate user is buyer or seller
+        if (order.buyerId !== userId && order.sellerId !== userId) {
+            return sendError(res, 'Not authorized', null, 403, ErrorCodes.FORBIDDEN);
+        }
+
+        const methods = [];
+
+        // Stripe is always available
+        methods.push({
+            provider: PaymentProvider.STRIPE,
+            name: 'Card Payment',
+            description: 'Pay securely with credit/debit card via Stripe',
+            available: true
+        });
+
+        // COD only available if seller is individual
+        const codAllowed = isCodAllowed(order.seller.role);
+        methods.push({
+            provider: PaymentProvider.COD,
+            name: 'Cash on Delivery',
+            description: codAllowed
+                ? 'Pay cash upon delivery to the seller'
+                : 'Not available for warehouse/company sellers',
+            available: codAllowed
+        });
+
+        sendSuccess(res, 'Payment methods retrieved', {
+            orderId: order.id,
+            sellerRole: order.seller.role,
+            methods
+        });
+    } catch (error) {
+        sendError(res, error.message || 'Failed to get payment methods', null, 400);
     }
 };
 

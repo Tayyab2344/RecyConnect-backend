@@ -2,6 +2,9 @@ import express from 'express';
 import { authenticateToken } from '../middlewares/authMiddleware.js';
 import {
     createPaymentIntent,
+    createCodPayment,
+    confirmCodPayment,
+    getPaymentMethods,
     authorizePayment,
     capturePayment,
     releasePayment,
@@ -73,6 +76,105 @@ router.use(authenticateToken);
  *         description: Order not found
  */
 router.post('/create-intent', createPaymentIntent);
+
+/**
+ * @swagger
+ * /api/payments/create-cod:
+ *   post:
+ *     summary: Create a COD (Cash on Delivery) payment
+ *     description: |
+ *       Creates a COD payment for individual sellers only.
+ *       Individual sellers can accept cash payments.
+ *       Warehouse/Company sellers must use Stripe.
+ *     tags: [Payments]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - orderId
+ *             properties:
+ *               orderId:
+ *                 type: integer
+ *                 description: ID of the confirmed order
+ *     responses:
+ *       201:
+ *         description: COD payment initiated
+ *       400:
+ *         description: COD not available for this seller or order not confirmed
+ */
+router.post('/create-cod', createCodPayment);
+
+/**
+ * @swagger
+ * /api/payments/methods/{orderId}:
+ *   get:
+ *     summary: Get available payment methods for an order
+ *     description: |
+ *       Returns available payment methods based on seller role.
+ *       - Individual sellers: COD + Stripe available
+ *       - Warehouse/Company sellers: Stripe only
+ *     tags: [Payments]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Payment methods retrieved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 sellerRole:
+ *                   type: string
+ *                 methods:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       provider:
+ *                         type: string
+ *                       name:
+ *                         type: string
+ *                       available:
+ *                         type: boolean
+ */
+router.get('/methods/:orderId', getPaymentMethods);
+
+/**
+ * @swagger
+ * /api/payments/{id}/confirm-cod:
+ *   post:
+ *     summary: Confirm COD payment received (seller action)
+ *     description: |
+ *       Seller confirms that cash has been received.
+ *       Transitions payment from INITIATED to CAPTURED.
+ *     tags: [Payments]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: COD payment confirmed
+ *       400:
+ *         description: Not a COD payment or wrong status
+ */
+router.post('/:id/confirm-cod', confirmCodPayment);
 
 /**
  * @swagger
