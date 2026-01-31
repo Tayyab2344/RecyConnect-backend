@@ -14,8 +14,7 @@ A complete backend API for the RecyConnect waste management and recycling market
 6. [Quick Start](#quick-start)
 7. [API Endpoints](#api-endpoints)
 8. [Testing](#testing)
-9. [Known Limitations](#known-limitations)
-10. [Viva Talking Points](#viva-talking-points)
+9. [Technology Stack](#technology-stack)
 
 ---
 
@@ -37,17 +36,6 @@ A complete backend API for the RecyConnect waste management and recycling market
 | **Idempotency** | Prevents duplicate payments, reservations |
 | **Activity Logging** | All actions are logged for audit |
 | **Admin Dashboard** | User management, KYC approval, reports |
-
-### What's Excluded ❌
-
-| Feature | Reason |
-|---------|--------|
-| **Wallet System** | Out of scope for MVP; adds complexity |
-| **Real-time Chat** | Requires WebSocket infrastructure |
-| **Push Notifications** | Requires Firebase/FCM integration |
-| **Delivery Tracking** | Would need third-party logistics API |
-| **Multi-currency** | Single currency (PKR) for simplicity |
-| **Partial Refunds** | Full refund only for MVP |
 
 ---
 
@@ -357,51 +345,6 @@ Test scenarios:
 2. Individual seller + Stripe ✅
 3. Warehouse seller + Stripe ✅
 4. Warehouse seller + COD ❌ (must fail)
-
----
-
-## Known Limitations
-
-| Limitation | Reason | Future Improvement |
-|------------|--------|-------------------|
-| No wallet | Complex for MVP | Add balance system |
-| No partial refund | Stripe complexity | Support partial amounts |
-| Single currency | Regional focus | Multi-currency support |
-| 20-min reservation | Fixed TTL | Configurable TTL |
-| No dispute resolution | Out of scope | Add mediation flow |
-| Manual capture only | Seller control needed | Auto-capture option |
-
----
-
-## Viva Talking Points
-
-### Why no wallet system?
-
-> "A wallet adds significant complexity: balance tracking, withdrawal flows, and reconciliation. For MVP, direct payments (Stripe for tracking, COD for individuals) meet all requirements without the overhead."
-
-### Why COD only for individuals?
-
-> "Individual sellers often don't have business bank accounts or payment processing setup. They need immediate cash. Warehouses and companies have business infrastructure for digital payments."
-
-### Why Stripe for warehouses/companies?
-
-> "B2B transactions need audit trails. Stripe provides: traceable payments, dispute resolution, automatic accounting, and compliance. Cash between businesses is difficult to track."
-
-### How is inventory protected?
-
-> "Three-layer protection:
-> 1. **Reservation decrements quantity** atomically in a transaction
-> 2. **20-minute TTL** auto-releases if order not created
-> 3. **Unique constraints** prevent duplicate reservations per buyer+listing"
-
-### How is payment integrity ensured?
-
-> "Five mechanisms:
-> 1. **State machine** prevents invalid transitions
-> 2. **Idempotency** blocks duplicate payments (paymentIntentId unique)
-> 3. **Manual capture** gives sellers control
-> 4. **Auto-refund** on cancellation
-> 5. **Database transactions** ensure atomicity"
 
 ---
 
