@@ -8,6 +8,8 @@ export const ListingStatus = {
 };
 
 export const OrderStatus = {
+    CREATED: 'CREATED',
+    CONFIRMED: 'CONFIRMED',
     PENDING: 'PENDING',
     PROCESSING: 'PROCESSING',
     SHIPPED: 'SHIPPED',
@@ -26,9 +28,27 @@ export const ReservationStatus = {
     CONFIRMED: 'CONFIRMED'
 };
 
+export const PaymentStatus = {
+    INITIATED: 'INITIATED',
+    AUTHORIZED: 'AUTHORIZED',
+    CAPTURED: 'CAPTURED',
+    RELEASED: 'RELEASED',
+    REFUNDED: 'REFUNDED',
+    FAILED: 'FAILED',
+    // Legacy statuses for backwards compatibility
+    PENDING: 'PENDING',
+    COMPLETED: 'COMPLETED'
+};
+
 export const PaymentMethod = {
     COD: 'COD',
-    ONLINE: 'ONLINE'
+    ONLINE: 'ONLINE',
+    STRIPE: 'STRIPE'
+};
+
+export const PaymentProvider = {
+    STRIPE: 'STRIPE',
+    COD: 'COD'
 };
 
 export const UserRole = {

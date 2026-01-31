@@ -27,6 +27,8 @@ enum ReservationStatus {
 }
 
 enum OrderStatus {
+  CREATED
+  CONFIRMED
   PENDING
   PROCESSING
   SHIPPED
@@ -36,10 +38,14 @@ enum OrderStatus {
 }
 
 enum PaymentStatus {
-  PENDING
-  COMPLETED
-  FAILED
+  INITIATED
+  AUTHORIZED
+  CAPTURED
+  RELEASED
   REFUNDED
+  FAILED
+  PENDING    // Legacy
+  COMPLETED  // Legacy
 }
 
 enum TransactionStatus {
@@ -303,6 +309,8 @@ model Order {
   @@index([buyerId])
   @@index([sellerId])
   @@index([createdAt])
+  @@index([buyerId, status])
+  @@index([sellerId, status])
 }
 
 model OrderItem {
@@ -327,9 +335,10 @@ model Payment {
   order           Order         @relation(fields: [orderId], references: [id])
   amount          Float
   currency        String        @default("PKR")
-  paymentMethod   String        // COD, STRIPE, WALLET
-  status          PaymentStatus @default(PENDING)
-  transactionId   String?       @unique
+  provider        String        @default("STRIPE")  // STRIPE, COD
+  paymentMethod   String?       // card, bank_transfer, etc.
+  status          PaymentStatus @default(INITIATED)
+  paymentIntentId String?       @unique  // Stripe PaymentIntent ID
   
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt

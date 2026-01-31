@@ -1,94 +1,433 @@
-import { OrderStatus, PaymentMethod } from '../constants/enums.js';
-import { buildDateFilter, buildSearchFilter, getPaginationParams } from '../utils/queryHelper.js';
+import { OrderStatus, ReservationStatus, ListingStatus } from '../constants/enums.js';
+import { buildDateFilter, getPaginationParams } from '../utils/queryHelper.js';
 import { sendSuccess, sendPaginated, sendError } from '../utils/responseHelper.js';
 import prisma from '../lib/prisma.js';
 import { logActivity } from '../utils/activityLogger.js';
 
+// Valid state transitions for orders
+const VALID_TRANSITIONS = {
+    [OrderStatus.CREATED]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
+    [OrderStatus.CONFIRMED]: [], // No transitions allowed from CONFIRMED in Day 4
+    [OrderStatus.CANCELLED]: [], // Terminal state
+};
+
 /**
- * Create a new order
+ * Validate state transition
+ */
+const isValidTransition = (currentStatus, newStatus) => {
+    const allowedTransitions = VALID_TRANSITIONS[currentStatus] || [];
+    return allowedTransitions.includes(newStatus);
+};
+
+/**
+ * Create a new order from an ACTIVE reservation
  * POST /api/orders
  */
 export const createOrder = async (req, res) => {
     try {
-        const {
-            sellerId,
-            materialType,
-            weight,
-            pickupAddress,
-            latitude,
-            longitude,
-            locationMethod,
-            paymentMethod
-        } = req.body;
-
+        const { reservationId } = req.body;
         const buyerId = req.user.id;
 
-        // Validation: location is required
-        if (!pickupAddress) {
-            return sendError(res, 'Pickup address is required', null, 400);
+        if (!reservationId) {
+            return sendError(res, 'Reservation ID is required', null, 400);
         }
 
-        // Validation: weight must be positive
-        if (weight <= 0) {
-            return sendError(res, 'Weight must be greater than 0', null, 400);
-        }
-
-        // Check if listing exists
-        const listingId = req.body.listingId;
-        const listing = await prisma.listing.findUnique({
-            where: { id: parseInt(listingId) }
-        });
-
-        if (!listing) {
-            return sendError(res, 'Listing not found', null, 404);
-        }
-
-        // Create order
-        const order = await prisma.order.create({
-            data: {
-                buyerId,
-                sellerId: listing.userId,
-                status: OrderStatus.PENDING,
-                totalAmount: listing.price * (parseFloat(weight) || 1),
-                items: {
-                    create: {
-                        listingId: listing.id,
-                        quantity: parseFloat(weight) || 1,
-                        price: listing.price
+        // Use interactive transaction to ensure atomicity
+        const result = await prisma.$transaction(async (tx) => {
+            // 1. Fetch and validate reservation
+            const reservation = await tx.listingReservation.findUnique({
+                where: { id: parseInt(reservationId) },
+                include: {
+                    listing: {
+                        include: {
+                            user: { select: { id: true, name: true, email: true, contactNo: true, address: true } }
+                        }
                     }
                 }
-            },
-            include: {
-                buyer: {
-                    select: { id: true, name: true, email: true, contactNo: true }
-                },
-                seller: {
-                    select: { id: true, name: true, email: true, contactNo: true, address: true }
-                },
-                items: {
-                    include: { listing: true }
-                }
+            });
+
+            if (!reservation) {
+                throw new Error('Reservation not found');
             }
+
+            // 2. Validate reservation status is ACTIVE
+            if (reservation.status !== ReservationStatus.ACTIVE) {
+                throw new Error(`Reservation is not active. Current status: ${reservation.status}`);
+            }
+
+            // 3. Validate reservation belongs to the buyer
+            if (reservation.buyerId !== buyerId) {
+                throw new Error('Reservation does not belong to you');
+            }
+
+            // 4. Check if reservation already has an order
+            if (reservation.orderId) {
+                throw new Error('Reservation already has an order attached');
+            }
+
+            // 5. Validate buyer ≠ seller
+            const sellerId = reservation.listing.userId;
+            if (buyerId === sellerId) {
+                throw new Error('You cannot create an order for your own listing');
+            }
+
+            // 6. Calculate total amount
+            const totalAmount = reservation.listing.price * reservation.quantity;
+
+            // 7. Create order with status CREATED
+            const order = await tx.order.create({
+                data: {
+                    buyerId,
+                    sellerId,
+                    status: OrderStatus.CREATED,
+                    totalAmount,
+                    items: {
+                        create: {
+                            listingId: reservation.listing.id,
+                            quantity: reservation.quantity,
+                            price: reservation.listing.price
+                        }
+                    }
+                },
+                include: {
+                    buyer: { select: { id: true, name: true, email: true, contactNo: true } },
+                    seller: { select: { id: true, name: true, email: true, contactNo: true, address: true } },
+                    items: { include: { listing: true } }
+                }
+            });
+
+            // 8. Link reservation to order and update status to PENDING (locked for order)
+            await tx.listingReservation.update({
+                where: { id: reservation.id },
+                data: {
+                    orderId: order.id,
+                    status: ReservationStatus.PENDING
+                }
+            });
+
+            return { order, reservation };
         });
 
         await logActivity({
             userId: req.user.id,
             role: req.user.role,
-            action: "CREATE_ORDER",
-            resourceType: "order",
-            resourceId: order.id,
-            meta: { sellerId, materialType, weight, totalAmount: order.totalAmount },
+            action: 'CREATE_ORDER',
+            resourceType: 'order',
+            resourceId: result.order.id,
+            meta: { reservationId, totalAmount: result.order.totalAmount },
             req
         });
 
-        sendSuccess(res, 'Order created successfully', order, 201);
+        sendSuccess(res, 'Order created successfully', result.order, 201);
     } catch (error) {
-        sendError(res, 'Failed to create order', error);
+        sendError(res, error.message || 'Failed to create order', null, 400);
     }
 };
 
 /**
- * Get user's orders (as buyer or seller) with filters
+ * Confirm an order (seller action)
+ * POST /api/orders/:id/confirm
+ * Transition: CREATED → CONFIRMED
+ */
+export const confirmOrder = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.id;
+
+        const result = await prisma.$transaction(async (tx) => {
+            // 1. Fetch order with reservation
+            const order = await tx.order.findUnique({
+                where: { id: parseInt(id) },
+                include: { reservation: true }
+            });
+
+            if (!order) {
+                throw new Error('Order not found');
+            }
+
+            // 2. Validate seller owns this order
+            if (order.sellerId !== userId) {
+                throw new Error('Only the seller can confirm this order');
+            }
+
+            // 3. Validate current status
+            if (order.status !== OrderStatus.CREATED) {
+                throw new Error(`Cannot confirm order. Current status: ${order.status}`);
+            }
+
+            // 4. Validate state transition
+            if (!isValidTransition(order.status, OrderStatus.CONFIRMED)) {
+                throw new Error('Invalid state transition');
+            }
+
+            // 5. Update order status to CONFIRMED
+            const updatedOrder = await tx.order.update({
+                where: { id: order.id },
+                data: { status: OrderStatus.CONFIRMED },
+                include: {
+                    buyer: { select: { id: true, name: true, email: true, contactNo: true } },
+                    seller: { select: { id: true, name: true, email: true, contactNo: true, address: true } },
+                    items: { include: { listing: true } },
+                    reservation: true
+                }
+            });
+
+            // 6. Lock reservation permanently (COMPLETED status)
+            if (order.reservation) {
+                await tx.listingReservation.update({
+                    where: { id: order.reservation.id },
+                    data: { status: ReservationStatus.COMPLETED }
+                });
+            }
+
+            return updatedOrder;
+        });
+
+        await logActivity({
+            userId,
+            role: req.user.role,
+            action: 'CONFIRM_ORDER',
+            resourceType: 'order',
+            resourceId: id,
+            req
+        });
+
+        sendSuccess(res, 'Order confirmed successfully', result);
+    } catch (error) {
+        sendError(res, error.message || 'Failed to confirm order', null, 400);
+    }
+};
+
+/**
+ * Cancel an order
+ * POST /api/orders/:id/cancel
+ * Transition: CREATED → CANCELLED
+ */
+export const cancelOrder = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.id;
+
+        const result = await prisma.$transaction(async (tx) => {
+            // 1. Fetch order with reservation
+            const order = await tx.order.findUnique({
+                where: { id: parseInt(id) },
+                include: { reservation: true }
+            });
+
+            if (!order) {
+                throw new Error('Order not found');
+            }
+
+            // 2. Validate user is buyer or seller
+            if (order.buyerId !== userId && order.sellerId !== userId) {
+                throw new Error('You do not have permission to cancel this order');
+            }
+
+            // 3. Validate current status is CREATED
+            if (order.status !== OrderStatus.CREATED) {
+                throw new Error(`Cannot cancel order. Current status: ${order.status}. Orders can only be cancelled when status is CREATED.`);
+            }
+
+            // 4. Validate state transition
+            if (!isValidTransition(order.status, OrderStatus.CANCELLED)) {
+                throw new Error('Invalid state transition');
+            }
+
+            // 5. Update order status to CANCELLED
+            const updatedOrder = await tx.order.update({
+                where: { id: order.id },
+                data: { status: OrderStatus.CANCELLED },
+                include: {
+                    buyer: { select: { id: true, name: true, email: true, contactNo: true } },
+                    seller: { select: { id: true, name: true, email: true, contactNo: true, address: true } },
+                    items: { include: { listing: true } },
+                    reservation: true
+                }
+            });
+
+            // 6. Release reservation and restore listing quantity
+            if (order.reservation) {
+                // Update reservation status to RELEASED
+                await tx.listingReservation.update({
+                    where: { id: order.reservation.id },
+                    data: {
+                        status: ReservationStatus.RELEASED,
+                        orderId: null // Unlink from order
+                    }
+                });
+
+                // Restore listing quantity
+                await tx.listing.update({
+                    where: { id: order.reservation.listingId },
+                    data: {
+                        quantity: { increment: order.reservation.quantity }
+                    }
+                });
+            }
+
+            return updatedOrder;
+        });
+
+        await logActivity({
+            userId,
+            role: req.user.role,
+            action: 'CANCEL_ORDER',
+            resourceType: 'order',
+            resourceId: id,
+            req
+        });
+
+        sendSuccess(res, 'Order cancelled successfully. Reservation released and stock restored.', result);
+    } catch (error) {
+        sendError(res, error.message || 'Failed to cancel order', null, 400);
+    }
+};
+
+/**
+ * Get buyer's orders with filters and pagination
+ * GET /api/orders/buyer
+ */
+export const getBuyerOrders = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const {
+            status,
+            startDate,
+            endDate,
+            page = 1,
+            limit = 10
+        } = req.query;
+
+        // Build filter conditions
+        const where = {
+            buyerId: userId,
+            ...(status && { status }),
+            ...buildDateFilter(startDate, endDate)
+        };
+
+        // Get total count
+        const totalCount = await prisma.order.count({ where });
+
+        // Get paginated orders
+        const { skip, take, page: pageNum, limit: limitNum } = getPaginationParams(page, limit);
+
+        const orders = await prisma.order.findMany({
+            where,
+            include: {
+                buyer: { select: { id: true, name: true, email: true, contactNo: true } },
+                seller: { select: { id: true, name: true, email: true, contactNo: true, address: true } },
+                items: {
+                    include: {
+                        listing: { select: { id: true, title: true, materialType: true, images: true } }
+                    }
+                },
+                reservation: true
+            },
+            orderBy: { createdAt: 'desc' },
+            skip,
+            take
+        });
+
+        sendPaginated(res, orders, totalCount, pageNum, limitNum);
+    } catch (error) {
+        sendError(res, 'Failed to fetch buyer orders', error);
+    }
+};
+
+/**
+ * Get seller's orders with filters and pagination
+ * GET /api/orders/seller
+ */
+export const getSellerOrders = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const {
+            status,
+            buyerId,
+            startDate,
+            endDate,
+            page = 1,
+            limit = 10
+        } = req.query;
+
+        // Build filter conditions
+        const where = {
+            sellerId: userId,
+            ...(status && { status }),
+            ...(buyerId && { buyerId: parseInt(buyerId) }),
+            ...buildDateFilter(startDate, endDate)
+        };
+
+        // Get total count
+        const totalCount = await prisma.order.count({ where });
+
+        // Get paginated orders
+        const { skip, take, page: pageNum, limit: limitNum } = getPaginationParams(page, limit);
+
+        const orders = await prisma.order.findMany({
+            where,
+            include: {
+                buyer: { select: { id: true, name: true, email: true, contactNo: true } },
+                seller: { select: { id: true, name: true, email: true, contactNo: true, address: true } },
+                items: {
+                    include: {
+                        listing: { select: { id: true, title: true, materialType: true, images: true } }
+                    }
+                },
+                reservation: true
+            },
+            orderBy: { createdAt: 'desc' },
+            skip,
+            take
+        });
+
+        sendPaginated(res, orders, totalCount, pageNum, limitNum);
+    } catch (error) {
+        sendError(res, 'Failed to fetch seller orders', error);
+    }
+};
+
+/**
+ * Get a single order by ID
+ * GET /api/orders/:id
+ */
+export const getOrderById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.id;
+
+        const order = await prisma.order.findUnique({
+            where: { id: parseInt(id) },
+            include: {
+                buyer: { select: { id: true, name: true, email: true, contactNo: true } },
+                seller: { select: { id: true, name: true, email: true, contactNo: true, address: true } },
+                items: {
+                    include: {
+                        listing: true
+                    }
+                },
+                reservation: true
+            }
+        });
+
+        if (!order) {
+            return sendError(res, 'Order not found', null, 404);
+        }
+
+        // Validate user is buyer or seller
+        if (order.buyerId !== userId && order.sellerId !== userId) {
+            return sendError(res, 'You do not have permission to view this order', null, 403);
+        }
+
+        sendSuccess(res, 'Order fetched successfully', order);
+    } catch (error) {
+        sendError(res, 'Failed to fetch order', error);
+    }
+};
+
+/**
+ * Get user's orders (as buyer or seller) with filters - Legacy endpoint
  * GET /api/orders
  */
 export const getOrders = async (req, res) => {
@@ -100,7 +439,6 @@ export const getOrders = async (req, res) => {
             status,
             startDate,
             endDate,
-            search,
             page = 1,
             limit = 10
         } = req.query;
@@ -117,15 +455,10 @@ export const getOrders = async (req, res) => {
                     }),
         };
 
-        if (material) where.materialType = material;
         if (status) where.status = status;
 
-        // Use helpers for date and search
+        // Use helpers for date
         Object.assign(where, buildDateFilter(startDate, endDate));
-
-        if (search) {
-            Object.assign(where, buildSearchFilter(search, ['materialType', 'pickupAddress']));
-        }
 
         // Get total count
         const totalCount = await prisma.order.count({ where });
@@ -153,7 +486,8 @@ export const getOrders = async (req, res) => {
                     include: {
                         listing: { select: { materialType: true } }
                     }
-                }
+                },
+                reservation: true
             },
             orderBy: { createdAt: 'desc' },
             skip,
@@ -213,11 +547,19 @@ export const getOrderStats = async (req, res) => {
             });
         });
 
-        // Get pending orders count
+        // Get pending orders count (CREATED status for new flow)
         const pendingCount = await prisma.order.count({
             where: {
                 ...(role === 'buyer' ? { buyerId: userId } : { sellerId: userId }),
-                status: OrderStatus.PENDING
+                status: { in: [OrderStatus.PENDING, OrderStatus.CREATED] }
+            }
+        });
+
+        // Get confirmed orders count
+        const confirmedCount = await prisma.order.count({
+            where: {
+                ...(role === 'buyer' ? { buyerId: userId } : { sellerId: userId }),
+                status: OrderStatus.CONFIRMED
             }
         });
 
@@ -225,6 +567,7 @@ export const getOrderStats = async (req, res) => {
             totalOrders,
             totalWeight: parseFloat(totalWeight.toFixed(2)),
             pendingCount,
+            confirmedCount,
             byMaterial
         });
     } catch (error) {
@@ -251,7 +594,6 @@ export const exportOrders = async (req, res) => {
                             { sellerId: userId }
                         ]
                     }),
-            ...(material && { materialType: material }),
             ...(status && { status }),
             ...buildDateFilter(startDate, endDate)
         };
@@ -282,7 +624,7 @@ export const exportOrders = async (req, res) => {
         });
 
         // Generate CSV
-        const csvHeader = 'ID,Material Type,Weight (kg),Buyer,Seller,Pickup Address,Payment Method,Status,Created At\n';
+        const csvHeader = 'ID,Material Type,Weight (kg),Total Amount,Buyer,Seller,Status,Created At\n';
         const csvRows = orders.map(order => {
             const materialTypes = order.items.map(i => i.listing.materialType).join('; ');
             const totalWeight = order.items.reduce((sum, i) => sum + i.quantity, 0);
@@ -291,10 +633,9 @@ export const exportOrders = async (req, res) => {
                 order.id,
                 `"${materialTypes}"`,
                 totalWeight,
+                order.totalAmount,
                 `"${order.buyer?.name || 'N/A'}"`,
                 `"${order.seller?.name || 'N/A'}"`,
-                `"${order.pickupAddress || 'N/A'}"`,
-                'N/A', // Payment Method
                 order.status,
                 new Date(order.createdAt).toISOString()
             ].join(',');
@@ -311,7 +652,7 @@ export const exportOrders = async (req, res) => {
 };
 
 /**
- * Update order status
+ * Update order status - Legacy endpoint with state validation
  * PUT /api/orders/:id/status
  */
 export const updateOrderStatus = async (req, res) => {
@@ -335,6 +676,11 @@ export const updateOrderStatus = async (req, res) => {
             return sendError(res, 'Order not found', null, 404);
         }
 
+        // Validate state transition
+        if (!isValidTransition(order.status, status)) {
+            return sendError(res, `Invalid state transition from ${order.status} to ${status}`, null, 400);
+        }
+
         // Update order
         const updated = await prisma.order.update({
             where: { id: parseInt(id) },
@@ -342,10 +688,12 @@ export const updateOrderStatus = async (req, res) => {
         });
 
         await logActivity({
-            action: "UPDATE_ORDER_STATUS",
-            resourceType: "order",
+            userId,
+            role: req.user.role,
+            action: 'UPDATE_ORDER_STATUS',
+            resourceType: 'order',
             resourceId: id,
-            meta: { status },
+            meta: { oldStatus: order.status, newStatus: status },
             req
         });
 

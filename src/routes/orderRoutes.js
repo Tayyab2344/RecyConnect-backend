@@ -2,6 +2,11 @@ import express from 'express';
 import { authenticateToken } from '../middlewares/authMiddleware.js';
 import {
     createOrder,
+    confirmOrder,
+    cancelOrder,
+    getBuyerOrders,
+    getSellerOrders,
+    getOrderById,
     getOrders,
     getOrderStats,
     exportOrders,
@@ -17,14 +22,14 @@ router.use(authenticateToken);
  * @swagger
  * tags:
  *   name: Orders
- *   description: Individual user order management (buying recyclables)
+ *   description: Order management - Create orders from reservations with controlled state transitions
  */
 
 /**
  * @swagger
  * /api/orders:
  *   post:
- *     summary: Create a new order
+ *     summary: Create a new order from an ACTIVE reservation
  *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
@@ -35,62 +40,35 @@ router.use(authenticateToken);
  *           schema:
  *             type: object
  *             required:
- *               - sellerId
- *               - materialType
- *               - weight
- *               - pickupAddress
+ *               - reservationId
  *             properties:
- *               sellerId:
+ *               reservationId:
  *                 type: integer
- *               materialType:
- *                 type: string
- *               weight:
- *                 type: number
- *               pickupAddress:
- *                 type: string
- *               latitude:
- *                 type: number
- *               longitude:
- *                 type: number
- *               locationMethod:
- *                 type: string
- *                 enum: [auto, manual]
- *               paymentMethod:
- *                 type: string
- *                 enum: [COD, WALLET]
- *                 default: COD
+ *                 description: ID of an ACTIVE reservation
  *     responses:
  *       201:
- *         description: Order created successfully
+ *         description: Order created successfully with status CREATED
  *       400:
- *         description: Validation error
+ *         description: Validation error (invalid reservation, buyer=seller, etc.)
+ *       404:
+ *         description: Reservation not found
  */
 router.post('/', createOrder);
 
 /**
  * @swagger
- * /api/orders:
+ * /api/orders/buyer:
  *   get:
- *     summary: Get user's orders with filters and pagination
+ *     summary: Get buyer's orders with filters and pagination
  *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: query
- *         name: role
- *         schema:
- *           type: string
- *           enum: [buyer, seller]
- *         description: Filter by buyer or seller role
- *       - in: query
- *         name: material
- *         schema:
- *           type: string
- *       - in: query
  *         name: status
  *         schema:
  *           type: string
- *           enum: [PENDING, COLLECTED, COMPLETED, CANCELLED]
+ *           enum: [CREATED, CONFIRMED, PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED, COMPLETED]
  *       - in: query
  *         name: startDate
  *         schema:
@@ -101,10 +79,6 @@ router.post('/', createOrder);
  *         schema:
  *           type: string
  *           format: date
- *       - in: query
- *         name: search
- *         schema:
- *           type: string
  *       - in: query
  *         name: page
  *         schema:
@@ -117,9 +91,54 @@ router.post('/', createOrder);
  *           default: 10
  *     responses:
  *       200:
- *         description: Orders retrieved successfully with pagination
+ *         description: Buyer orders retrieved successfully with pagination
  */
-router.get('/', getOrders);
+router.get('/buyer', getBuyerOrders);
+
+/**
+ * @swagger
+ * /api/orders/seller:
+ *   get:
+ *     summary: Get seller's orders with filters and pagination
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [CREATED, CONFIRMED, PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED, COMPLETED]
+ *       - in: query
+ *         name: buyerId
+ *         schema:
+ *           type: integer
+ *         description: Filter by specific buyer
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: Seller orders retrieved successfully with pagination
+ */
+router.get('/seller', getSellerOrders);
 
 /**
  * @swagger
@@ -186,9 +205,133 @@ router.get('/export', exportOrders);
 
 /**
  * @swagger
+ * /api/orders:
+ *   get:
+ *     summary: Get user's orders with filters and pagination (legacy endpoint)
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: role
+ *         schema:
+ *           type: string
+ *           enum: [buyer, seller]
+ *         description: Filter by buyer or seller role
+ *       - in: query
+ *         name: material
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [CREATED, CONFIRMED, PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED, COMPLETED]
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: Orders retrieved successfully with pagination
+ */
+router.get('/', getOrders);
+
+/**
+ * @swagger
+ * /api/orders/{id}:
+ *   get:
+ *     summary: Get a single order by ID
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Order retrieved successfully
+ *       403:
+ *         description: Not authorized to view this order
+ *       404:
+ *         description: Order not found
+ */
+router.get('/:id', getOrderById);
+
+/**
+ * @swagger
+ * /api/orders/{id}/confirm:
+ *   post:
+ *     summary: Confirm an order (seller action)
+ *     description: Transition order from CREATED to CONFIRMED. Locks reservation permanently.
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Order confirmed successfully
+ *       400:
+ *         description: Invalid state transition or not authorized
+ *       404:
+ *         description: Order not found
+ */
+router.post('/:id/confirm', confirmOrder);
+
+/**
+ * @swagger
+ * /api/orders/{id}/cancel:
+ *   post:
+ *     summary: Cancel an order
+ *     description: Transition order from CREATED to CANCELLED. Releases reservation and restores listing quantity.
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Order cancelled successfully, reservation released
+ *       400:
+ *         description: Invalid state transition (order not in CREATED status)
+ *       404:
+ *         description: Order not found
+ */
+router.post('/:id/cancel', cancelOrder);
+
+/**
+ * @swagger
  * /api/orders/{id}/status:
  *   put:
- *     summary: Update order status
+ *     summary: Update order status (legacy endpoint with state validation)
  *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
@@ -209,10 +352,12 @@ router.get('/export', exportOrders);
  *             properties:
  *               status:
  *                 type: string
- *                 enum: [PENDING, COLLECTED, COMPLETED, CANCELLED]
+ *                 enum: [CREATED, CONFIRMED, PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED, COMPLETED]
  *     responses:
  *       200:
  *         description: Order updated successfully
+ *       400:
+ *         description: Invalid state transition
  *       404:
  *         description: Order not found
  */

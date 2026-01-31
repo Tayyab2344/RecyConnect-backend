@@ -22,6 +22,7 @@ import listingRoutes from "./routes/listingRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
 import reportRoutes from "./routes/reportRoutes.js";
 import adminReportRoutes from "./routes/adminReportRoutes.js";
+import paymentRoutes from "./routes/paymentRoutes.js";
 
 import { errorHandler } from "./middlewares/errorMiddleware.js";
 import { logger, stream } from "./utils/logger.js";
@@ -85,6 +86,7 @@ app.use("/api/listings", listingRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/admin/reports", adminReportRoutes);
+app.use("/api/payments", paymentRoutes);
 
 
 app.get("/health", (req, res) => res.json({ ok: true }));
