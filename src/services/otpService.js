@@ -1,6 +1,5 @@
 import bcrypt from 'bcrypt'
-import { PrismaClient } from '@prisma/client'
-const prisma = new PrismaClient()
+import prisma from '../lib/prisma.js'
 
 export function generateOtpCode(length = 6) {
   const digits = '0123456789'

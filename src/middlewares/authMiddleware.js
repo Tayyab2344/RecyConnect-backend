@@ -1,8 +1,6 @@
 import jwt from 'jsonwebtoken'
-import { PrismaClient } from '@prisma/client'
+import prisma from '../lib/prisma.js'
 import { sendError } from '../utils/responseHelper.js'
-
-const prisma = new PrismaClient()
 
 export async function authenticateToken(req, res, next) {
   try {
