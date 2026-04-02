@@ -84,6 +84,7 @@ export const createListing = async (req, res) => {
 
     sendSuccess(res, 'Listing created as DRAFT', listing, 201);
   } catch (error) {
+    console.error('CREATE_LISTING_ERROR:', error);
     sendError(res, 'Failed to create listing', error);
   }
 };
@@ -122,6 +123,7 @@ export const getListings = async (req, res) => {
 
     sendPaginated(res, listings, totalCount, pageNum, limitNum);
   } catch (error) {
+    console.error('GET_LISTINGS_ERROR:', error);
     sendError(res, 'Failed to fetch your listings', error);
   }
 };
