@@ -3,6 +3,31 @@ import { buildDateFilter, buildSearchFilter, getPaginationParams } from '../util
 import { sendSuccess, sendPaginated, sendError } from '../utils/responseHelper.js';
 import prisma from '../lib/prisma.js';
 import { logActivity } from '../utils/activityLogger.js';
+import cloudinary from '../config/cloudinary.js';
+
+/**
+ * Upload a base64 image to Cloudinary
+ * @param {string} base64String - Base64 encoded image string
+ * @param {string} folder - Cloudinary folder path
+ * @returns {Promise<string>} - The secure URL of the uploaded image
+ */
+const uploadBase64ToCloudinary = async (base64String, folder) => {
+  // Add data URI prefix if not present
+  const dataUri = base64String.startsWith('data:')
+    ? base64String
+    : `data:image/jpeg;base64,${base64String}`;
+
+  const result = await cloudinary.uploader.upload(dataUri, {
+    folder,
+    resource_type: 'image',
+    transformation: [
+      { width: 800, height: 800, crop: 'limit' },
+      { quality: 'auto' }
+    ]
+  });
+
+  return result.secure_url;
+};
 
 /**
  * Create a new listing
@@ -52,6 +77,24 @@ export const createListing = async (req, res) => {
       return sendError(res, 'At least one image is required', null, 400);
     }
 
+    // Upload base64 images to Cloudinary, keep URLs as-is
+    let imageUrls = [];
+    for (const img of images) {
+      if (img.startsWith('http://') || img.startsWith('https://')) {
+        // Already a URL, keep it
+        imageUrls.push(img);
+      } else {
+        // Base64 string — upload to Cloudinary
+        try {
+          const url = await uploadBase64ToCloudinary(img, `recyconnect/listings/${userId}`);
+          imageUrls.push(url);
+        } catch (uploadErr) {
+          console.error('IMAGE_UPLOAD_ERROR:', uploadErr);
+          return sendError(res, 'Failed to upload image', uploadErr, 400);
+        }
+      }
+    }
+
     const listing = await prisma.listing.create({
       data: {
         userId,
@@ -67,7 +110,7 @@ export const createListing = async (req, res) => {
         longitude: parseFloat(longitude) || null,
         locationMethod: locationMethod || 'manual',
         notes: notes || null,
-        images: images,
+        images: imageUrls,
         status
       }
     });
