@@ -83,6 +83,7 @@ export async function getTransactions(req, res) {
 
         sendSuccess(res, 'Transactions fetched', transactions);
     } catch (err) {
+        console.error('GET_TRANSACTIONS_ERROR:', err);
         sendError(res, 'Failed to fetch transactions', err);
     }
 }

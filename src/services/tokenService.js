@@ -1,7 +1,6 @@
 import jwt from 'jsonwebtoken'
-import { PrismaClient } from '@prisma/client'
+import prisma from '../lib/prisma.js'
 import bcrypt from 'bcrypt'
-const prisma = new PrismaClient()
 
 export function signAccessToken(user) {
   const payload = { userId: user.id, role: user.role }

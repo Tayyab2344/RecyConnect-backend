@@ -62,7 +62,7 @@ export const sendError = (res, message, error = null, statusCode = 500, errorCod
         response.code = errorCode;
     }
 
-    if (error && process.env.NODE_ENV !== 'production') {
+    if (error) {
         response.error = error.message || error;
     }
 
