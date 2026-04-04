@@ -135,23 +135,85 @@ export const createListing = async (req, res) => {
 /**
  * Get user's listings history with filters
  * GET /api/listings
+ * If view=marketplace, returns other users' PUBLISHED listings filtered by seller role.
  */
 export const getListings = async (req, res) => {
   try {
     const userId = req.user.id;
+    const userRole = req.user.role; // Requester's role
     const {
       materialType,
       status,
       startDate,
       endDate,
+      search,
       page = 1,
-      limit = 10
+      limit = 10,
+      view
     } = req.query;
 
+    // ── Marketplace View ──────────────────────────────────────────
+    if (view === 'marketplace') {
+      // Determine which seller roles this user can see
+      let allowedSellerRoles;
+      const role = (userRole || '').toLowerCase();
+      if (role === 'individual') {
+        allowedSellerRoles = ['individual', 'warehouse'];
+      } else if (role === 'company' || role === 'organization') {
+        allowedSellerRoles = ['warehouse'];
+      } else {
+        // Warehouse or admin sees everyone
+        allowedSellerRoles = ['individual', 'warehouse', 'company', 'organization', 'admin'];
+      }
+
+      const where = {
+        status: 'PUBLISHED',
+        userId: { not: userId }, // Never show own listings
+        user: {
+          role: { in: allowedSellerRoles, mode: 'insensitive' }
+        }
+      };
+
+      if (materialType) where.materialType = { equals: materialType, mode: 'insensitive' };
+      if (search) {
+        where.OR = [
+          { materialType: { contains: search, mode: 'insensitive' } },
+          { notes: { contains: search, mode: 'insensitive' } },
+          { pickupAddress: { contains: search, mode: 'insensitive' } }
+        ];
+      }
+      Object.assign(where, buildDateFilter(startDate, endDate));
+
+      const totalCount = await prisma.listing.count({ where });
+      const { skip, take, page: pageNum, limit: limitNum } = getPaginationParams(page, limit);
+
+      const listings = await prisma.listing.findMany({
+        where,
+        include: {
+          user: {
+            select: { id: true, name: true, city: true, area: true, role: true, profileImage: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take
+      });
+
+      return sendPaginated(res, listings, totalCount, pageNum, limitNum);
+    }
+
+    // ── Own Listings View ─────────────────────────────────────────
     const where = { userId };
 
     if (materialType) where.materialType = { equals: materialType, mode: 'insensitive' };
     if (status) where.status = status;
+    if (search) {
+      where.OR = [
+        { materialType: { contains: search, mode: 'insensitive' } },
+        { notes: { contains: search, mode: 'insensitive' } },
+        { pickupAddress: { contains: search, mode: 'insensitive' } }
+      ];
+    }
     Object.assign(where, buildDateFilter(startDate, endDate));
 
     const totalCount = await prisma.listing.count({ where });
@@ -167,9 +229,10 @@ export const getListings = async (req, res) => {
     sendPaginated(res, listings, totalCount, pageNum, limitNum);
   } catch (error) {
     console.error('GET_LISTINGS_ERROR:', error);
-    sendError(res, 'Failed to fetch your listings', error);
+    sendError(res, 'Failed to fetch listings', error);
   }
 };
+
 
 /**
  * Get Public Listings (Buyer View)
