@@ -28,56 +28,43 @@ const isValidTransition = (currentStatus, newStatus) => {
  */
 export const createOrder = async (req, res) => {
     try {
-        const { reservationId } = req.body;
+        const { listingId, weight } = req.body;
         const buyerId = req.user.id;
 
-        if (!reservationId) {
-            return sendError(res, 'Reservation ID is required', null, 400);
+        if (!listingId || !weight) {
+            return sendError(res, 'listingId and weight are required', null, 400);
         }
 
         // Use interactive transaction to ensure atomicity
         const result = await prisma.$transaction(async (tx) => {
-            // 1. Fetch and validate reservation
-            const reservation = await tx.listingReservation.findUnique({
-                where: { id: parseInt(reservationId) },
+            // 1. Fetch and validate listing
+            const listing = await tx.listing.findUnique({
+                where: { id: parseInt(listingId) },
                 include: {
-                    listing: {
-                        include: {
-                            user: { select: { id: true, name: true, email: true, contactNo: true, address: true } }
-                        }
-                    }
+                    user: { select: { id: true, name: true, email: true, contactNo: true, address: true } }
                 }
             });
 
-            if (!reservation) {
-                throw new Error('Reservation not found');
+            if (!listing) {
+                throw new Error('Listing not found');
             }
 
-            // 2. Validate reservation status is ACTIVE
-            if (reservation.status !== ReservationStatus.ACTIVE) {
-                throw new Error(`Reservation is not active. Current status: ${reservation.status}`);
+            // 2. Validate stock availability
+            const requestedWeight = parseFloat(weight);
+            if (listing.quantity < requestedWeight) {
+                throw new Error('Requested quantity exceeds available stock');
             }
 
-            // 3. Validate reservation belongs to the buyer
-            if (reservation.buyerId !== buyerId) {
-                throw new Error('Reservation does not belong to you');
-            }
-
-            // 4. Check if reservation already has an order
-            if (reservation.orderId) {
-                throw new Error('Reservation already has an order attached');
-            }
-
-            // 5. Validate buyer ≠ seller
-            const sellerId = reservation.listing.userId;
+            // 3. Validate buyer ≠ seller
+            const sellerId = listing.userId;
             if (buyerId === sellerId) {
                 throw new Error('You cannot create an order for your own listing');
             }
 
-            // 6. Calculate total amount
-            const totalAmount = reservation.listing.price * reservation.quantity;
+            // 4. Calculate total amount
+            const totalAmount = listing.price * requestedWeight;
 
-            // 7. Create order with status CREATED
+            // 5. Create order with status CREATED
             const order = await tx.order.create({
                 data: {
                     buyerId,
@@ -86,9 +73,9 @@ export const createOrder = async (req, res) => {
                     totalAmount,
                     items: {
                         create: {
-                            listingId: reservation.listing.id,
-                            quantity: reservation.quantity,
-                            price: reservation.listing.price
+                            listingId: listing.id,
+                            quantity: requestedWeight,
+                            price: listing.price
                         }
                     }
                 },
@@ -99,16 +86,15 @@ export const createOrder = async (req, res) => {
                 }
             });
 
-            // 8. Link reservation to order and update status to PENDING (locked for order)
-            await tx.listingReservation.update({
-                where: { id: reservation.id },
+            // 6. Deduct stock atomically
+            await tx.listing.update({
+                where: { id: listing.id },
                 data: {
-                    orderId: order.id,
-                    status: ReservationStatus.PENDING
+                    quantity: { decrement: requestedWeight }
                 }
             });
 
-            return { order, reservation };
+            return { order };
         });
 
         await logActivity({
@@ -117,7 +103,7 @@ export const createOrder = async (req, res) => {
             action: 'CREATE_ORDER',
             resourceType: 'order',
             resourceId: result.order.id,
-            meta: { reservationId, totalAmount: result.order.totalAmount },
+            meta: { listingId: listingId, totalAmount: result.order.totalAmount },
             req
         });
 
@@ -302,7 +288,19 @@ export const cancelOrder = async (req, res) => {
                 }
             });
 
-            // 7. Release reservation and restore listing quantity
+            // 7. Restore listing quantity directly from order items
+            if (updatedOrder.items && updatedOrder.items.length > 0) {
+                for (const item of updatedOrder.items) {
+                    await tx.listing.update({
+                        where: { id: item.listingId },
+                        data: {
+                            quantity: { increment: item.quantity }
+                        }
+                    });
+                }
+            }
+
+            // 8. Legacy: Release reservation if one somehow still exists on this order
             if (order.reservation) {
                 // Update reservation status to RELEASED
                 await tx.listingReservation.update({
@@ -310,14 +308,6 @@ export const cancelOrder = async (req, res) => {
                     data: {
                         status: ReservationStatus.RELEASED,
                         orderId: null // Unlink from order
-                    }
-                });
-
-                // Restore listing quantity
-                await tx.listing.update({
-                    where: { id: order.reservation.listingId },
-                    data: {
-                        quantity: { increment: order.reservation.quantity }
                     }
                 });
             }
