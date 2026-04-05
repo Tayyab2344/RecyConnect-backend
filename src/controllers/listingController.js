@@ -53,8 +53,8 @@ export const createListing = async (req, res) => {
 
     const userId = req.user.id;
 
-    // Save as DRAFT by default (handled by schema default, but explicit for clarity)
-    const status = ListingStatus.DRAFT;
+    // Save as PUBLISHED so it immediately appears in the marketplace
+    const status = ListingStatus.PUBLISHED;
 
     // Validation
     if (!materialType || !estimatedWeight) {
@@ -125,7 +125,7 @@ export const createListing = async (req, res) => {
       req
     });
 
-    sendSuccess(res, 'Listing created as DRAFT', listing, 201);
+    sendSuccess(res, 'Listing published successfully', listing, 201);
   } catch (error) {
     console.error('CREATE_LISTING_ERROR:', error);
     sendError(res, 'Failed to create listing', error);

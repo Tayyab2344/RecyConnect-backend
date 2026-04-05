@@ -20,7 +20,7 @@ export const reserveListing = async (req, res) => {
 
         // Use interactive transaction to ensure atomicity
         const result = await prisma.$transaction(async (tx) => {
-            // 1. Fetch and Lock Listing
+            // 1. Fetch Listing (for validation only — NOT for stock read)
             const listing = await tx.listing.findUnique({
                 where: { id: parseInt(listingId) }
             });
@@ -55,14 +55,27 @@ export const reserveListing = async (req, res) => {
                 throw err;
             }
 
-            // 3. Check Available Weight
-            if (listing.quantity < requestedWeight) {
+            // 3. ATOMIC stock deduction — only succeeds if quantity is still sufficient
+            //    This prevents race conditions: two concurrent buyers both passing the
+            //    "quantity > 0" check before either writes, causing overselling.
+            const updated = await tx.listing.updateMany({
+                where: {
+                    id: listing.id,
+                    quantity: { gte: requestedWeight }  // Atomic guard
+                },
+                data: {
+                    quantity: { decrement: requestedWeight }
+                }
+            });
+
+            if (updated.count === 0) {
+                // Another buyer just took the stock — we lost the race
                 const err = new Error('Requested quantity exceeds available stock');
                 err.code = ErrorCodes.INSUFFICIENT_QUANTITY;
                 throw err;
             }
 
-            // 4. Create Reservation
+            // 4. Create Reservation (stock is already safely decremented)
             const expiresAt = new Date();
             expiresAt.setMinutes(expiresAt.getMinutes() + 20); // 20 min TTL
 
@@ -76,16 +89,10 @@ export const reserveListing = async (req, res) => {
                 }
             });
 
-            // 4. Reduce Listing Quantity
-            const updatedListing = await tx.listing.update({
-                where: { id: listing.id },
-                data: {
-                    quantity: { decrement: requestedWeight }
-                }
+            // 5. Fetch the updated listing to return current state
+            const updatedListing = await tx.listing.findUnique({
+                where: { id: listing.id }
             });
-
-            // Note: If quantity becomes 0, we could potentially auto-pause or mark as SOLD,
-            // but requirements don't explicitly ask for that state change yet.
 
             return { reservation, updatedListing };
         });
@@ -105,6 +112,7 @@ export const reserveListing = async (req, res) => {
         sendError(res, error.message || 'Failed to create reservation', null, 400);
     }
 };
+
 
 /**
  * Manually release a reservation
