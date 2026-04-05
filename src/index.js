@@ -93,26 +93,31 @@ app.get("/health", (req, res) => res.json({ ok: true }));
 
 app.use(errorHandler);
 
-// Listen on 0.0.0.0 to allow connections from external devices (APK on physical phone)
-httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`\x1b[32m[SERVER] Running successfully on http://localhost:${PORT}\x1b[0m`);
-    console.log(`\x1b[36m[SWAGGER] Documentation available at http://localhost:${PORT}/api-docs\x1b[0m`);
+// Only start the HTTP server when NOT running on Vercel (serverless)
+if (!process.env.VERCEL) {
+    httpServer.listen(PORT, '0.0.0.0', () => {
+        console.log(`\x1b[32m[SERVER] Running successfully on http://localhost:${PORT}\x1b[0m`);
+        console.log(`\x1b[36m[SWAGGER] Documentation available at http://localhost:${PORT}/api-docs\x1b[0m`);
 
-    // Initialize background tasks
-    initCronJobs();
+        // Initialize background tasks (only in non-serverless env)
+        initCronJobs();
 
-    logger.info(`Server started on port ${PORT}`);
+        logger.info(`Server started on port ${PORT}`);
 
-    // Attempt to fetch ngrok URL (timeout 1s to avoid blocking if not running)
-    fetch('http://127.0.0.1:4040/api/tunnels')
-        .then(res => res.json())
-        .then(data => {
-            const tunnel = data.tunnels.find(t => t.public_url.startsWith('https'));
-            if (tunnel) {
-                console.log(`\x1b[35m[NGROK] Public URL: ${tunnel.public_url}\x1b[0m`);
-            }
-        })
-        .catch(() => {
-            // Ngrok not running or not accessible, ignore
-        });
-});
+        // Attempt to fetch ngrok URL (timeout 1s to avoid blocking if not running)
+        fetch('http://127.0.0.1:4040/api/tunnels')
+            .then(res => res.json())
+            .then(data => {
+                const tunnel = data.tunnels.find(t => t.public_url.startsWith('https'));
+                if (tunnel) {
+                    console.log(`\x1b[35m[NGROK] Public URL: ${tunnel.public_url}\x1b[0m`);
+                }
+            })
+            .catch(() => {
+                // Ngrok not running or not accessible, ignore
+            });
+    });
+}
+
+// Export the app for Vercel serverless
+export default app;
