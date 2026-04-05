@@ -104,7 +104,7 @@ export const createListing = async (req, res) => {
         materialType,
         estimatedWeight: parseFloat(estimatedWeight),
         price: parseFloat(price) || 0,
-        quantity: parseFloat(quantity) || 1,
+        quantity: parseFloat(quantity) || parseFloat(estimatedWeight),
         pickupAddress,
         latitude: parseFloat(latitude) || null,
         longitude: parseFloat(longitude) || null,
