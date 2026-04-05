@@ -40,7 +40,8 @@ export const reserveListing = async (req, res) => {
                 throw new Error('Listing is not available for reservation');
             }
 
-            // 2. Idempotency check - prevent duplicate ACTIVE reservations
+            // 2. Idempotency check - if an ACTIVE reservation already exists, reuse it
+            //    This allows safe retries if the checkout failed after reservation was created.
             const existingReservation = await tx.listingReservation.findFirst({
                 where: {
                     buyerId,
@@ -50,9 +51,9 @@ export const reserveListing = async (req, res) => {
             });
 
             if (existingReservation) {
-                const err = new Error('You already have an active reservation for this listing');
-                err.code = ErrorCodes.DUPLICATE_OPERATION;
-                throw err;
+                // Return the existing reservation so checkout can continue
+                const currentListing = await tx.listing.findUnique({ where: { id: listing.id } });
+                return { reservation: existingReservation, updatedListing: currentListing };
             }
 
             // 3. ATOMIC stock deduction — only succeeds if quantity is still sufficient
