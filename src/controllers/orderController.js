@@ -31,8 +31,8 @@ export const createOrder = async (req, res) => {
         const { listingId, weight } = req.body;
         const buyerId = req.user.id;
 
-        if (!listingId || !weight) {
-            return sendError(res, 'listingId and weight are required', null, 400);
+        if (!listingId) {
+            return sendError(res, 'listingId is required', null, 400);
         }
 
         // Use interactive transaction to ensure atomicity
@@ -49,22 +49,36 @@ export const createOrder = async (req, res) => {
                 throw new Error('Listing not found');
             }
 
-            // 2. Validate stock availability
-            const requestedWeight = parseFloat(weight);
-            if (listing.quantity < requestedWeight) {
-                throw new Error('Requested quantity exceeds available stock');
+            // 2. Validate listing is available (not sold, not draft)
+            if (listing.status === ListingStatus.SOLD || listing.status === ListingStatus.CANCELLED) {
+                throw new Error('This listing is no longer available');
             }
 
-            // 3. Validate buyer ≠ seller
+            // 3. Determine the quantity for this order.
+            // Use the passed weight; fall back to listing.estimatedWeight.
+            // The available quantity = estimatedWeight (what the seller has left).
+            const availableQty = listing.estimatedWeight > 0 ? listing.estimatedWeight : listing.quantity;
+            const requestedWeight = weight ? parseFloat(weight) : availableQty;
+
+            if (requestedWeight <= 0) {
+                throw new Error('Requested quantity must be greater than zero');
+            }
+
+            if (requestedWeight > availableQty) {
+                throw new Error(`Requested quantity (${requestedWeight} kg) exceeds available stock (${availableQty} kg)`);
+            }
+
+            // 4. Validate buyer ≠ seller
             const sellerId = listing.userId;
             if (buyerId === sellerId) {
                 throw new Error('You cannot create an order for your own listing');
             }
 
-            // 4. Calculate total amount
-            const totalAmount = listing.price * requestedWeight;
+            // 5. Calculate total amount
+            const pricePerKg = listing.price > 0 ? listing.price : 20.0; // fallback price
+            const totalAmount = pricePerKg * requestedWeight;
 
-            // 5. Create order with status CREATED
+            // 6. Create order with status CREATED
             const order = await tx.order.create({
                 data: {
                     buyerId,
@@ -75,7 +89,7 @@ export const createOrder = async (req, res) => {
                         create: {
                             listingId: listing.id,
                             quantity: requestedWeight,
-                            price: listing.price
+                            price: pricePerKg
                         }
                     }
                 },
@@ -86,11 +100,14 @@ export const createOrder = async (req, res) => {
                 }
             });
 
-            // 6. Deduct stock atomically
+            // 7. Deduct stock atomically and mark listing as SOLD if fully ordered
+            const newQty = availableQty - requestedWeight;
             await tx.listing.update({
                 where: { id: listing.id },
                 data: {
-                    quantity: { decrement: requestedWeight }
+                    estimatedWeight: newQty > 0 ? newQty : 0,
+                    quantity: newQty > 0 ? newQty : 0,
+                    status: newQty <= 0 ? ListingStatus.SOLD : listing.status
                 }
             });
 
@@ -291,12 +308,20 @@ export const cancelOrder = async (req, res) => {
             // 7. Restore listing quantity directly from order items
             if (updatedOrder.items && updatedOrder.items.length > 0) {
                 for (const item of updatedOrder.items) {
-                    await tx.listing.update({
-                        where: { id: item.listingId },
-                        data: {
-                            quantity: { increment: item.quantity }
-                        }
-                    });
+                    // Fetch current listing state
+                    const currentListing = await tx.listing.findUnique({ where: { id: item.listingId } });
+                    if (currentListing) {
+                        const restoredQty = (currentListing.estimatedWeight || currentListing.quantity || 0) + item.quantity;
+                        await tx.listing.update({
+                            where: { id: item.listingId },
+                            data: {
+                                estimatedWeight: restoredQty,
+                                quantity: restoredQty,
+                                // If listing was SOLD, restore to PUBLISHED
+                                status: currentListing.status === ListingStatus.SOLD ? ListingStatus.PUBLISHED : currentListing.status
+                            }
+                        });
+                    }
                 }
             }
 
