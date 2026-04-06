@@ -55,8 +55,6 @@ export const createOrder = async (req, res) => {
             }
 
             // 3. Determine the quantity for this order.
-            // Use the passed weight; fall back to listing.estimatedWeight.
-            // The available quantity = estimatedWeight (what the seller has left).
             const availableQty = listing.estimatedWeight > 0 ? listing.estimatedWeight : listing.quantity;
             const requestedWeight = weight ? parseFloat(weight) : availableQty;
 
@@ -105,8 +103,8 @@ export const createOrder = async (req, res) => {
             await tx.listing.update({
                 where: { id: listing.id },
                 data: {
-                    estimatedWeight: newQty > 0 ? newQty : 0,
-                    quantity: newQty > 0 ? newQty : 0,
+                    estimatedWeight: newQty,
+                    quantity: newQty,
                     status: newQty <= 0 ? ListingStatus.SOLD : listing.status
                 }
             });
