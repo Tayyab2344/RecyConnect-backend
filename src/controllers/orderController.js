@@ -28,7 +28,7 @@ const isValidTransition = (currentStatus, newStatus) => {
  */
 export const createOrder = async (req, res) => {
     try {
-        const { listingId, weight } = req.body;
+        const { listingId, weight, paymentMethod } = req.body;
         const buyerId = req.user.id;
 
         if (!listingId) {
@@ -83,6 +83,7 @@ export const createOrder = async (req, res) => {
                     sellerId,
                     status: OrderStatus.CREATED,
                     totalAmount,
+                    paymentMethod: paymentMethod || 'cod',
                     items: {
                         create: {
                             listingId: listing.id,
