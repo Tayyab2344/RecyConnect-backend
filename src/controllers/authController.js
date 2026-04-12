@@ -441,6 +441,11 @@ export async function login(req, res) {
       return sendError(res, "Invalid credentials", null, 401);
     }
 
+    // Check if account has been deleted
+    if (user.deletedAt) {
+      return sendError(res, "This account has been deleted", null, 403);
+    }
+
     // Skip verification checks for admin users
     if (user.role !== UserRole.ADMIN) {
       // Check Verification Status

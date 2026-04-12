@@ -284,6 +284,7 @@ model Order {
   
   status         OrderStatus   @default(PENDING)
   totalAmount    Float         @default(0.0)
+  paymentMethod  String?       // 'cod' or 'stripe'
   
   // Link to reservation
   reservation    ListingReservation?
