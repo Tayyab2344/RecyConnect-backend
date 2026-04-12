@@ -14,7 +14,8 @@ const STRIPE_ONLY_ROLES = [UserRole.WAREHOUSE, UserRole.COMPANY];
  * Warehouse/Company to Warehouse/Company = Stripe only
  */
 const isCodAllowed = (sellerRole) => {
-    return sellerRole === UserRole.INDIVIDUAL;
+    // COD is allowed for all seller roles
+    return true;
 };
 
 // Valid payment state transitions
@@ -65,9 +66,9 @@ export const createPaymentIntent = async (req, res) => {
                 throw new Error('Only the buyer can initiate payment');
             }
 
-            // 3. Validate order status is CONFIRMED
-            if (order.status !== OrderStatus.CONFIRMED) {
-                throw new Error(`Cannot create payment. Order status must be CONFIRMED. Current status: ${order.status}`);
+            // 3. Validate order status is CREATED or CONFIRMED
+            if (order.status !== OrderStatus.CREATED && order.status !== OrderStatus.CONFIRMED) {
+                throw new Error(`Cannot create payment. Order status must be CREATED or CONFIRMED. Current status: ${order.status}`);
             }
 
             // 4. Check if payment already exists
@@ -161,9 +162,9 @@ export const createCodPayment = async (req, res) => {
                 throw new Error('Only the buyer can initiate payment');
             }
 
-            // 3. Validate order status is CONFIRMED
-            if (order.status !== OrderStatus.CONFIRMED) {
-                throw new Error(`Cannot create payment. Order status must be CONFIRMED. Current: ${order.status}`);
+            // 3. Validate order status is CREATED or CONFIRMED
+            if (order.status !== OrderStatus.CREATED && order.status !== OrderStatus.CONFIRMED) {
+                throw new Error(`Cannot create payment. Order status must be CREATED or CONFIRMED. Current: ${order.status}`);
             }
 
             // 4. Check if payment already exists
