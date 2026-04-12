@@ -77,6 +77,10 @@ export const createListing = async (req, res) => {
       return sendError(res, 'At least one image is required', null, 400);
     }
 
+    if (Array.isArray(images) && images.length > 3) {
+      return sendError(res, 'Maximum 3 images allowed per listing', null, 400);
+    }
+
     // Upload base64 images to Cloudinary, keep URLs as-is
     let imageUrls = [];
     for (const img of images) {
