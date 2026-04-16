@@ -181,6 +181,7 @@ export const getListings = async (req, res) => {
       if (materialType) where.materialType = { equals: materialType, mode: 'insensitive' };
       if (search) {
         where.OR = [
+          { title: { contains: search, mode: 'insensitive' } },
           { materialType: { contains: search, mode: 'insensitive' } },
           { notes: { contains: search, mode: 'insensitive' } },
           { pickupAddress: { contains: search, mode: 'insensitive' } }
@@ -213,6 +214,7 @@ export const getListings = async (req, res) => {
     if (status) where.status = status;
     if (search) {
       where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
         { materialType: { contains: search, mode: 'insensitive' } },
         { notes: { contains: search, mode: 'insensitive' } },
         { pickupAddress: { contains: search, mode: 'insensitive' } }
