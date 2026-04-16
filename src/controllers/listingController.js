@@ -196,7 +196,7 @@ export const getListings = async (req, res) => {
         where,
         include: {
           user: {
-            select: { id: true, name: true, city: true, area: true, role: true, profileImage: true }
+            select: { id: true, name: true, city: true, area: true, role: true, profileImage: true, createdAt: true }
           }
         },
         orderBy: { createdAt: 'desc' },
