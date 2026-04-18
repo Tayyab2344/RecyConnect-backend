@@ -1,11 +1,9 @@
 import 'dotenv/config';
 import request from 'supertest';
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../src/lib/prisma.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-
-const prisma = new PrismaClient();
 
 // Import routes
 import transactionRoutes from '../src/routes/transactionRoutes.js';
@@ -64,10 +62,14 @@ describe('Transaction Controller', () => {
     });
 
     afterAll(async () => {
-        await prisma.transaction.deleteMany({ where: { itemId: item.id } });
-        await prisma.item.delete({ where: { id: item.id } });
-        await prisma.user.deleteMany({ where: { id: { in: [buyer.id, seller.id] } } });
-        await prisma.$disconnect();
+        if (item) {
+            await prisma.transaction.deleteMany({ where: { itemId: item.id } });
+            await prisma.item.delete({ where: { id: item.id } });
+        }
+        if (buyer && seller) {
+            await prisma.user.deleteMany({ where: { id: { in: [buyer.id, seller.id] } } });
+        }
+        // prisma disconnect handled by setup.js
     });
 
     describe('POST /api/transactions', () => {

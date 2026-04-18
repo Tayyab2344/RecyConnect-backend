@@ -1,10 +1,9 @@
 import bcrypt from 'bcrypt';
-import fs from 'fs/promises';
-import cloudinary from '../config/cloudinary.js';
 import { UserRole, VerificationStatus } from '../constants/enums.js';
 import { sendSuccess, sendError } from '../utils/responseHelper.js';
 import prisma from '../lib/prisma.js';
 import { logActivity } from '../utils/activityLogger.js';
+import { encryptedDocumentData, uploadEncryptedToCloudinary, uploadToCloudinary } from '../utils/uploadHelper.js';
 
 function generateCollectorId() {
   const n = Math.floor(1000 + Math.random() * 9000)
@@ -29,26 +28,15 @@ export async function addCollector(req, res) {
     if (req.files) {
       if (req.files.profileImage?.[0]) {
         const file = req.files.profileImage[0];
-        const uploaded = await cloudinary.uploader.upload(file.path, {
-          folder: `recyconnect/profile/collector_${Date.now()}`,
-        });
+        const uploaded = await uploadToCloudinary(file, `recyconnect/profile/collector_${Date.now()}`);
         profileImageUrl = uploaded.secure_url;
-        await fs.unlink(file.path);
       }
 
       if (req.files.cnic?.[0]) {
         const file = req.files.cnic[0];
-        const uploaded = await cloudinary.uploader.upload(file.path, {
-          folder: `recyconnect/docs/collector_${Date.now()}`,
-        });
+        const uploaded = await uploadEncryptedToCloudinary(file, `recyconnect/docs/collector_${Date.now()}`);
         cnicUrl = uploaded.secure_url;
-        await fs.unlink(file.path);
-
-        documentsData.push({
-          docType: "CNIC",
-          fileUrl: cnicUrl,
-          fileName: file.originalname
-        });
+        documentsData.push(encryptedDocumentData("CNIC", file, uploaded));
       }
     }
 

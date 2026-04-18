@@ -5,6 +5,8 @@ import { sendSuccess, sendPaginated, sendError } from '../utils/responseHelper.j
 import prisma from '../lib/prisma.js';
 import { logActivity } from '../utils/activityLogger.js';
 import * as stripeService from '../services/stripeService.js';
+import { EventBus } from '../events/eventBus.js';
+import { invalidateCache } from '../lib/redis.js';
 
 // Valid state transitions for orders
 const VALID_TRANSITIONS = {
@@ -111,7 +113,7 @@ export const createOrder = async (req, res) => {
             });
 
             return { order };
-        });
+        }, { timeout: 15000 });
 
         await logActivity({
             userId: req.user.id,
@@ -121,6 +123,13 @@ export const createOrder = async (req, res) => {
             resourceId: result.order.id,
             meta: { listingId: listingId, totalAmount: result.order.totalAmount },
             req
+        });
+
+        // Fire asynchronous hook for side-effects
+        EventBus.emit('order.created', { 
+            orderId: result.order.id, 
+            buyerId: buyerId, 
+            sellerId: result.order.sellerId 
         });
 
         sendSuccess(res, 'Order created successfully', result.order, 201);
@@ -197,6 +206,10 @@ export const confirmOrder = async (req, res) => {
             req
         });
 
+        // Invalidate order/report caches
+        invalidateCache('cache:*/orders*').catch(() => {});
+        invalidateCache('cache:*/reports*').catch(() => {});
+
         sendSuccess(res, 'Order confirmed successfully', result);
     } catch (error) {
         sendError(res, error.message || 'Failed to confirm order', null, 400);
@@ -212,7 +225,7 @@ export const confirmOrder = async (req, res) => {
 export const cancelOrder = async (req, res) => {
     try {
         const { id } = req.params;
-        const { reason } = req.body;
+        const { reason } = req.body || {};
         const userId = req.user.id;
 
         const result = await prisma.$transaction(async (tx) => {
@@ -337,7 +350,7 @@ export const cancelOrder = async (req, res) => {
             }
 
             return { order: updatedOrder, paymentRefunded };
-        });
+        }, { timeout: 15000 });
 
         await logActivity({
             userId,
@@ -352,6 +365,11 @@ export const cancelOrder = async (req, res) => {
         const message = result.paymentRefunded
             ? 'Order cancelled successfully. Payment refunded and reservation released.'
             : 'Order cancelled successfully. Reservation released and stock restored.';
+
+        // Invalidate order/report/listing caches
+        invalidateCache('cache:*/orders*').catch(() => {});
+        invalidateCache('cache:*/reports*').catch(() => {});
+        invalidateCache('cache:*/listings*').catch(() => {});
 
         sendSuccess(res, message, result.order);
     } catch (error) {
@@ -432,6 +450,10 @@ export const completeOrder = async (req, res) => {
             resourceId: id,
             req
         });
+
+        // Invalidate order/report caches
+        invalidateCache('cache:*/orders*').catch(() => {});
+        invalidateCache('cache:*/reports*').catch(() => {});
 
         sendSuccess(res, 'Order completed successfully. You can now release the payment.', result);
     } catch (error) {
@@ -658,65 +680,67 @@ export const getOrders = async (req, res) => {
 /**
  * Get user's buying statistics
  * GET /api/orders/stats
+ * 
+ * Optimized: Uses aggregate + groupBy instead of findMany + JS reduce,
+ * parallelizes all queries with Promise.all
  */
 export const getOrderStats = async (req, res) => {
     try {
         const userId = req.user.id;
         const { role = 'buyer' } = req.query;
 
-        // Get total orders count
-        const totalOrders = await prisma.order.count({
-            where: role === 'buyer' ? { buyerId: userId } : { sellerId: userId }
-        });
+        const roleFilter = role === 'buyer' ? { buyerId: userId } : { sellerId: userId };
 
-        // Get total weight (completed orders)
-        const completedOrders = await prisma.order.findMany({
-            where: {
-                ...(role === 'buyer' ? { buyerId: userId } : { sellerId: userId }),
-                status: OrderStatus.COMPLETED
-            },
-            include: {
-                items: {
-                    include: {
-                        listing: { select: { materialType: true } }
-                    }
+        // Run all independent queries in parallel
+        const [totalOrders, weightResult, materialBreakdown, pendingCount, confirmedCount] = await Promise.all([
+            // Total orders count
+            prisma.order.count({ where: roleFilter }),
+
+            // Total weight — aggregate on OrderItem instead of findMany + reduce
+            prisma.orderItem.aggregate({
+                _sum: { quantity: true },
+                where: {
+                    order: { ...roleFilter, status: OrderStatus.COMPLETED }
                 }
-            }
-        });
+            }),
 
-        let totalWeight = 0;
-        const byMaterial = {};
-
-        completedOrders.forEach(order => {
-            order.items.forEach(item => {
-                const weight = item.quantity;
-                const material = item.listing.materialType;
-
-                totalWeight += weight;
-
-                if (!byMaterial[material]) {
-                    byMaterial[material] = { count: 0, weight: 0 };
+            // Material breakdown — fetch completed order items grouped
+            prisma.orderItem.findMany({
+                where: {
+                    order: { ...roleFilter, status: OrderStatus.COMPLETED }
+                },
+                select: {
+                    quantity: true,
+                    listing: { select: { materialType: true } }
                 }
-                byMaterial[material].count += 1;
-                byMaterial[material].weight += weight;
-            });
-        });
+            }),
 
-        // Get pending orders count (CREATED status for new flow)
-        const pendingCount = await prisma.order.count({
-            where: {
-                ...(role === 'buyer' ? { buyerId: userId } : { sellerId: userId }),
-                status: { in: [OrderStatus.PENDING, OrderStatus.CREATED] }
-            }
-        });
+            // Pending orders count
+            prisma.order.count({
+                where: {
+                    ...roleFilter,
+                    status: { in: [OrderStatus.PENDING, OrderStatus.CREATED] }
+                }
+            }),
 
-        // Get confirmed orders count
-        const confirmedCount = await prisma.order.count({
-            where: {
-                ...(role === 'buyer' ? { buyerId: userId } : { sellerId: userId }),
-                status: OrderStatus.CONFIRMED
+            // Confirmed orders count
+            prisma.order.count({
+                where: { ...roleFilter, status: OrderStatus.CONFIRMED }
+            })
+        ]);
+
+        const totalWeight = weightResult._sum.quantity || 0;
+
+        // Build material breakdown from items
+        const byMaterial = materialBreakdown.reduce((acc, item) => {
+            const material = item.listing.materialType;
+            if (!acc[material]) {
+                acc[material] = { count: 0, weight: 0 };
             }
-        });
+            acc[material].count += 1;
+            acc[material].weight += item.quantity;
+            return acc;
+        }, {});
 
         sendSuccess(res, 'Stats fetched successfully', {
             totalOrders,

@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma.js';
 import { ItemStatus, TransactionStatus, UserRole } from '../constants/enums.js';
-import { sendSuccess, sendError } from '../utils/responseHelper.js';
+import { sendSuccess, sendPaginated, sendError } from '../utils/responseHelper.js';
+import { getPaginationParams, buildDateFilter } from '../utils/queryHelper.js';
 import { logActivity } from '../utils/activityLogger.js';
 
 export async function createTransaction(req, res) {
@@ -56,32 +57,67 @@ export async function createTransaction(req, res) {
     }
 }
 
+/**
+ * Get transactions with pagination, filtering, and field selection
+ * GET /api/transactions?page=1&limit=10&status=PENDING&startDate=2026-01-01
+ * 
+ * Optimized: Added pagination (was returning ALL), added select, added filters
+ */
 export async function getTransactions(req, res) {
     try {
         const userId = req.user.id;
         const role = req.user.role;
+        const {
+            status,
+            startDate,
+            endDate,
+            page = 1,
+            limit = 10
+        } = req.query;
 
+        // Build where clause based on role
         const where = {};
         if (role === UserRole.ADMIN) {
             // Admin sees all
-        } else if (role === UserRole.INDIVIDUAL) { // Assuming 'buyer' is 'individual' in role enum
+        } else if (role === UserRole.INDIVIDUAL) {
             where.buyerId = userId;
         } else {
             // Warehouse/Company/Seller
             where.sellerId = userId;
         }
 
-        const transactions = await prisma.transaction.findMany({
-            where,
-            include: {
-                item: { select: { title: true, images: true } },
-                buyer: { select: { name: true } },
-                seller: { select: { name: true, businessName: true } }
-            },
-            orderBy: { createdAt: 'desc' }
-        });
+        // Apply filters
+        if (status) where.status = status;
+        Object.assign(where, buildDateFilter(startDate, endDate));
 
-        sendSuccess(res, 'Transactions fetched', transactions);
+        // Get total count and paginated data in parallel
+        const { skip, take, page: pageNum, limit: limitNum } = getPaginationParams(page, limit);
+
+        const [totalCount, transactions] = await Promise.all([
+            prisma.transaction.count({ where }),
+            prisma.transaction.findMany({
+                where,
+                select: {
+                    id: true,
+                    buyerId: true,
+                    sellerId: true,
+                    itemId: true,
+                    quantity: true,
+                    totalAmount: true,
+                    status: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    item: { select: { title: true, images: true, category: true } },
+                    buyer: { select: { id: true, name: true } },
+                    seller: { select: { id: true, name: true, businessName: true } }
+                },
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take
+            })
+        ]);
+
+        sendPaginated(res, transactions, totalCount, pageNum, limitNum);
     } catch (err) {
         console.error('GET_TRANSACTIONS_ERROR:', err);
         sendError(res, 'Failed to fetch transactions', err);

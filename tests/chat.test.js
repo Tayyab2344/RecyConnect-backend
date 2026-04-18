@@ -1,11 +1,9 @@
 import 'dotenv/config';
 import request from 'supertest';
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../src/lib/prisma.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-
-const prisma = new PrismaClient();
 
 // Import routes
 import chatRoutes from '../src/routes/chatRoutes.js';
@@ -58,7 +56,7 @@ describe('Chat Controller', () => {
             await prisma.conversation.delete({ where: { id: conversationId } });
         }
         await prisma.user.deleteMany({ where: { id: { in: [user1.id, user2.id] } } });
-        await prisma.$disconnect();
+        // prisma disconnect handled by setup.js
     });
 
     describe('POST /api/chat/conversations', () => {

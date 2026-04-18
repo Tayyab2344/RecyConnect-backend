@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticateToken } from '../middlewares/authMiddleware.js';
+import { cacheResponse } from '../middlewares/cacheMiddleware.js';
 import {
     getDashboardStats,
     getActivity,
@@ -39,7 +40,7 @@ router.use(authenticateToken);
  *                 buying:
  *                   type: object
  */
-router.get('/dashboard', getDashboardStats);
+router.get('/dashboard', cacheResponse(60), getDashboardStats);
 
 /**
  * @swagger
@@ -59,7 +60,7 @@ router.get('/dashboard', getDashboardStats);
  *       200:
  *         description: Activity feed retrieved successfully
  */
-router.get('/activity', getActivity);
+router.get('/activity', cacheResponse(30), getActivity);
 
 /**
  * @swagger
@@ -79,6 +80,6 @@ router.get('/activity', getActivity);
  *       200:
  *         description: Trends retrieved successfully
  */
-router.get('/trends', getTrends);
+router.get('/trends', cacheResponse(300), getTrends);
 
 export default router;

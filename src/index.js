@@ -1,4 +1,6 @@
 import express from "express";
+import path from "path";
+import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import helmet from "helmet";
 import cors from "cors";
@@ -22,14 +24,22 @@ import listingRoutes from "./routes/listingRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
 import reportRoutes from "./routes/reportRoutes.js";
 import adminReportRoutes from "./routes/adminReportRoutes.js";
+import adminMonitoringRoutes from "./routes/adminMonitoringRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
+import batchRoutes from "./routes/batchRoutes.js";
+import appRoutes from "./routes/appRoutes.js";
+import logRoutes from "./routes/logRoutes.js";
 
 import { errorHandler } from "./middlewares/errorMiddleware.js";
+import { performanceMonitor } from "./middlewares/performanceMiddleware.js";
+import { traceMiddleware } from "./middlewares/traceMiddleware.js";
 import { logger, stream } from "./utils/logger.js";
 
 import "./config/cloudinary.js";
 
 dotenv.config({ quiet: true });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const app = express();
 // Enable trust proxy only in production to handle X-Forwarded-For headers
 if (process.env.NODE_ENV === "production") {
@@ -73,6 +83,9 @@ app.use(limiter);
 
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
+// End-to-End Distributed Tracing
+app.use(traceMiddleware);
+
 app.use("/api/auth", authRoutes);
 app.use("/api/warehouse", warehouseRoutes);
 app.use("/api/collector", collectorRoutes);
@@ -87,6 +100,18 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/admin/reports", adminReportRoutes);
 app.use("/api/payments", paymentRoutes);
+app.use("/api/logs", logRoutes);
+app.use("/api/batch", batchRoutes);
+app.use("/api/app", appRoutes);
+
+// Static folder configuration
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+
+// System Monitoring
+app.use(performanceMonitor);
+
+// Admin Control Panel Routes
+app.use("/api/admin/monitoring", adminMonitoringRoutes);
 
 
 app.get("/health", (req, res) => res.json({ ok: true }));

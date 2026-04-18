@@ -66,9 +66,9 @@ export const createPaymentIntent = async (req, res) => {
                 throw new Error('Only the buyer can initiate payment');
             }
 
-            // 3. Validate order status is CREATED or CONFIRMED
-            if (order.status !== OrderStatus.CREATED && order.status !== OrderStatus.CONFIRMED) {
-                throw new Error(`Cannot create payment. Order status must be CREATED or CONFIRMED. Current status: ${order.status}`);
+            // 3. Validate order status is CONFIRMED
+            if (order.status !== OrderStatus.CONFIRMED) {
+                throw new Error(`Cannot create payment. Order status must be CONFIRMED. Current status: ${order.status}`);
             }
 
             // 4. Check if payment already exists
@@ -556,7 +556,7 @@ export const releasePayment = async (req, res) => {
 export const refundPayment = async (req, res) => {
     try {
         const { id } = req.params;
-        const { reason } = req.body;
+        const { reason } = req.body || {};
         const userId = req.user.id;
 
         const result = await prisma.$transaction(async (tx) => {

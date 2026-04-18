@@ -5,10 +5,8 @@
 import 'dotenv/config';
 import request from 'supertest';
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../src/lib/prisma.js';
 import bcrypt from 'bcrypt';
-
-const prisma = new PrismaClient();
 
 // Import routes
 import authRoutes from '../src/routes/authRoute.js';
@@ -31,7 +29,7 @@ describe('Auth Controller', () => {
         await prisma.user.deleteMany({ where: { email: { contains: 'testauth' } } });
         await prisma.user.deleteMany({ where: { email: { contains: 'logintest' } } });
         await prisma.user.deleteMany({ where: { email: { contains: 'validlogin' } } });
-        await prisma.$disconnect();
+        // prisma disconnect handled by setup.js
     });
 
     describe('POST /api/auth/register', () => {

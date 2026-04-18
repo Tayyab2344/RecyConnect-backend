@@ -27,14 +27,20 @@ export const sendSuccess = (res, message, data = null, statusCode = 200) => {
  * @param {number} limit Items per page
  */
 export const sendPaginated = (res, data, totalCount, page, limit) => {
+    const p = parseInt(page);
+    const l = parseInt(limit);
+    const totalPages = Math.ceil(totalCount / l);
+
     res.json({
         success: true,
         data,
         pagination: {
             total: totalCount,
-            page: parseInt(page),
-            limit: parseInt(limit),
-            totalPages: Math.ceil(totalCount / parseInt(limit))
+            page: p,
+            limit: l,
+            totalPages,
+            hasNextPage: p < totalPages,
+            hasPreviousPage: p > 1
         }
     });
 };

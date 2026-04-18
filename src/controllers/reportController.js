@@ -5,55 +5,53 @@ import { sendSuccess, sendError } from '../utils/responseHelper.js';
 /**
  * Get dashboard statistics
  * GET /api/reports/dashboard
+ * 
+ * Optimized: Uses aggregate/count instead of findMany + JS reduce
  */
 export const getDashboardStats = async (req, res) => {
     try {
         const userId = req.user.id;
 
-        // Get listing stats
-        const totalListings = await prisma.listing.count({
-            where: { userId }
-        });
+        // Run all independent queries in parallel
+        const [
+            totalListings,
+            totalBuyerOrders,
+            pendingBuyerOrders,
+            totalSellerOrders,
+            soldWeight,
+            purchasedWeight
+        ] = await Promise.all([
+            // Get listing count
+            prisma.listing.count({ where: { userId } }),
 
-        // Get order stats (as buyer)
-        const totalBuyerOrders = await prisma.order.count({
-            where: { buyerId: userId }
-        });
+            // Get buyer order count
+            prisma.order.count({ where: { buyerId: userId } }),
 
-        const pendingBuyerOrders = await prisma.order.count({
-            where: { buyerId: userId, status: OrderStatus.PENDING }
-        });
+            // Get pending buyer orders
+            prisma.order.count({ where: { buyerId: userId, status: OrderStatus.PENDING } }),
 
-        // Get order stats (as seller)
-        const totalSellerOrders = await prisma.order.count({
-            where: { sellerId: userId }
-        });
+            // Get seller order count
+            prisma.order.count({ where: { sellerId: userId } }),
 
-        // Get total weight sold
-        const soldOrders = await prisma.order.findMany({
-            where: { sellerId: userId, status: OrderStatus.COMPLETED },
-            include: {
-                items: true
-            }
-        });
+            // Get total weight SOLD — use aggregate on OrderItem instead of findMany
+            prisma.orderItem.aggregate({
+                _sum: { quantity: true },
+                where: {
+                    order: { sellerId: userId, status: OrderStatus.COMPLETED }
+                }
+            }),
 
-        const totalWeightSold = soldOrders.reduce((sum, order) => {
-            const orderWeight = order.items.reduce((iSum, item) => iSum + item.quantity, 0);
-            return sum + orderWeight;
-        }, 0);
+            // Get total weight PURCHASED — use aggregate on OrderItem
+            prisma.orderItem.aggregate({
+                _sum: { quantity: true },
+                where: {
+                    order: { buyerId: userId, status: OrderStatus.COMPLETED }
+                }
+            })
+        ]);
 
-        // Get total weight purchased
-        const purchasedOrders = await prisma.order.findMany({
-            where: { buyerId: userId, status: OrderStatus.COMPLETED },
-            include: {
-                items: true
-            }
-        });
-
-        const totalWeightPurchased = purchasedOrders.reduce((sum, order) => {
-            const orderWeight = order.items.reduce((iSum, item) => iSum + item.quantity, 0);
-            return sum + orderWeight;
-        }, 0);
+        const totalWeightSold = soldWeight._sum.quantity || 0;
+        const totalWeightPurchased = purchasedWeight._sum.quantity || 0;
 
         sendSuccess(res, 'Dashboard stats fetched', {
             selling: {
@@ -75,35 +73,52 @@ export const getDashboardStats = async (req, res) => {
 /**
  * Get recent activity feed
  * GET /api/reports/activity
+ * 
+ * Optimized: Uses select instead of full record fetch
  */
 export const getActivity = async (req, res) => {
     try {
         const userId = req.user.id;
         const { limit = 10 } = req.query;
+        const take = Math.min(parseInt(limit) || 10, 50);
 
-        // Get recent listings
-        const recentListings = await prisma.listing.findMany({
-            where: { userId },
-            orderBy: { createdAt: 'desc' },
-            take: Math.ceil(parseInt(limit) / 2),
-        });
+        // Run listing & order queries in parallel
+        const [recentListings, recentOrders] = await Promise.all([
+            // Get recent listings with minimal fields
+            prisma.listing.findMany({
+                where: { userId },
+                orderBy: { createdAt: 'desc' },
+                take: Math.ceil(take / 2),
+                select: {
+                    id: true,
+                    materialType: true,
+                    estimatedWeight: true,
+                    status: true,
+                    createdAt: true
+                }
+            }),
 
-        // Get recent orders (as buyer)
-        const recentOrders = await prisma.order.findMany({
-            where: { buyerId: userId },
-            orderBy: { createdAt: 'desc' },
-            take: Math.ceil(parseInt(limit) / 2),
-            include: {
-                seller: {
-                    select: { name: true, businessName: true }
-                },
-                items: {
-                    include: {
-                        listing: { select: { materialType: true } }
+            // Get recent orders with minimal includes
+            prisma.order.findMany({
+                where: { buyerId: userId },
+                orderBy: { createdAt: 'desc' },
+                take: Math.ceil(take / 2),
+                select: {
+                    id: true,
+                    status: true,
+                    createdAt: true,
+                    seller: {
+                        select: { name: true, businessName: true }
+                    },
+                    items: {
+                        select: {
+                            quantity: true,
+                            listing: { select: { materialType: true } }
+                        }
                     }
                 }
-            }
-        });
+            })
+        ]);
 
         // Combine and format activities
         const activities = [
@@ -128,7 +143,7 @@ export const getActivity = async (req, res) => {
                 };
             })
         ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-            .slice(0, parseInt(limit));
+            .slice(0, take);
 
         sendSuccess(res, 'Activity feed fetched', activities);
     } catch (error) {
@@ -139,6 +154,8 @@ export const getActivity = async (req, res) => {
 /**
  * Get trend analysis
  * GET /api/reports/trends
+ * 
+ * Optimized: Uses select to only fetch needed fields + limits data volume
  */
 export const getTrends = async (req, res) => {
     try {
@@ -148,28 +165,36 @@ export const getTrends = async (req, res) => {
         const startDate = new Date();
         startDate.setMonth(startDate.getMonth() - parseInt(months));
 
-        // Get listings by month
-        const listings = await prisma.listing.findMany({
-            where: {
-                userId,
-                createdAt: { gte: startDate }
-            }
-        });
+        // Run queries in parallel with minimal field selection
+        const [listings, orders] = await Promise.all([
+            prisma.listing.findMany({
+                where: {
+                    userId,
+                    createdAt: { gte: startDate }
+                },
+                select: {
+                    materialType: true,
+                    estimatedWeight: true,
+                    createdAt: true
+                }
+            }),
 
-        // Get orders by month
-        const orders = await prisma.order.findMany({
-            where: {
-                buyerId: userId,
-                createdAt: { gte: startDate }
-            },
-            include: {
-                items: {
-                    include: {
-                        listing: { select: { materialType: true } }
+            prisma.order.findMany({
+                where: {
+                    buyerId: userId,
+                    createdAt: { gte: startDate }
+                },
+                select: {
+                    createdAt: true,
+                    items: {
+                        select: {
+                            quantity: true,
+                            listing: { select: { materialType: true } }
+                        }
                     }
                 }
-            }
-        });
+            })
+        ]);
 
         // Group by month and material
         const listingsByMonth = listings.reduce((acc, listing) => {
