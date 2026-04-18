@@ -71,6 +71,16 @@ describe('KYC Controller', () => {
     });
 
     afterAll(async () => {
+        await prisma.userDocument.deleteMany({
+            where: {
+                user: {
+                    OR: [
+                        { email: { startsWith: 'company-' } },
+                        { email: { startsWith: 'indiv-' } }
+                    ]
+                }
+            }
+        });
         await prisma.user.deleteMany({
             where: { email: { startsWith: 'company-' } }
         });
@@ -106,6 +116,13 @@ describe('KYC Controller', () => {
             expect(res.statusCode).toBe(200);
             expect(res.body.success).toBe(true);
             expect(res.body.data.status).toBe(VerificationStatus.VERIFIED);
+
+            const documents = await prisma.userDocument.findMany({
+                where: { userId: companyUser.id }
+            });
+            expect(documents.length).toBeGreaterThanOrEqual(4);
+            expect(documents.every((document) => document.encrypted)).toBe(true);
+            expect(documents.every((document) => document.encryptionIv && document.encryptionAuthTag)).toBe(true);
         });
 
         it('should auto-reject if CNIC extraction fails', async () => {

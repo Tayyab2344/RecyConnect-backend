@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticateToken } from '../middlewares/authMiddleware.js';
 import { permit } from '../middlewares/roleMiddleware.js';
+import { cacheResponse } from '../middlewares/cacheMiddleware.js';
 import {
     getSystemOverview,
     getMaterialBreakdown,
@@ -48,7 +49,7 @@ router.use(permit('admin'));
  *                 recycling:
  *                   type: object
  */
-router.get('/overview', getSystemOverview);
+router.get('/overview', cacheResponse(120), getSystemOverview);
 
 /**
  * @swagger
@@ -73,7 +74,7 @@ router.get('/overview', getSystemOverview);
  *       200:
  *         description: Material breakdown retrieved successfully
  */
-router.get('/materials', getMaterialBreakdown);
+router.get('/materials', cacheResponse(120), getMaterialBreakdown);
 
 /**
  * @swagger
@@ -93,7 +94,7 @@ router.get('/materials', getMaterialBreakdown);
  *       200:
  *         description: User activity retrieved successfully
  */
-router.get('/user-activity', getUserActivity);
+router.get('/user-activity', cacheResponse(120), getUserActivity);
 
 /**
  * @swagger
@@ -113,7 +114,7 @@ router.get('/user-activity', getUserActivity);
  *       200:
  *         description: Time series data retrieved successfully
  */
-router.get('/timeseries', getTimeSeries);
+router.get('/timeseries', cacheResponse(300), getTimeSeries);
 
 /**
  * @swagger
@@ -127,7 +128,7 @@ router.get('/timeseries', getTimeSeries);
  *       200:
  *         description: Location analytics retrieved successfully
  */
-router.get('/locations', getLocationAnalytics);
+router.get('/locations', cacheResponse(300), getLocationAnalytics);
 
 /**
  * @swagger

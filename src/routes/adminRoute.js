@@ -8,8 +8,13 @@ import {
   rejectKYC,
   getSystemLogs,
   getUsers,
+  getAdminOrders,
+  getAdminPayments,
+  getAdminListings,
+  getRates,
   suspendUser,
   updateRates,
+  deleteRate,
   getDashboardStats
 } from "../controllers/adminController.js";
 
@@ -74,33 +79,18 @@ router.get("/logs/:id", authenticateToken, permit("admin"), getLogById);
  *     responses:
  *       200:
  *         description: List of users
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       id:
- *                         type: integer
- *                       name:
- *                         type: string
- *                       email:
- *                         type: string
- *                       role:
- *                         type: string
- *                       verificationStatus:
- *                         type: string
  *       403:
  *         description: Forbidden
  */
 router.get("/users", authenticateToken, permit("admin"), getUsers);
+
+router.get("/orders", authenticateToken, permit("admin"), getAdminOrders);
+
+router.get("/payments", authenticateToken, permit("admin"), getAdminPayments);
+
+router.get("/listings", authenticateToken, permit("admin"), getAdminListings);
+
+router.get("/rates", authenticateToken, permit("admin"), getRates);
 
 /**
  * @swagger
@@ -139,7 +129,7 @@ router.put("/users/:id/suspend", authenticateToken, permit("admin"), suspendUser
  * @swagger
  * /api/admin/rates:
  *   post:
- *     summary: Update recycling rates (Admin only)
+ *     summary: Add or update recycling rates (Admin only)
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
@@ -149,11 +139,40 @@ router.put("/users/:id/suspend", authenticateToken, permit("admin"), suspendUser
  *         application/json:
  *           schema:
  *             type: object
+ *             properties:
+ *               category:
+ *                 type: string
+ *               pricePerUnit:
+ *                 type: number
+ *               unit:
+ *                 type: string
  *     responses:
  *       200:
  *         description: Rates updated
  */
 router.post("/rates", authenticateToken, permit("admin"), updateRates);
+
+/**
+ * @swagger
+ * /api/admin/rates/{category}:
+ *   delete:
+ *     summary: Delete a rate category
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: category
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Rate deleted successfully
+ *       404:
+ *         description: Rate not found
+ */
+router.delete("/rates/:category", authenticateToken, permit("admin"), deleteRate);
 
 /**
  * @swagger

@@ -127,16 +127,26 @@ model User {
   @@index([role])
   @@index([contactNo])
   @@index([verificationStatus])
+  @@index([city, area])
 }
 
 model UserDocument {
-  id        Int      @id @default(autoincrement())
-  user      User     @relation(fields: [userId], references: [id])
-  userId    Int
-  docType   String
-  fileUrl   String
-  fileName  String?
-  createdAt DateTime @default(now())
+  id                   Int      @id @default(autoincrement())
+  user                 User     @relation(fields: [userId], references: [id])
+  userId               Int
+  docType              String
+  fileUrl              String
+  fileName             String?
+  encrypted            Boolean  @default(false)
+  encryptionAlgorithm  String?
+  encryptionIv         String?
+  encryptionAuthTag    String?
+  encryptionKeyVersion String?
+  mimeType             String?
+  fileSize             Int?
+  createdAt            DateTime @default(now())
+
+  @@index([userId])
 }
 
 model OcrData {
@@ -150,6 +160,8 @@ model OcrData {
   isMatch       Boolean  @default(false)
   confidence    Float?
   createdAt     DateTime @default(now())
+
+  @@index([userId])
 }
 
 model Otp {
@@ -164,6 +176,8 @@ model Otp {
   createdAt DateTime @default(now())
 
   user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }
 
 model RefreshToken {
@@ -174,6 +188,8 @@ model RefreshToken {
   revoked   Boolean  @default(false)
   createdAt DateTime @default(now())
   expiresAt DateTime
+
+  @@index([userId])
 }
 
 model ActivityLog {
@@ -188,6 +204,22 @@ model ActivityLog {
   userAgent    String?
   createdAt    DateTime @default(now())
   actor        User?    @relation("actorLogs", fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+}
+
+model SystemLog {
+  id        Int      @id @default(autoincrement())
+  level     String   // info, warn, error
+  type      String   // API, DATABASE, ERROR, SYSTEM
+  message   String
+  metadata  Json?    // Detailed tracking data (stack trace, path, execution time)
+  createdAt DateTime @default(now())
+
+  @@index([level])
+  @@index([type])
+  @@index([createdAt])
 }
 
 model Item {
@@ -235,9 +267,12 @@ model Listing {
   images          String[]      // Array of image URLs or base64 strings
   latitude        Float?
   longitude       Float?
+  city            String?       // Denormalized from user
+  area            String?       // Denormalized from user
   locationMethod  String?       // "auto" or "manual"
   notes           String?
   status          ListingStatus @default(DRAFT)
+  metadata        Json?         // Flexible JSON metadata 
   
   reservations    ListingReservation[]
   orderItems      OrderItem[]
@@ -252,6 +287,7 @@ model Listing {
   @@index([userId, status])
   @@index([materialType])
   @@index([userId])
+  @@index([materialType, status, city])
 }
 
 model ListingReservation {
@@ -301,6 +337,7 @@ model Order {
   collectorCost   Float? // Cost paid to collector
   netProfit       Float? // totalAmount - costs
   stripePaymentId String? // Stripe payment intent ID
+  metadata        Json?  // Flexible tracking details
 
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt

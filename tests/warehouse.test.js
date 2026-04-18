@@ -5,11 +5,9 @@
 import 'dotenv/config';
 import request from 'supertest';
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../src/lib/prisma.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-
-const prisma = new PrismaClient();
 
 // Import routes
 import warehouseRoutes from '../src/routes/warehouseRoute.js';
@@ -70,7 +68,7 @@ describe('Warehouse Controller', () => {
         });
         await prisma.user.deleteMany({ where: { email: { contains: 'warehousetest' } } });
         await prisma.user.deleteMany({ where: { email: { contains: 'individualtest' } } });
-        await prisma.$disconnect();
+        // prisma disconnect handled by setup.js
     });
 
     describe('GET /api/warehouse/collectors', () => {

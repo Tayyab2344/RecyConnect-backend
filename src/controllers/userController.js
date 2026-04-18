@@ -1,5 +1,5 @@
 import bcrypt from 'bcrypt';
-import { uploadToCloudinary } from '../utils/uploadHelper.js';
+import { deleteCloudinaryAsset, encryptedDocumentData, uploadEncryptedToCloudinary, uploadToCloudinary } from '../utils/uploadHelper.js';
 import { extractTextFromUrl, extractCNIC, extractNTN } from '../services/ocrService.js';
 import { logger } from '../utils/logger.js';
 import { UserRole, VerificationStatus, KycStage } from '../constants/enums.js';
@@ -185,22 +185,29 @@ export async function requestRoleUpgrade(req, res) {
             const frontFile = files.cnicFront[0];
             const backFile = files.cnicBack[0];
 
-            const upFront = await uploadToCloudinary(frontFile, `recyconnect/kyc/${userId}`);
-            const upBack = await uploadToCloudinary(backFile, `recyconnect/kyc/${userId}`);
-
-            documentsData.push(
-                { docType: "CNIC_FRONT", fileUrl: upFront.secure_url, fileName: frontFile.originalname },
-                { docType: "CNIC_BACK", fileUrl: upBack.secure_url, fileName: backFile.originalname }
-            );
+            const ocrFront = await uploadToCloudinary(frontFile, `recyconnect/kyc-ocr/${userId}`);
+            const ocrBack = await uploadToCloudinary(backFile, `recyconnect/kyc-ocr/${userId}`);
 
             // OCR Check
-            const frontText = await extractTextFromUrl(upFront.secure_url);
-            const backText = await extractTextFromUrl(upBack.secure_url);
+            const frontText = await extractTextFromUrl(ocrFront.secure_url);
+            const backText = await extractTextFromUrl(ocrBack.secure_url);
+            await Promise.all([
+                deleteCloudinaryAsset(ocrFront),
+                deleteCloudinaryAsset(ocrBack)
+            ]);
             ocrCnic = extractCNIC(frontText) || extractCNIC(backText);
 
             if (!ocrCnic) {
                 return sendError(res, 'Could not verify CNIC from uploaded images. Please upload clear images.', null, 400);
             }
+
+            const upFront = await uploadEncryptedToCloudinary(frontFile, `recyconnect/kyc/${userId}`);
+            const upBack = await uploadEncryptedToCloudinary(backFile, `recyconnect/kyc/${userId}`);
+
+            documentsData.push(
+                encryptedDocumentData("CNIC_FRONT", frontFile, upFront),
+                encryptedDocumentData("CNIC_BACK", backFile, upBack)
+            );
         }
 
         if (requestedRole === UserRole.COMPANY) {
@@ -213,28 +220,31 @@ export async function requestRoleUpgrade(req, res) {
             const ntnFile = files.ntn[0];
             const regFile = files.registration[0];
 
-            const upNtn = await uploadToCloudinary(ntnFile, `recyconnect/kyc/${userId}`);
-            const upReg = await uploadToCloudinary(regFile, `recyconnect/kyc/${userId}`);
-
-            documentsData.push(
-                { docType: "NTN", fileUrl: upNtn.secure_url, fileName: ntnFile.originalname },
-                { docType: "REGISTRATION", fileUrl: upReg.secure_url, fileName: regFile.originalname }
-            );
+            const ocrNtnUpload = await uploadToCloudinary(ntnFile, `recyconnect/kyc-ocr/${userId}`);
 
             // OCR Check
-            const ntnText = await extractTextFromUrl(upNtn.secure_url);
+            const ntnText = await extractTextFromUrl(ocrNtnUpload.secure_url);
+            await deleteCloudinaryAsset(ocrNtnUpload);
             ocrNtn = extractNTN(ntnText);
 
             if (!ocrNtn) {
                 return sendError(res, 'Could not verify NTN from uploaded document.', null, 400);
             }
+
+            const upNtn = await uploadEncryptedToCloudinary(ntnFile, `recyconnect/kyc/${userId}`);
+            const upReg = await uploadEncryptedToCloudinary(regFile, `recyconnect/kyc/${userId}`);
+
+            documentsData.push(
+                encryptedDocumentData("NTN", ntnFile, upNtn),
+                encryptedDocumentData("REGISTRATION", regFile, upReg)
+            );
         }
 
         // Utility Bill (Required for both)
         if (files.utility?.[0]) {
             const utilFile = files.utility[0];
-            const upUtil = await uploadToCloudinary(utilFile, `recyconnect/kyc/${userId}`);
-            documentsData.push({ docType: "UTILITY", fileUrl: upUtil.secure_url, fileName: utilFile.originalname });
+            const upUtil = await uploadEncryptedToCloudinary(utilFile, `recyconnect/kyc/${userId}`);
+            documentsData.push(encryptedDocumentData("UTILITY", utilFile, upUtil));
         } else {
             return sendError(res, 'Utility Bill is required', null, 400);
         }

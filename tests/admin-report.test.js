@@ -5,11 +5,9 @@
 import 'dotenv/config';
 import request from 'supertest';
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../src/lib/prisma.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-
-const prisma = new PrismaClient();
 
 
 import adminReportRoutes from '../src/routes/adminReportRoutes.js';
@@ -61,7 +59,7 @@ describe('Admin Report Controller', () => {
     afterAll(async () => {
         await prisma.user.deleteMany({ where: { email: { contains: 'adminreport' } } });
         await prisma.user.deleteMany({ where: { email: { contains: 'regularreport' } } });
-        await prisma.$disconnect();
+        // prisma disconnect handled by setup.js
     });
 
     describe('GET /api/admin/reports/overview', () => {

@@ -5,11 +5,9 @@
 import 'dotenv/config';
 import request from 'supertest';
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../src/lib/prisma.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-
-const prisma = new PrismaClient();
 
 // Import routes
 import listingRoutes from '../src/routes/listingRoutes.js';
@@ -51,7 +49,7 @@ describe('Listing Controller', () => {
         // Cleanup
         await prisma.listing.deleteMany({ where: { userId: testUser.id } }).catch(() => { });
         await prisma.user.deleteMany({ where: { email: { contains: 'listingtest' } } });
-        await prisma.$disconnect();
+        // prisma disconnect handled by setup.js
     });
 
     describe('POST /api/listings', () => {
