@@ -125,6 +125,9 @@ model User {
   buyerTransactions    Transaction[] @relation("BuyerTransactions")
   sellerTransactions   Transaction[] @relation("SellerTransactions")
 
+  // Complaint Relations
+  complaints           Complaint[]
+
   @@index([role])
   @@index([contactNo])
   @@index([verificationStatus])
@@ -510,4 +513,22 @@ model Transaction {
   @@index([sellerId])
   @@index([itemId])
   @@index([status])
+}
+
+model Complaint {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+  category    String   // Pickup Issues, Order Issues, App Bugs, Payment Problem, etc.
+  description String
+  status      String   @default("PENDING") // PENDING, IN_REVIEW, RESOLVED, DISMISSED
+  adminNotes  String?  // Admin response/notes
+  resolvedAt  DateTime?
+  resolvedBy  Int?     // Admin who resolved it
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
 }

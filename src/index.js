@@ -29,6 +29,7 @@ import paymentRoutes from "./routes/paymentRoutes.js";
 import batchRoutes from "./routes/batchRoutes.js";
 import appRoutes from "./routes/appRoutes.js";
 import logRoutes from "./routes/logRoutes.js";
+import complaintRoutes from "./routes/complaintRoutes.js";
 
 import { errorHandler } from "./middlewares/errorMiddleware.js";
 import { performanceMonitor } from "./middlewares/performanceMiddleware.js";
@@ -107,6 +108,7 @@ app.use("/api/payments", paymentRoutes);
 app.use("/api/logs", logRoutes);
 app.use("/api/batch", batchRoutes);
 app.use("/api/app", appRoutes);
+app.use("/api/complaints", complaintRoutes);
 
 // Static folder configuration
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
