@@ -277,7 +277,22 @@ export async function getAdminListings(req, res) {
 
 export async function getRates(req, res) {
   try {
-    const rates = await prisma.rate.findMany({ orderBy: { category: "asc" } });
+    let rates = await prisma.rate.findMany({ orderBy: { category: "asc" } });
+    
+    // Auto-seed default categories if empty
+    if (rates.length === 0) {
+        await prisma.rate.createMany({
+            data: [
+                { category: 'Plastic', pricePerUnit: 20, unit: 'kg' },
+                { category: 'Metal', pricePerUnit: 40, unit: 'kg' },
+                { category: 'E-Waste', pricePerUnit: 100, unit: 'kg' },
+                { category: 'Paper', pricePerUnit: 15, unit: 'kg' }
+            ],
+            skipDuplicates: true
+        });
+        rates = await prisma.rate.findMany({ orderBy: { category: "asc" } });
+    }
+
     sendSuccess(res, "Rates fetched", rates);
   } catch (err) {
     sendError(res, "Failed to fetch rates", err);
