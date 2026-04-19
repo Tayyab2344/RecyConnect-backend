@@ -17,6 +17,11 @@ import {
   deleteRate,
   getDashboardStats
 } from "../controllers/adminController.js";
+import {
+  getAllComplaints,
+  updateComplaintStatus,
+  deleteComplaint
+} from '../controllers/complaintController.js';
 
 const router = express.Router();
 
@@ -53,6 +58,11 @@ router.get("/logs", authenticateToken, permit("admin"), getSystemLogs);
  *         description: Log details retrieved
  */
 router.get("/logs/:id", authenticateToken, permit("admin"), getLogById);
+
+// Complaint Management
+router.get("/complaints", authenticateToken, permit("admin"), getAllComplaints);
+router.put("/complaints/:id", authenticateToken, permit("admin"), updateComplaintStatus);
+router.delete("/complaints/:id", authenticateToken, permit("admin"), deleteComplaint);
 
 // User Management
 
