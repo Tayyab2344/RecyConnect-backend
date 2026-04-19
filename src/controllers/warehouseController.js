@@ -59,6 +59,7 @@ export async function addCollector(req, res) {
         address: address,
         contactNo: contactNo,
         password: hashedPassword,
+        plainPassword: rawPassword, // Added based on direct request to view password after creation
         profileImage: profileImageUrl,
         createdById: warehouseId,
         assignedWarehouseId: warehouseId,
@@ -107,6 +108,7 @@ export async function getCollectors(req, res) {
         contactNo: true,
         address: true,
         profileImage: true,
+        plainPassword: true, // Returning it directly inside the array since the user requested visibility
         createdAt: true,
         verificationStatus: true
       },

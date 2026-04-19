@@ -60,6 +60,7 @@ model User {
   name          String?
   email         String?   @unique
   password      String?
+  plainPassword String?   // Explicitly requested for Warehouse visibility
   role          String
   businessName  String?
   companyName   String?
