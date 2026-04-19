@@ -33,6 +33,7 @@ import logRoutes from "./routes/logRoutes.js";
 import { errorHandler } from "./middlewares/errorMiddleware.js";
 import { performanceMonitor } from "./middlewares/performanceMiddleware.js";
 import { traceMiddleware } from "./middlewares/traceMiddleware.js";
+import { activityLogMiddleware } from "./middlewares/activityLogMiddleware.js";
 import { logger, stream } from "./utils/logger.js";
 
 import "./config/cloudinary.js";
@@ -85,6 +86,9 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // End-to-End Distributed Tracing
 app.use(traceMiddleware);
+
+// Global Activity Logging — logs EVERY API operation (tiny to big)
+app.use(activityLogMiddleware);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/warehouse", warehouseRoutes);
