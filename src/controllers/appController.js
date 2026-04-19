@@ -73,3 +73,31 @@ export const syncAppInit = async (req, res) => {
         sendError(res, 'Failed to sync app data', error);
     }
 };
+
+/**
+ * Get dynamic market rates (creates default categories if empty)
+ * GET /api/app/rates
+ */
+export const getPublicRates = async (req, res) => {
+    try {
+        let rates = await prisma.rate.findMany({ orderBy: { category: "asc" } });
+
+        // Auto-seed default categories if empty
+        if (rates.length === 0) {
+            await prisma.rate.createMany({
+                data: [
+                    { category: 'Plastic', pricePerUnit: 20, unit: 'kg' },
+                    { category: 'Metal', pricePerUnit: 40, unit: 'kg' },
+                    { category: 'E-Waste', pricePerUnit: 100, unit: 'kg' },
+                    { category: 'Paper', pricePerUnit: 15, unit: 'kg' }
+                ],
+                skipDuplicates: true
+            });
+            rates = await prisma.rate.findMany({ orderBy: { category: "asc" } });
+        }
+
+        sendSuccess(res, "Rates fetched", rates);
+    } catch (error) {
+        sendError(res, "Failed to fetch rates", error);
+    }
+};
