@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticateToken } from '../middlewares/authMiddleware.js';
-import { syncAppInit } from '../controllers/appController.js';
+import { syncAppInit, getPublicRates } from '../controllers/appController.js';
 
 const router = express.Router();
 
@@ -20,5 +20,19 @@ const router = express.Router();
  *         description: Unauthorized
  */
 router.get('/bootstrap', authenticateToken, syncAppInit);
+
+/**
+ * @swagger
+ * /api/app/rates:
+ *   get:
+ *     summary: Get public material rates
+ *     tags: [App]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Rates retrieved successfully
+ */
+router.get('/rates', authenticateToken, getPublicRates);
 
 export default router;
