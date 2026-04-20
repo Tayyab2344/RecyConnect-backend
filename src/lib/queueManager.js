@@ -11,7 +11,7 @@ const OFFLINE_QUEUE_KEY = 'offline_request_queue';
  */
 export const queueOfflineRequest = async (actionType, payload) => {
     if (!redis || !isRedisConnected()) {
-        console.log('DEBUG redis:', Boolean(redis), 'isConnected:', typeof isRedisConnected === 'function' ? isRedisConnected() : isRedisConnected);
+
         logger.warn(`[QUEUE] Redis unavailable. Cannot queue action: ${actionType}`);
         return;
     }

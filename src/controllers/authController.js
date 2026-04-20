@@ -416,7 +416,7 @@ export async function login(req, res) {
     else {
       identifier = identifier.trim();
     }
-    console.log(`[LOGIN DEBUG] Login attempt for: ${identifier}`);
+    // Allow login with email OR collectorId
 
     // Allow login with email OR collectorId
     const user = await prisma.user.findFirst({
@@ -426,19 +426,19 @@ export async function login(req, res) {
     });
 
     if (!user) {
-      console.log(`[LOGIN DEBUG] User NOT found for: ${identifier}`);
+
       return sendError(res, "Invalid credentials", null, 401);
     }
 
     if (!user.password) {
-      console.log(`[LOGIN DEBUG] User found but has NO password: ${user.email}`);
+
       return sendError(res, "Invalid credentials", null, 401);
     }
 
-    console.log(`[LOGIN DEBUG] User found: ${user.email}, Role: ${user.role}, Hash: ${user.password.substring(0, 10)}...`);
+
 
     const match = await bcrypt.compare(sanitizedPassword, user.password);
-    console.log(`[LOGIN DEBUG] Password match result: ${match}`);
+
 
     if (!match) {
       return sendError(res, "Invalid credentials", null, 401);
