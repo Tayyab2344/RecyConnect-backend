@@ -155,7 +155,7 @@ router.post('/', createListing);
  *       200:
  *         description: Listings retrieved successfully with pagination
  */
-router.get('/', getListings);
+router.get('/', cacheResponse(60), getListings);
 
 /**
  * @swagger
