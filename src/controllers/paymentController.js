@@ -76,6 +76,13 @@ export const createPaymentIntent = async (req, res) => {
                 throw new Error('Payment already exists for this order. Use existing PaymentIntent.');
             }
 
+            // Stripe Minimum Amount Validation ($0.50 USD equivalent required)
+            const currency = (process.env.STRIPE_CURRENCY || 'pkr').toLowerCase();
+            const minAmountStripe = currency === 'pkr' ? 150 : 1; 
+            if (order.totalAmount < minAmountStripe) {
+                throw new Error(`Minimum order amount for online payment is Rs ${minAmountStripe}. Please add more items or use Cash on Delivery (COD).`);
+            }
+
             // 5. Create Stripe PaymentIntent
             const paymentIntent = await stripeService.createPaymentIntent(
                 order.totalAmount,

@@ -61,6 +61,7 @@ export const syncAppInit = async (req, res) => {
             return sendError(res, 'User not found', null, 404);
         }
 
+        
         sendSuccess(res, 'App bootstrap data synced', {
             user,
             activity: {

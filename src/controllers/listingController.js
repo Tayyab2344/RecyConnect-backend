@@ -5,6 +5,7 @@ import prisma from '../lib/prisma.js';
 import { logActivity } from '../utils/activityLogger.js';
 import cloudinary from '../config/cloudinary.js';
 import { withExponentialBackoff } from '../utils/retryHelper.js';
+import { invalidateCache } from '../lib/redis.js';
 import { EventBus } from '../events/eventBus.js';
 
 /**
@@ -142,6 +143,8 @@ export const createListing = async (req, res) => {
     // Fire detached event bus hook instead of synchronous cache manipulation
     EventBus.emit('listing.created', { listingId: listing.id, category: listing.category });
 
+    invalidateCache('cache:*/listings*').catch(() => {});
+
     sendSuccess(res, 'Listing published successfully', listing, 201);
   } catch (error) {
     console.error('CREATE_LISTING_ERROR:', error);
@@ -208,20 +211,22 @@ export const getListings = async (req, res) => {
         where.updatedAt = { gte: new Date(lastUpdated) };
       }
 
-      const totalCount = await prisma.listing.count({ where });
       const { skip, take, page: pageNum, limit: limitNum } = getPaginationParams(page, limit);
 
-      const listings = await prisma.listing.findMany({
-        where,
-        include: {
-          user: {
-            select: { id: true, name: true, city: true, area: true, role: true, profileImage: true, createdAt: true }
-          }
-        },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take
-      });
+      const [totalCount, listings] = await Promise.all([
+        prisma.listing.count({ where }),
+        prisma.listing.findMany({
+          where,
+          include: {
+            user: {
+              select: { id: true, name: true, city: true, area: true, role: true, profileImage: true, createdAt: true }
+            }
+          },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take
+        })
+      ]);
 
       return sendPaginated(res, listings, totalCount, pageNum, limitNum);
     }
@@ -246,15 +251,17 @@ export const getListings = async (req, res) => {
       where.updatedAt = { gte: new Date(lastUpdated) };
     }
 
-    const totalCount = await prisma.listing.count({ where });
     const { skip, take, page: pageNum, limit: limitNum } = getPaginationParams(page, limit);
 
-    const listings = await prisma.listing.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      skip,
-      take
-    });
+    const [totalCount, listings] = await Promise.all([
+      prisma.listing.count({ where }),
+      prisma.listing.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take
+      })
+    ]);
 
     sendPaginated(res, listings, totalCount, pageNum, limitNum);
   } catch (error) {
@@ -298,26 +305,28 @@ export const getPublicListings = async (req, res) => {
       if (maxPrice) where.price.lte = parseFloat(maxPrice);
     }
 
-    const totalCount = await prisma.listing.count({ where });
     const { skip, take, page: pageNum, limit: limitNum } = getPaginationParams(page, Math.min(limit, 50));
 
-    const listings = await prisma.listing.findMany({
-      where,
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            city: true,
-            area: true,
-            profileImage: true
+    const [totalCount, listings] = await Promise.all([
+      prisma.listing.count({ where }),
+      prisma.listing.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              city: true,
+              area: true,
+              profileImage: true
+            }
           }
-        }
-      },
-      orderBy: { [sortBy]: sortOrder },
-      skip,
-      take
-    });
+        },
+        orderBy: { [sortBy]: sortOrder },
+        skip,
+        take
+      })
+    ]);
 
     sendPaginated(res, listings, totalCount, pageNum, limitNum);
   } catch (error) {
@@ -513,6 +522,8 @@ export const updateListing = async (req, res) => {
       req
     });
 
+    invalidateCache('cache:*/listings*').catch(() => {});
+
     sendSuccess(res, 'Listing updated successfully', updated);
   } catch (error) {
     sendError(res, 'Failed to update listing', error);
@@ -551,6 +562,8 @@ export const publishListing = async (req, res) => {
       req
     });
 
+    invalidateCache('cache:*/listings*').catch(() => {});
+
     sendSuccess(res, 'Listing published successfully', updated);
   } catch (error) {
     sendError(res, 'Failed to publish listing', error);
@@ -588,6 +601,8 @@ export const pauseListing = async (req, res) => {
       resourceId: id,
       req
     });
+
+    invalidateCache('cache:*/listings*').catch(() => {});
 
     sendSuccess(res, 'Listing paused successfully', updated);
   } catch (error) {
