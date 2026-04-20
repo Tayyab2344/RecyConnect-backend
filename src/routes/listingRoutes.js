@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticateToken } from '../middlewares/authMiddleware.js';
+import { cacheResponse } from '../middlewares/cacheMiddleware.js';
 import {
    createListing,
    getListings,
@@ -52,7 +53,7 @@ const router = express.Router();
  *       200:
  *         description: Public listings retrieved successfully
  */
-router.get('/public', getPublicListings);
+router.get('/public', cacheResponse(30), getPublicListings);
 
 // All routes below require authentication
 router.use(authenticateToken);
@@ -154,7 +155,7 @@ router.post('/', createListing);
  *       200:
  *         description: Listings retrieved successfully with pagination
  */
-router.get('/', getListings);
+router.get('/', cacheResponse(60), getListings);
 
 /**
  * @swagger

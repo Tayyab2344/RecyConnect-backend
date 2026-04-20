@@ -1,4 +1,5 @@
 import Stripe from 'stripe';
+import { withExponentialBackoff } from '../utils/retryHelper.js';
 
 // Initialize Stripe with secret key from environment
 // Use a dummy key in test mode to prevent initialization errors
@@ -34,16 +35,21 @@ const ensureStripe = () => {
  */
 export const createPaymentIntent = async (amount, currency = DEFAULT_CURRENCY, metadata = {}, captureManual = true) => {
     try {
-        const paymentIntent = await ensureStripe().paymentIntents.create({
-            amount: Math.round(amount * 100), // Convert to smallest currency unit
-            currency: currency.toLowerCase(),
-            metadata,
-            capture_method: captureManual ? 'manual' : 'automatic',
-            // Enable automatic payment methods for flexibility
-            automatic_payment_methods: {
-                enabled: true
-            }
-        });
+        const paymentIntent = await withExponentialBackoff(
+            () => ensureStripe().paymentIntents.create({
+                amount: Math.round(amount * 100), // Convert to smallest currency unit
+                currency: currency.toLowerCase(),
+                metadata,
+                capture_method: captureManual ? 'manual' : 'automatic',
+                // Enable automatic payment methods for flexibility
+                automatic_payment_methods: {
+                    enabled: true
+                }
+            }),
+            3,
+            1000,
+            'Stripe Create PaymentIntent'
+        );
 
         return paymentIntent;
     } catch (error) {

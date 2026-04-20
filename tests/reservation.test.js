@@ -1,11 +1,9 @@
 import 'dotenv/config';
 import request from 'supertest';
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../src/lib/prisma.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-
-const prisma = new PrismaClient();
 
 // Import routes
 import reservationRoutes from '../src/routes/reservationRoutes.js';
@@ -74,10 +72,18 @@ describe('Reservation Controller', () => {
         await prisma.listing.deleteMany({ where: { userId: { in: [buyer.id, seller.id] } } });
         // 4. Finally delete the users
         await prisma.user.deleteMany({ where: { id: { in: [buyer.id, seller.id] } } });
-        await prisma.$disconnect();
+        // prisma disconnect handled by setup.js
     });
 
     describe('POST /api/reservations', () => {
+        afterEach(async () => {
+            await prisma.listingReservation.deleteMany({ where: { buyerId: buyer.id } });
+            await prisma.listing.update({
+                where: { id: listing.id },
+                data: { quantity: 100 }
+            });
+        });
+
         it('should reserve valid quantity', async () => {
             const res = await request(app)
                 .post('/api/reservations')

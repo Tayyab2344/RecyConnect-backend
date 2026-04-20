@@ -5,22 +5,21 @@
 import 'dotenv/config';
 import request from 'supertest';
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../src/lib/prisma.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
-const prisma = new PrismaClient();
+import { jest } from '@jest/globals';
 
-// Import routes
-import paymentRoutes from '../src/routes/paymentRoutes.js';
-import orderRoutes from '../src/routes/orderRoutes.js';
-
-// Mock Stripe service for testing
-jest.mock('../src/services/stripeService.js', () => ({
-    createPaymentIntent: jest.fn().mockResolvedValue({
-        id: 'pi_test_123456',
-        client_secret: 'pi_test_123456_secret_test',
-        status: 'requires_payment_method'
+// 1. Setup Stripe Spies BEFORE importing routes
+const stripeSpies = {
+    createPaymentIntent: jest.fn((amount, currency, metadata = {}) => {
+        const id = `pi_test_123456_${metadata.orderId || Date.now()}`;
+        return Promise.resolve({
+            id,
+            client_secret: `${id}_secret_test`,
+            status: 'requires_payment_method'
+        });
     }),
     retrievePaymentIntent: jest.fn().mockResolvedValue({
         id: 'pi_test_123456',
@@ -47,7 +46,13 @@ jest.mock('../src/services/stripeService.js', () => ({
         };
         return map[status] || 'INITIATED';
     })
-}));
+};
+
+jest.unstable_mockModule('../src/services/stripeService.js', () => stripeSpies);
+
+// 2. Dynamically import routes
+const paymentRoutes = (await import('../src/routes/paymentRoutes.js')).default;
+const orderRoutes = (await import('../src/routes/orderRoutes.js')).default;
 
 const app = express();
 app.use(express.json());
@@ -128,26 +133,33 @@ describe('Payment Controller - Stripe Integration', () => {
     });
 
     afterAll(async () => {
-        // Cleanup
+        // Robust cleanup to handle leaked records from failed tests
         await prisma.payment.deleteMany({
-            where: { orderId: testOrder?.id }
-        });
+            where: { order: { sellerId: seller?.id } }
+        }).catch(()=>{});
+        
         await prisma.orderItem.deleteMany({
-            where: { orderId: testOrder?.id }
-        });
+            where: { order: { sellerId: seller?.id } }
+        }).catch(()=>{});
+
         await prisma.order.deleteMany({
-            where: { id: testOrder?.id }
-        });
+            where: { sellerId: seller?.id }
+        }).catch(()=>{});
+
+        await prisma.listingReservation.deleteMany().catch(()=>{});
+
         await prisma.listing.deleteMany({
             where: { userId: seller?.id }
-        });
+        }).catch(()=>{});
+
         await prisma.user.deleteMany({
             where: { email: { contains: 'paymenttestbuyer' } }
-        });
+        }).catch(()=>{});
+
         await prisma.user.deleteMany({
             where: { email: { contains: 'paymenttestseller' } }
-        });
-        await prisma.$disconnect();
+        }).catch(()=>{});
+        // prisma disconnect handled by setup.js
     });
 
     describe('POST /api/payments/create-intent', () => {
@@ -226,7 +238,7 @@ describe('Payment Controller - Stripe Integration', () => {
             expect(res.status).toBe(201);
             expect(res.body.success).toBe(true);
             expect(res.body.data.clientSecret).toBeDefined();
-            expect(res.body.data.paymentIntentId).toBe('pi_test_123456');
+            expect(res.body.data.paymentIntentId).toBe(`pi_test_123456_${testOrder.id}`);
             expect(res.body.data.amount).toBe(500);
 
             // Verify payment record exists
@@ -271,7 +283,7 @@ describe('Payment Controller - Stripe Integration', () => {
                     currency: 'PKR',
                     provider: 'STRIPE',
                     status: 'INITIATED',
-                    paymentIntentId: 'pi_test_123456'
+                    paymentIntentId: `pi_test_123456_${Date.now()}_${Math.random()}`
                 }
             });
         });
@@ -318,7 +330,7 @@ describe('Payment Controller - Stripe Integration', () => {
                     currency: 'PKR',
                     provider: 'STRIPE',
                     status: 'AUTHORIZED',
-                    paymentIntentId: 'pi_test_123456'
+                    paymentIntentId: `pi_test_123456_${Date.now()}_${Math.random()}`
                 }
             });
         });
@@ -380,7 +392,7 @@ describe('Payment Controller - Stripe Integration', () => {
                     currency: 'PKR',
                     provider: 'STRIPE',
                     status: 'CAPTURED',
-                    paymentIntentId: 'pi_test_123456'
+                    paymentIntentId: `pi_test_123456_${Date.now()}_${Math.random()}`
                 }
             });
         });
@@ -438,7 +450,7 @@ describe('Payment Controller - Stripe Integration', () => {
                     currency: 'PKR',
                     provider: 'STRIPE',
                     status: 'CAPTURED',
-                    paymentIntentId: 'pi_test_123456'
+                    paymentIntentId: `pi_test_123456_${Date.now()}_${Math.random()}`
                 }
             });
         });
@@ -505,7 +517,7 @@ describe('Payment Controller - Stripe Integration', () => {
                     currency: 'PKR',
                     provider: 'STRIPE',
                     status: 'CAPTURED',
-                    paymentIntentId: 'pi_test_123456'
+                    paymentIntentId: `pi_test_123456_${Date.now()}_${Math.random()}`
                 }
             });
         });

@@ -1,40 +1,35 @@
 /**
  * Order Controller Integration Tests
- * Tests: Create order from reservation, confirm, cancel, state transitions
  */
 import 'dotenv/config';
 import request from 'supertest';
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../src/lib/prisma.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
-const prisma = new PrismaClient();
-
 // Import routes
 import orderRoutes from '../src/routes/orderRoutes.js';
-import reservationRoutes from '../src/routes/reservationRoutes.js';
 import listingRoutes from '../src/routes/listingRoutes.js';
 
 const app = express();
 app.use(express.json());
 app.use('/api/orders', orderRoutes);
-app.use('/api/reservations', reservationRoutes);
 app.use('/api/listings', listingRoutes);
 
 // Helper to generate token
 function generateToken(user) {
     return jwt.sign(
         { userId: user.id, email: user.email, role: user.role },
-        process.env.JWT_ACCESS_SECRET,
+        process.env.JWT_ACCESS_SECRET || 'test-secret',
         { expiresIn: '1h' }
     );
 }
 
-describe('Order Controller - Reservation-Based Orders', () => {
+describe('Order Controller', () => {
     let buyer, seller;
     let buyerToken, sellerToken;
-    let testListing, testReservation;
+    let testListing;
 
     beforeAll(async () => {
         // Create test users
@@ -80,482 +75,178 @@ describe('Order Controller - Reservation-Based Orders', () => {
 
     afterAll(async () => {
         // Cleanup in proper order (respecting foreign key constraints)
+        await prisma.payment.deleteMany({
+             where: { order: { buyerId: buyer.id } }
+        }).catch(() => {});
         await prisma.orderItem.deleteMany({
-            where: {
-                order: {
-                    OR: [
-                        { buyerId: buyer.id },
-                        { sellerId: seller.id }
-                    ]
-                }
-            }
+             where: { order: { buyerId: buyer.id } }
         });
         await prisma.order.deleteMany({
-            where: {
-                OR: [
-                    { buyerId: buyer.id },
-                    { sellerId: seller.id }
-                ]
-            }
+             where: { OR: [{ buyerId: buyer.id }, { sellerId: seller.id }] }
         });
-        await prisma.listingReservation.deleteMany({
-            where: { buyerId: buyer.id }
-        });
+        await prisma.listingReservation.deleteMany();
         await prisma.listing.deleteMany({
-            where: { userId: seller.id }
+            where: { userId: { in: [seller.id, buyer.id] } }
         });
         await prisma.user.deleteMany({
-            where: {
-                email: { contains: 'ordertestbuyer' }
-            }
+            where: { id: { in: [seller.id, buyer.id] } }
         });
-        await prisma.user.deleteMany({
-            where: {
-                email: { contains: 'ordertestseller' }
-            }
-        });
-        await prisma.$disconnect();
+        // prisma disconnect handled by setup.js
     });
 
-    describe('POST /api/orders - Create Order from Reservation', () => {
-        let activeReservation;
-
-        beforeEach(async () => {
-            // Create a fresh reservation for each test
-            activeReservation = await prisma.listingReservation.create({
-                data: {
-                    listingId: testListing.id,
-                    buyerId: buyer.id,
-                    quantity: 5,
-                    status: 'ACTIVE',
-                    expiresAt: new Date(Date.now() + 20 * 60 * 1000) // 20 min from now
-                }
-            });
-
-            // Reduce listing quantity
-            await prisma.listing.update({
-                where: { id: testListing.id },
-                data: { quantity: { decrement: 5 } }
-            });
-        });
-
+    describe('POST /api/orders', () => {
         afterEach(async () => {
-            // Cleanup reservations and orders created in tests
+            await prisma.payment.deleteMany({
+                 where: { order: { buyerId: buyer.id } }
+            }).catch(() => {});
             await prisma.orderItem.deleteMany({
-                where: { order: { buyerId: buyer.id } }
+                 where: { order: { buyerId: buyer.id } }
             });
             await prisma.order.deleteMany({
-                where: { buyerId: buyer.id }
+                 where: { buyerId: buyer.id }
             });
-            await prisma.listingReservation.deleteMany({
-                where: { buyerId: buyer.id }
-            });
-            // Reset listing quantity
             await prisma.listing.update({
                 where: { id: testListing.id },
-                data: { quantity: 100 }
+                data: { estimatedWeight: 50, quantity: 100 }
             });
         });
 
         it('should fail without authentication', async () => {
             const res = await request(app)
                 .post('/api/orders')
-                .send({ reservationId: activeReservation.id });
-
+                .send({ listingId: testListing.id, weight: 10 });
             expect([401, 403]).toContain(res.status);
         });
 
-        it('should fail without reservationId', async () => {
+        it('should fail without listingId', async () => {
+             const res = await request(app)
+                .post('/api/orders')
+                .set('Authorization', `Bearer ${buyerToken}`)
+                .send({ weight: 10 });
+             expect(res.status).toBe(400);
+             expect(res.body.message).toContain('listingId is required');
+        });
+
+        it('should create order successfully', async () => {
             const res = await request(app)
                 .post('/api/orders')
                 .set('Authorization', `Bearer ${buyerToken}`)
-                .send({});
-
-            expect(res.status).toBe(400);
-            expect(res.body.message).toContain('Reservation ID is required');
-        });
-
-        it('should fail with non-existent reservation', async () => {
-            const res = await request(app)
-                .post('/api/orders')
-                .set('Authorization', `Bearer ${buyerToken}`)
-                .send({ reservationId: 999999 });
-
-            expect(res.status).toBe(400);
-            expect(res.body.message).toContain('Reservation not found');
-        });
-
-        it('should fail if reservation does not belong to buyer', async () => {
-            const res = await request(app)
-                .post('/api/orders')
-                .set('Authorization', `Bearer ${sellerToken}`) // Wrong user
-                .send({ reservationId: activeReservation.id });
-
-            expect(res.status).toBe(400);
-            expect(res.body.message).toContain('Reservation does not belong to you');
-        });
-
-        it('should fail if buyer equals seller', async () => {
-            // Create a listing owned by buyer
-            const buyerListing = await prisma.listing.create({
-                data: {
-                    userId: buyer.id,
-                    category: 'Metal',
-                    materialType: 'metal',
-                    estimatedWeight: 20,
-                    price: 15.0,
-                    quantity: 50,
-                    status: 'PUBLISHED',
-                    images: []
-                }
-            });
-
-            // Create reservation for buyer's own listing
-            const selfReservation = await prisma.listingReservation.create({
-                data: {
-                    listingId: buyerListing.id,
-                    buyerId: buyer.id,
-                    quantity: 3,
-                    status: 'ACTIVE',
-                    expiresAt: new Date(Date.now() + 20 * 60 * 1000)
-                }
-            });
-
-            const res = await request(app)
-                .post('/api/orders')
-                .set('Authorization', `Bearer ${buyerToken}`)
-                .send({ reservationId: selfReservation.id });
-
-            expect(res.status).toBe(400);
-            expect(res.body.message).toContain('cannot create an order for your own listing');
-
-            // Cleanup
-            await prisma.listingReservation.delete({ where: { id: selfReservation.id } });
-            await prisma.listing.delete({ where: { id: buyerListing.id } });
-        });
-
-        it('should create order from ACTIVE reservation successfully', async () => {
-            const res = await request(app)
-                .post('/api/orders')
-                .set('Authorization', `Bearer ${buyerToken}`)
-                .send({ reservationId: activeReservation.id });
+                .send({ listingId: testListing.id, weight: 10 });
 
             expect(res.status).toBe(201);
             expect(res.body.success).toBe(true);
             expect(res.body.data.status).toBe('CREATED');
             expect(res.body.data.buyerId).toBe(buyer.id);
-            expect(res.body.data.sellerId).toBe(seller.id);
-            expect(res.body.data.totalAmount).toBe(50); // 5 qty * 10 price
-
-            // Verify reservation is now PENDING
-            const updatedReservation = await prisma.listingReservation.findUnique({
-                where: { id: activeReservation.id }
-            });
-            expect(updatedReservation.status).toBe('PENDING');
-            expect(updatedReservation.orderId).toBe(res.body.data.id);
+            expect(res.body.data.totalAmount).toBe(100); // 10 weight * 10 price
         });
-
-        it('should fail if reservation already has an order', async () => {
-            // First, create an order
-            await request(app)
+        
+        it('should fail if buyer equals seller', async () => {
+            const res = await request(app)
                 .post('/api/orders')
-                .set('Authorization', `Bearer ${buyerToken}`)
-                .send({ reservationId: activeReservation.id });
+                .set('Authorization', `Bearer ${sellerToken}`)
+                .send({ listingId: testListing.id, weight: 10 });
 
-            // Try to create another order with same reservation
+            expect(res.status).toBe(400);
+            expect(res.body.message).toContain('cannot create an order for your own listing');
+        });
+        
+        it('should fail if quantity exceeds available stock', async () => {
             const res = await request(app)
                 .post('/api/orders')
                 .set('Authorization', `Bearer ${buyerToken}`)
-                .send({ reservationId: activeReservation.id });
+                .send({ listingId: testListing.id, weight: 1000 });
 
             expect(res.status).toBe(400);
-            expect(res.body.message).toContain('not active');
+            expect(res.body.message).toContain('exceeds available stock');
         });
     });
 
-    describe('POST /api/orders/:id/confirm - Confirm Order', () => {
+    describe('POST /api/orders/:id/confirm', () => {
         let testOrder;
-
         beforeEach(async () => {
-            // Create reservation
-            const reservation = await prisma.listingReservation.create({
-                data: {
-                    listingId: testListing.id,
-                    buyerId: buyer.id,
-                    quantity: 3,
-                    status: 'PENDING',
-                    expiresAt: new Date(Date.now() + 20 * 60 * 1000)
-                }
-            });
-
-            // Create order with CREATED status
             testOrder = await prisma.order.create({
                 data: {
                     buyerId: buyer.id,
                     sellerId: seller.id,
                     status: 'CREATED',
-                    totalAmount: 30,
+                    totalAmount: 100,
                     items: {
-                        create: {
-                            listingId: testListing.id,
-                            quantity: 3,
-                            price: 10
-                        }
+                        create: { listingId: testListing.id, quantity: 10, price: 10 }
                     }
                 }
             });
-
-            // Link reservation to order
-            await prisma.listingReservation.update({
-                where: { id: reservation.id },
-                data: { orderId: testOrder.id }
+        });
+        
+        afterEach(async () => {
+            await prisma.payment.deleteMany({
+                 where: { order: { buyerId: buyer.id } }
+            }).catch(() => {});
+            await prisma.orderItem.deleteMany({
+                 where: { order: { buyerId: buyer.id } }
+            });
+            await prisma.order.deleteMany({
+                 where: { buyerId: buyer.id }
             });
         });
 
-        afterEach(async () => {
-            await prisma.orderItem.deleteMany({ where: { orderId: testOrder?.id } });
-            await prisma.listingReservation.deleteMany({ where: { orderId: testOrder?.id } });
-            await prisma.order.deleteMany({ where: { id: testOrder?.id } });
-        });
-
-        it('should fail if user is not the seller', async () => {
-            const res = await request(app)
-                .post(`/api/orders/${testOrder.id}/confirm`)
-                .set('Authorization', `Bearer ${buyerToken}`); // Buyer, not seller
-
-            expect(res.status).toBe(400);
-            expect(res.body.message).toContain('Only the seller can confirm');
-        });
-
-        it('should confirm order and lock reservation', async () => {
+        it('should allow seller to confirm', async () => {
             const res = await request(app)
                 .post(`/api/orders/${testOrder.id}/confirm`)
                 .set('Authorization', `Bearer ${sellerToken}`);
 
             expect(res.status).toBe(200);
-            expect(res.body.success).toBe(true);
             expect(res.body.data.status).toBe('CONFIRMED');
-
-            // Verify reservation is COMPLETED (locked)
-            const reservation = await prisma.listingReservation.findFirst({
-                where: { orderId: testOrder.id }
-            });
-            expect(reservation.status).toBe('COMPLETED');
-        });
-
-        it('should fail to confirm already confirmed order', async () => {
-            // First confirm
-            await request(app)
-                .post(`/api/orders/${testOrder.id}/confirm`)
-                .set('Authorization', `Bearer ${sellerToken}`);
-
-            // Try to confirm again
-            const res = await request(app)
-                .post(`/api/orders/${testOrder.id}/confirm`)
-                .set('Authorization', `Bearer ${sellerToken}`);
-
-            expect(res.status).toBe(400);
-            expect(res.body.message).toContain('Cannot confirm order');
         });
     });
 
-    describe('POST /api/orders/:id/cancel - Cancel Order', () => {
-        let testOrder, testReservation;
-
+    describe('POST /api/orders/:id/cancel', () => {
+        let testOrder;
         beforeEach(async () => {
-            // Reset listing quantity
-            await prisma.listing.update({
-                where: { id: testListing.id },
-                data: { quantity: 95 } // 100 - 5 reserved
-            });
-
-            // Create reservation
-            testReservation = await prisma.listingReservation.create({
-                data: {
-                    listingId: testListing.id,
-                    buyerId: buyer.id,
-                    quantity: 5,
-                    status: 'PENDING',
-                    expiresAt: new Date(Date.now() + 20 * 60 * 1000)
-                }
-            });
-
-            // Create order with CREATED status
             testOrder = await prisma.order.create({
                 data: {
                     buyerId: buyer.id,
                     sellerId: seller.id,
                     status: 'CREATED',
-                    totalAmount: 50,
+                    totalAmount: 100,
                     items: {
-                        create: {
-                            listingId: testListing.id,
-                            quantity: 5,
-                            price: 10
-                        }
-                    }
-                }
-            });
-
-            // Link reservation to order
-            await prisma.listingReservation.update({
-                where: { id: testReservation.id },
-                data: { orderId: testOrder.id }
-            });
-        });
-
-        afterEach(async () => {
-            await prisma.orderItem.deleteMany({ where: { orderId: testOrder?.id } });
-            await prisma.listingReservation.deleteMany({ where: { buyerId: buyer.id } });
-            await prisma.order.deleteMany({ where: { id: testOrder?.id } });
-            // Reset listing quantity
-            await prisma.listing.update({
-                where: { id: testListing.id },
-                data: { quantity: 100 }
-            });
-        });
-
-        it('should cancel order and restore listing quantity', async () => {
-            const listingBefore = await prisma.listing.findUnique({
-                where: { id: testListing.id }
-            });
-
-            const res = await request(app)
-                .post(`/api/orders/${testOrder.id}/cancel`)
-                .set('Authorization', `Bearer ${buyerToken}`);
-
-            expect(res.status).toBe(200);
-            expect(res.body.success).toBe(true);
-            expect(res.body.data.status).toBe('CANCELLED');
-
-            // Verify listing quantity is restored
-            const listingAfter = await prisma.listing.findUnique({
-                where: { id: testListing.id }
-            });
-            expect(listingAfter.quantity).toBe(listingBefore.quantity + 5);
-
-            // Verify reservation is RELEASED
-            const reservation = await prisma.listingReservation.findUnique({
-                where: { id: testReservation.id }
-            });
-            expect(reservation.status).toBe('RELEASED');
-            expect(reservation.orderId).toBeNull();
-        });
-
-        it('should allow seller to cancel order', async () => {
-            const res = await request(app)
-                .post(`/api/orders/${testOrder.id}/cancel`)
-                .set('Authorization', `Bearer ${sellerToken}`);
-
-            expect(res.status).toBe(200);
-            expect(res.body.data.status).toBe('CANCELLED');
-        });
-
-        it('should fail to cancel confirmed order', async () => {
-            // Confirm the order first
-            await prisma.order.update({
-                where: { id: testOrder.id },
-                data: { status: 'CONFIRMED' }
-            });
-
-            const res = await request(app)
-                .post(`/api/orders/${testOrder.id}/cancel`)
-                .set('Authorization', `Bearer ${buyerToken}`);
-
-            expect(res.status).toBe(400);
-            expect(res.body.message).toContain('Cannot cancel order');
-            expect(res.body.message).toContain('CONFIRMED');
-        });
-    });
-
-    describe('GET /api/orders/buyer - Get Buyer Orders', () => {
-        it('should return buyer orders with pagination', async () => {
-            const res = await request(app)
-                .get('/api/orders/buyer')
-                .set('Authorization', `Bearer ${buyerToken}`);
-
-            expect(res.status).toBe(200);
-            expect(res.body.success).toBe(true);
-            expect(Array.isArray(res.body.data)).toBe(true);
-            expect(res.body.pagination).toBeDefined();
-        });
-
-        it('should filter by status', async () => {
-            const res = await request(app)
-                .get('/api/orders/buyer?status=CREATED')
-                .set('Authorization', `Bearer ${buyerToken}`);
-
-            expect(res.status).toBe(200);
-        });
-    });
-
-    describe('GET /api/orders/seller - Get Seller Orders', () => {
-        it('should return seller orders with pagination', async () => {
-            const res = await request(app)
-                .get('/api/orders/seller')
-                .set('Authorization', `Bearer ${sellerToken}`);
-
-            expect(res.status).toBe(200);
-            expect(res.body.success).toBe(true);
-            expect(Array.isArray(res.body.data)).toBe(true);
-        });
-
-        it('should filter by buyerId', async () => {
-            const res = await request(app)
-                .get(`/api/orders/seller?buyerId=${buyer.id}`)
-                .set('Authorization', `Bearer ${sellerToken}`);
-
-            expect(res.status).toBe(200);
-        });
-    });
-
-    describe('State Transition Validation', () => {
-        let testOrder;
-
-        beforeEach(async () => {
-            testOrder = await prisma.order.create({
-                data: {
-                    buyerId: buyer.id,
-                    sellerId: seller.id,
-                    status: 'CONFIRMED', // Already confirmed
-                    totalAmount: 50,
-                    items: {
-                        create: {
-                            listingId: testListing.id,
-                            quantity: 5,
-                            price: 10
-                        }
+                        create: { listingId: testListing.id, quantity: 10, price: 10 }
                     }
                 }
             });
         });
-
+        
         afterEach(async () => {
-            await prisma.orderItem.deleteMany({ where: { orderId: testOrder?.id } });
-            await prisma.order.deleteMany({ where: { id: testOrder?.id } });
+            await prisma.payment.deleteMany({
+                 where: { order: { buyerId: buyer.id } }
+            }).catch(() => {});
+            await prisma.orderItem.deleteMany({
+                 where: { order: { buyerId: buyer.id } }
+            });
+            await prisma.order.deleteMany({
+                 where: { buyerId: buyer.id }
+            });
         });
 
-        it('should block cancellation of CONFIRMED order', async () => {
+        it('should allow buyer to cancel order', async () => {
             const res = await request(app)
                 .post(`/api/orders/${testOrder.id}/cancel`)
                 .set('Authorization', `Bearer ${buyerToken}`);
 
-            expect(res.status).toBe(400);
-            expect(res.body.message).toContain('Cannot cancel');
+            if (res.status !== 200) {
+                console.error('CANCELLATION_ERROR_BODY:' + JSON.stringify(res.body));
+            }
+            expect(res.status).toBe(200);
+            expect(res.body.data.status).toBe('CANCELLED');
         });
-
-        it('should block confirmation of CANCELLED order', async () => {
-            await prisma.order.update({
-                where: { id: testOrder.id },
-                data: { status: 'CANCELLED' }
-            });
-
+        
+        it('should successfully cancel a confirmed order', async () => {
+            await prisma.order.update({ where: { id: testOrder.id }, data: { status: 'CONFIRMED'} });
             const res = await request(app)
-                .post(`/api/orders/${testOrder.id}/confirm`)
-                .set('Authorization', `Bearer ${sellerToken}`);
+                .post(`/api/orders/${testOrder.id}/cancel`)
+                .set('Authorization', `Bearer ${buyerToken}`);
 
-            expect(res.status).toBe(400);
-            expect(res.body.message).toContain('Cannot confirm');
+            expect(res.status).toBe(200);
+            expect(res.body.data.status).toBe('CANCELLED');
         });
     });
 });

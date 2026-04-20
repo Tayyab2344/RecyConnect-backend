@@ -1,31 +1,62 @@
-// Load environment variables FIRST before any imports
-import 'dotenv/config';
+import dotenv from 'dotenv';
+dotenv.config({ path: '.env' });
+import { jest } from '@jest/globals';
 
-import { PrismaClient } from '@prisma/client';
+// Mock Redis entirely to prevent hanging connections
+jest.mock('ioredis', () => {
+    return jest.fn().mockImplementation(() => {
+        return {
+            get: jest.fn().mockResolvedValue(null),
+            setex: jest.fn().mockResolvedValue('OK'),
+            del: jest.fn().mockResolvedValue(1),
+            keys: jest.fn().mockResolvedValue([]),
+            pipeline: jest.fn().mockReturnValue({
+                del: jest.fn().mockReturnThis(),
+                exec: jest.fn().mockResolvedValue([])
+            }),
+            lpush: jest.fn().mockResolvedValue(1),
+            rpop: jest.fn().mockResolvedValue(null),
+            llen: jest.fn().mockResolvedValue(0),
+            on: jest.fn(),
+            quit: jest.fn().mockResolvedValue('OK'),
+            disconnect: jest.fn()
+        };
+    });
+});
+import prisma from '../src/lib/prisma.js';
+import { logger } from '../src/utils/logger.js';
 
-const prisma = new PrismaClient();
+// Suppress Winston DB writing during tests
+logger.silent = true;
 
 // Set test-specific environment variables if not already set
 if (!process.env.JWT_ACCESS_SECRET) {
     process.env.JWT_ACCESS_SECRET = 'test-secret-key-for-jest-testing';
 }
 
-// Global test setup
+// Global test setup with retry for Neon cold-start resilience
 beforeAll(async () => {
-    // Connect to database
-    await prisma.$connect();
-    console.log('Test database connected');
+    let retries = 3;
+    while (retries > 0) {
+        try {
+            await prisma.$connect();
+            console.log('Test database connected');
+            return;
+        } catch (err) {
+            retries--;
+            if (retries === 0) throw err;
+            console.log(`DB connection failed, retrying in 3s... (${retries} retries left)`);
+            await new Promise(r => setTimeout(r, 3000));
+        }
+    }
 });
 
 // Cleanup after each test
 afterEach(async () => {
-    // Clean up test data if needed
+    // Optionally clean things
 });
 
-// Global teardown
-afterAll(async () => {
-    await prisma.$disconnect();
-    console.log('Test database disconnected');
-});
+// Do NOT disconnect between test suites - forceExit handles cleanup.
+// Disconnecting causes Neon cold-start failures on reconnect for the next suite.
 
 export { prisma };

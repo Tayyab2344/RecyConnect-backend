@@ -1,5 +1,5 @@
 import express from "express";
-import { getProfile, changePassword, updateProfile, requestRoleUpgrade, checkCnic } from "../controllers/userController.js";
+import { getProfile, changePassword, updateProfile, requestRoleUpgrade, checkCnic, deleteAccount } from "../controllers/userController.js";
 import { authenticateToken } from "../middlewares/authMiddleware.js";
 import multer from "multer";
 
@@ -189,5 +189,31 @@ router.post(
  *                       type: string
  */
 router.get("/check-cnic/:cnic", checkCnic);
+
+/**
+ * @swagger
+ * /api/user/account:
+ *   delete:
+ *     summary: Delete user account and all related data
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - password
+ *             properties:
+ *               password:
+ *                 type: string
+ *               reason:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Account deleted successfully
+ */
+router.delete("/account", authenticateToken, deleteAccount);
 
 export default router;

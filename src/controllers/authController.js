@@ -13,6 +13,7 @@ import {
 } from "../services/tokenService.js";
 import { extractTextFromUrl, extractCNIC, extractNTN } from "../services/ocrService.js";
 import { logger } from "../utils/logger.js";
+import { encryptedDocumentData, uploadEncryptedToCloudinary } from "../utils/uploadHelper.js";
 import { UserRole, VerificationStatus, KycStage } from "../constants/enums.js";
 import { sendSuccess, sendError } from "../utils/responseHelper.js";
 import prisma from "../lib/prisma.js";
@@ -140,8 +141,8 @@ export async function register(req, res) {
 
       // Upload CNIC
       const cnicFile = files.cnic[0];
-      const upCnic = await uploadToCloudinary(cnicFile, `recyconnect/docs/${email}`);
-      documentsData.push({ docType: "CNIC", fileUrl: upCnic.secure_url, fileName: cnicFile.originalname });
+      const upCnic = await uploadEncryptedToCloudinary(cnicFile, `recyconnect/docs/${email}`);
+      documentsData.push(encryptedDocumentData("CNIC", cnicFile, upCnic));
 
       if (role === UserRole.COMPANY) {
         if (!files.ntn?.[0] || !files.utility?.[0]) {
@@ -149,12 +150,12 @@ export async function register(req, res) {
         }
         const ntnFile = files.ntn[0];
         const utilFile = files.utility[0];
-        const upNtn = await uploadToCloudinary(ntnFile, `recyconnect/docs/${email}`);
-        const upUtil = await uploadToCloudinary(utilFile, `recyconnect/docs/${email}`);
+        const upNtn = await uploadEncryptedToCloudinary(ntnFile, `recyconnect/docs/${email}`);
+        const upUtil = await uploadEncryptedToCloudinary(utilFile, `recyconnect/docs/${email}`);
 
         documentsData.push(
-          { docType: "NTN", fileUrl: upNtn.secure_url, fileName: ntnFile.originalname },
-          { docType: "UTILITY", fileUrl: upUtil.secure_url, fileName: utilFile.originalname }
+          encryptedDocumentData("NTN", ntnFile, upNtn),
+          encryptedDocumentData("UTILITY", utilFile, upUtil)
         );
       }
     }
@@ -291,6 +292,7 @@ export async function verifyOtpController(req, res) {
       if (regData.documents && regData.documents.length > 0) {
         try {
           for (const doc of regData.documents) {
+            if (doc.encrypted) continue;
             if (doc.docType === "CNIC" || doc.docType === "NTN") {
               const text = await extractTextFromUrl(doc.fileUrl);
               let extractedData = {};
@@ -354,6 +356,7 @@ export async function verifyOtpController(req, res) {
       if (user.documents.length > 0) {
         try {
           for (const doc of user.documents) {
+            if (doc.encrypted) continue;
             if (doc.docType === "CNIC" || doc.docType === "NTN") {
               const text = await extractTextFromUrl(doc.fileUrl);
               let extractedData = {};
@@ -439,6 +442,11 @@ export async function login(req, res) {
 
     if (!match) {
       return sendError(res, "Invalid credentials", null, 401);
+    }
+
+    // Check if account has been deleted
+    if (user.deletedAt) {
+      return sendError(res, "This account has been deleted", null, 403);
     }
 
     // Skip verification checks for admin users

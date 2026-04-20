@@ -225,6 +225,10 @@ DATABASE_URL="postgresql://user:pass@localhost:5432/recyconnect"
 JWT_ACCESS_SECRET=your_access_secret_here
 JWT_REFRESH_SECRET=your_refresh_secret_here
 
+# Document encryption (32 random bytes, base64 encoded)
+DOCUMENT_ENCRYPTION_KEY=generate_with_openssl_rand_base64_32
+DOCUMENT_ENCRYPTION_KEY_VERSION=v1
+
 # Server
 PORT=5000
 NODE_ENV=development
@@ -266,6 +270,38 @@ npm start       # Production
 Server runs at `http://localhost:5000`
 
 API docs at `http://localhost:5000/api-docs`
+
+### 5. Deploy To Vercel
+
+Deploy the `RecyConnect-backend` folder as the Vercel project root. Add these environment variables in Vercel Project Settings:
+
+```env
+NODE_ENV=production
+DATABASE_URL=your_neon_pooled_connection_string
+DIRECT_DATABASE_URL=your_neon_direct_connection_string
+JWT_ACCESS_SECRET=your_access_secret_here
+JWT_REFRESH_SECRET=your_refresh_secret_here
+DOCUMENT_ENCRYPTION_KEY=your_32_byte_base64_key
+DOCUMENT_ENCRYPTION_KEY_VERSION=v1
+CLOUDINARY_CLOUD_NAME=your_cloud
+CLOUDINARY_API_KEY=your_key
+CLOUDINARY_API_SECRET=your_secret
+STRIPE_SECRET_KEY=sk_live_or_test_key
+STRIPE_CURRENCY=pkr
+FRONTEND_URL=https://your-frontend-domain.vercel.app
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USER=your_email@gmail.com
+EMAIL_PASSWORD=your_app_password
+```
+
+Generate `DOCUMENT_ENCRYPTION_KEY` with:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+This backend exports the Express app for Vercel serverless functions. Background cron jobs do not run on Vercel, so use Vercel Cron or another scheduler for maintenance tasks.
 
 ---
 

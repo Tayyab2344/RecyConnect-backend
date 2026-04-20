@@ -14,7 +14,8 @@ const STRIPE_ONLY_ROLES = [UserRole.WAREHOUSE, UserRole.COMPANY];
  * Warehouse/Company to Warehouse/Company = Stripe only
  */
 const isCodAllowed = (sellerRole) => {
-    return sellerRole === UserRole.INDIVIDUAL;
+    // COD is allowed for all seller roles
+    return true;
 };
 
 // Valid payment state transitions
@@ -65,14 +66,21 @@ export const createPaymentIntent = async (req, res) => {
                 throw new Error('Only the buyer can initiate payment');
             }
 
-            // 3. Validate order status is CONFIRMED
-            if (order.status !== OrderStatus.CONFIRMED) {
-                throw new Error(`Cannot create payment. Order status must be CONFIRMED. Current status: ${order.status}`);
+            // 3. Validate order status is CREATED or CONFIRMED
+            if (order.status !== OrderStatus.CREATED && order.status !== OrderStatus.CONFIRMED) {
+                throw new Error(`Cannot create payment. Order status must be CREATED or CONFIRMED. Current status: ${order.status}`);
             }
 
             // 4. Check if payment already exists
             if (order.payment) {
                 throw new Error('Payment already exists for this order. Use existing PaymentIntent.');
+            }
+
+            // Stripe Minimum Amount Validation ($0.50 USD equivalent required)
+            const currency = (process.env.STRIPE_CURRENCY || 'pkr').toLowerCase();
+            const minAmountStripe = currency === 'pkr' ? 150 : 1; 
+            if (order.totalAmount < minAmountStripe) {
+                throw new Error(`Minimum order amount for online payment is Rs ${minAmountStripe}. Please add more items or use Cash on Delivery (COD).`);
             }
 
             // 5. Create Stripe PaymentIntent
@@ -161,9 +169,9 @@ export const createCodPayment = async (req, res) => {
                 throw new Error('Only the buyer can initiate payment');
             }
 
-            // 3. Validate order status is CONFIRMED
-            if (order.status !== OrderStatus.CONFIRMED) {
-                throw new Error(`Cannot create payment. Order status must be CONFIRMED. Current: ${order.status}`);
+            // 3. Validate order status is CREATED or CONFIRMED
+            if (order.status !== OrderStatus.CREATED && order.status !== OrderStatus.CONFIRMED) {
+                throw new Error(`Cannot create payment. Order status must be CREATED or CONFIRMED. Current: ${order.status}`);
             }
 
             // 4. Check if payment already exists
@@ -555,7 +563,7 @@ export const releasePayment = async (req, res) => {
 export const refundPayment = async (req, res) => {
     try {
         const { id } = req.params;
-        const { reason } = req.body;
+        const { reason } = req.body || {};
         const userId = req.user.id;
 
         const result = await prisma.$transaction(async (tx) => {

@@ -4,6 +4,9 @@ import { sendSuccess, sendPaginated, sendError } from '../utils/responseHelper.j
 import prisma from '../lib/prisma.js';
 import { logActivity } from '../utils/activityLogger.js';
 import cloudinary from '../config/cloudinary.js';
+import { withExponentialBackoff } from '../utils/retryHelper.js';
+import { invalidateCache } from '../lib/redis.js';
+import { EventBus } from '../events/eventBus.js';
 
 /**
  * Upload a base64 image to Cloudinary
@@ -17,14 +20,19 @@ const uploadBase64ToCloudinary = async (base64String, folder) => {
     ? base64String
     : `data:image/jpeg;base64,${base64String}`;
 
-  const result = await cloudinary.uploader.upload(dataUri, {
-    folder,
-    resource_type: 'image',
-    transformation: [
-      { width: 800, height: 800, crop: 'limit' },
-      { quality: 'auto' }
-    ]
-  });
+  const result = await withExponentialBackoff(
+    () => cloudinary.uploader.upload(dataUri, {
+      folder,
+      resource_type: 'image',
+      transformation: [
+        { width: 800, height: 800, crop: 'limit' },
+        { quality: 'auto' }
+      ]
+    }),
+    3,
+    1500,
+    'Cloudinary Image Upload'
+  );
 
   return result.secure_url;
 };
@@ -77,6 +85,10 @@ export const createListing = async (req, res) => {
       return sendError(res, 'At least one image is required', null, 400);
     }
 
+    if (Array.isArray(images) && images.length > 3) {
+      return sendError(res, 'Maximum 3 images allowed per listing', null, 400);
+    }
+
     // Upload base64 images to Cloudinary, keep URLs as-is
     let imageUrls = [];
     for (const img of images) {
@@ -108,10 +120,13 @@ export const createListing = async (req, res) => {
         pickupAddress,
         latitude: parseFloat(latitude) || null,
         longitude: parseFloat(longitude) || null,
+        city: req.user.city || null,
+        area: req.user.area || null,
         locationMethod: locationMethod || 'manual',
         notes: notes || null,
         images: imageUrls,
-        status
+        status,
+        metadata: req.body.metadata || null
       }
     });
 
@@ -124,6 +139,11 @@ export const createListing = async (req, res) => {
       meta: { materialType, price, quantity },
       req
     });
+
+    // Fire detached event bus hook instead of synchronous cache manipulation
+    EventBus.emit('listing.created', { listingId: listing.id, category: listing.category });
+
+    invalidateCache('cache:*/listings*').catch(() => {});
 
     sendSuccess(res, 'Listing published successfully', listing, 201);
   } catch (error) {
@@ -149,7 +169,8 @@ export const getListings = async (req, res) => {
       search,
       page = 1,
       limit = 10,
-      view
+      view,
+      lastUpdated
     } = req.query;
 
     // ── Marketplace View ──────────────────────────────────────────
@@ -177,27 +198,35 @@ export const getListings = async (req, res) => {
       if (materialType) where.materialType = { equals: materialType, mode: 'insensitive' };
       if (search) {
         where.OR = [
+          { title: { contains: search, mode: 'insensitive' } },
           { materialType: { contains: search, mode: 'insensitive' } },
           { notes: { contains: search, mode: 'insensitive' } },
           { pickupAddress: { contains: search, mode: 'insensitive' } }
         ];
       }
       Object.assign(where, buildDateFilter(startDate, endDate));
+      
+      // Delta Sync Support
+      if (lastUpdated) {
+        where.updatedAt = { gte: new Date(lastUpdated) };
+      }
 
-      const totalCount = await prisma.listing.count({ where });
       const { skip, take, page: pageNum, limit: limitNum } = getPaginationParams(page, limit);
 
-      const listings = await prisma.listing.findMany({
-        where,
-        include: {
-          user: {
-            select: { id: true, name: true, city: true, area: true, role: true, profileImage: true }
-          }
-        },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take
-      });
+      const [totalCount, listings] = await Promise.all([
+        prisma.listing.count({ where }),
+        prisma.listing.findMany({
+          where,
+          include: {
+            user: {
+              select: { id: true, name: true, city: true, area: true, role: true, profileImage: true, createdAt: true }
+            }
+          },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take
+        })
+      ]);
 
       return sendPaginated(res, listings, totalCount, pageNum, limitNum);
     }
@@ -209,22 +238,30 @@ export const getListings = async (req, res) => {
     if (status) where.status = status;
     if (search) {
       where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
         { materialType: { contains: search, mode: 'insensitive' } },
         { notes: { contains: search, mode: 'insensitive' } },
         { pickupAddress: { contains: search, mode: 'insensitive' } }
       ];
     }
     Object.assign(where, buildDateFilter(startDate, endDate));
+    
+    // Delta Sync Support
+    if (lastUpdated) {
+      where.updatedAt = { gte: new Date(lastUpdated) };
+    }
 
-    const totalCount = await prisma.listing.count({ where });
     const { skip, take, page: pageNum, limit: limitNum } = getPaginationParams(page, limit);
 
-    const listings = await prisma.listing.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      skip,
-      take
-    });
+    const [totalCount, listings] = await Promise.all([
+      prisma.listing.count({ where }),
+      prisma.listing.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take
+      })
+    ]);
 
     sendPaginated(res, listings, totalCount, pageNum, limitNum);
   } catch (error) {
@@ -268,26 +305,28 @@ export const getPublicListings = async (req, res) => {
       if (maxPrice) where.price.lte = parseFloat(maxPrice);
     }
 
-    const totalCount = await prisma.listing.count({ where });
     const { skip, take, page: pageNum, limit: limitNum } = getPaginationParams(page, Math.min(limit, 50));
 
-    const listings = await prisma.listing.findMany({
-      where,
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            city: true,
-            area: true,
-            profileImage: true
+    const [totalCount, listings] = await Promise.all([
+      prisma.listing.count({ where }),
+      prisma.listing.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              city: true,
+              area: true,
+              profileImage: true
+            }
           }
-        }
-      },
-      orderBy: { [sortBy]: sortOrder },
-      skip,
-      take
-    });
+        },
+        orderBy: { [sortBy]: sortOrder },
+        skip,
+        take
+      })
+    ]);
 
     sendPaginated(res, listings, totalCount, pageNum, limitNum);
   } catch (error) {
@@ -303,42 +342,41 @@ export const getListingStats = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // Get total listings count
-    const totalListings = await prisma.listing.count({
-      where: { userId }
-    });
+    // Run all independent queries in parallel
+    const [totalListings, weightResult, materialBreakdown, pendingCount] = await Promise.all([
+      // Total listings count
+      prisma.listing.count({ where: { userId } }),
 
-    // Get total weight sold (completed listings)
-    const completedListings = await prisma.listing.findMany({
-      where: {
-        userId,
-        status: ListingStatus.COMPLETED
-      },
-      select: {
-        estimatedWeight: true,
-        materialType: true
-      }
-    });
+      // Total weight — use aggregate instead of findMany + reduce
+      prisma.listing.aggregate({
+        _sum: { estimatedWeight: true },
+        where: { userId, status: ListingStatus.SOLD }
+      }),
 
-    const totalWeight = completedListings.reduce(
-      (sum, listing) => sum + listing.estimatedWeight,
-      0
-    );
+      // Material breakdown — use groupBy instead of findMany + reduce
+      prisma.listing.groupBy({
+        by: ['materialType'],
+        where: { userId, status: ListingStatus.SOLD },
+        _count: { id: true },
+        _sum: { estimatedWeight: true }
+      }),
 
-    // Breakdown by material type
-    const byMaterial = completedListings.reduce((acc, listing) => {
-      if (!acc[listing.materialType]) {
-        acc[listing.materialType] = { count: 0, weight: 0 };
-      }
-      acc[listing.materialType].count += 1;
-      acc[listing.materialType].weight += listing.estimatedWeight;
+      // Pending listings count
+      prisma.listing.count({
+        where: { userId, status: ListingStatus.DRAFT }
+      })
+    ]);
+
+    const totalWeight = weightResult._sum.estimatedWeight || 0;
+
+    // Transform groupBy result into the expected format
+    const byMaterial = materialBreakdown.reduce((acc, item) => {
+      acc[item.materialType] = {
+        count: item._count.id,
+        weight: item._sum.estimatedWeight || 0
+      };
       return acc;
     }, {});
-
-    // Get pending listings count
-    const pendingCount = await prisma.listing.count({
-      where: { userId, status: ListingStatus.PENDING }
-    });
 
     sendSuccess(res, 'Stats fetched successfully', {
       totalListings,
@@ -484,6 +522,8 @@ export const updateListing = async (req, res) => {
       req
     });
 
+    invalidateCache('cache:*/listings*').catch(() => {});
+
     sendSuccess(res, 'Listing updated successfully', updated);
   } catch (error) {
     sendError(res, 'Failed to update listing', error);
@@ -521,6 +561,8 @@ export const publishListing = async (req, res) => {
       resourceId: id,
       req
     });
+
+    invalidateCache('cache:*/listings*').catch(() => {});
 
     sendSuccess(res, 'Listing published successfully', updated);
   } catch (error) {
@@ -560,6 +602,8 @@ export const pauseListing = async (req, res) => {
       req
     });
 
+    invalidateCache('cache:*/listings*').catch(() => {});
+
     sendSuccess(res, 'Listing paused successfully', updated);
   } catch (error) {
     sendError(res, 'Failed to pause listing', error);
@@ -597,6 +641,10 @@ export const deleteListing = async (req, res) => {
       resourceId: id,
       req
     });
+
+    // Invalidate listing caches
+    invalidateCache('cache:*/listings*').catch(() => {});
+    invalidateCache('cache:*/reports*').catch(() => {});
 
     sendSuccess(res, 'Listing deleted successfully');
   } catch (error) {

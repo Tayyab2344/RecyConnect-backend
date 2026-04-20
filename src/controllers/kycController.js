@@ -1,4 +1,4 @@
-import { uploadToCloudinary } from '../utils/uploadHelper.js';
+import { deleteCloudinaryAsset, encryptedDocumentData, uploadEncryptedToCloudinary, uploadToCloudinary } from '../utils/uploadHelper.js';
 import { logger } from '../utils/logger.js';
 import { extractTextFromUrl, extractCNIC, extractNTN } from '../services/ocrService.js';
 import multer from 'multer';
@@ -43,18 +43,30 @@ export const registerKyc = [
 
       const frontFile = req.files['frontCnic']?.[0];
       const backFile = req.files['backCnic']?.[0];
+      const documentsData = [];
 
       if (!frontFile || !backFile) {
         return sendError(res, 'Both front and back CNIC images are required', null, 400);
       }
 
       // Upload to Cloudinary first to get URL for OCR
-      const frontUpload = await uploadToCloudinary(frontFile, `recyconnect/kyc/${req.user.email}`);
-      const backUpload = await uploadToCloudinary(backFile, `recyconnect/kyc/${req.user.email}`);
+      const frontUpload = await uploadToCloudinary(frontFile, `recyconnect/kyc-ocr/${req.user.email}`);
+      const backUpload = await uploadToCloudinary(backFile, `recyconnect/kyc-ocr/${req.user.email}`);
 
       const frontText = await extractTextFromUrl(frontUpload.secure_url);
       const backText = await extractTextFromUrl(backUpload.secure_url);
+      await Promise.all([
+        deleteCloudinaryAsset(frontUpload),
+        deleteCloudinaryAsset(backUpload)
+      ]);
       const cnic = extractCNIC(frontText) || extractCNIC(backText);
+
+      const encryptedFront = await uploadEncryptedToCloudinary(frontFile, `recyconnect/kyc/${req.user.email}`);
+      const encryptedBack = await uploadEncryptedToCloudinary(backFile, `recyconnect/kyc/${req.user.email}`);
+      documentsData.push(
+        encryptedDocumentData('CNIC_FRONT', frontFile, encryptedFront),
+        encryptedDocumentData('CNIC_BACK', backFile, encryptedBack)
+      );
 
       let verificationStatus = VerificationStatus.REJECTED;
       let kycStage = KycStage.DOCUMENTS_UPLOADED; // Default to uploaded, update if verified
@@ -75,9 +87,12 @@ export const registerKyc = [
           if (role === UserRole.COMPANY) {
             const ntnFile = req.files['ntn']?.[0];
             if (ntnFile) {
-              const ntnUpload = await uploadToCloudinary(ntnFile, `recyconnect/kyc/${req.user.email}`);
+              const ntnUpload = await uploadToCloudinary(ntnFile, `recyconnect/kyc-ocr/${req.user.email}`);
               const ntnText = await extractTextFromUrl(ntnUpload.secure_url);
+              await deleteCloudinaryAsset(ntnUpload);
               const ntn = extractNTN(ntnText);
+              const encryptedNtn = await uploadEncryptedToCloudinary(ntnFile, `recyconnect/kyc/${req.user.email}`);
+              documentsData.push(encryptedDocumentData('NTN', ntnFile, encryptedNtn));
 
               if (!ntn || !validateNtnFormat(ntn)) {
                 rejectionReason = 'OCR failed to extract valid NTN from certificate. Please upload a clear NTN document.';
@@ -98,14 +113,28 @@ export const registerKyc = [
         }
       }
 
-      await prisma.user.update({
-        where: { id: req.user.id },
-        data: {
-          cnic: cnic || null,
-          verificationStatus,
-          kycStage,
-          rejectionReason,
-        },
+      const utilityBillFile = req.files['utilityBill']?.[0];
+      if (utilityBillFile) {
+        const encryptedUtilityBill = await uploadEncryptedToCloudinary(utilityBillFile, `recyconnect/kyc/${req.user.email}`);
+        documentsData.push(encryptedDocumentData('UTILITY_BILL', utilityBillFile, encryptedUtilityBill));
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: req.user.id },
+          data: {
+            cnic: cnic || null,
+            verificationStatus,
+            kycStage,
+            rejectionReason,
+          },
+        });
+
+        if (documentsData.length > 0) {
+          await tx.userDocument.createMany({
+            data: documentsData.map((document) => ({ ...document, userId: req.user.id }))
+          });
+        }
       });
 
       await logActivity({

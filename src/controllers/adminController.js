@@ -174,10 +174,135 @@ export async function getUsers(req, res) {
   }
 }
 
+export async function getAdminOrders(req, res) {
+  try {
+    const { status, paymentMethod, city, page = 1, limit = 25 } = req.query;
+    const where = {};
+
+    if (status) where.status = status;
+    if (paymentMethod) where.paymentMethod = paymentMethod;
+    if (city) {
+      where.OR = [
+        { buyer: { city: { equals: city, mode: "insensitive" } } },
+        { seller: { city: { equals: city, mode: "insensitive" } } }
+      ];
+    }
+
+    const totalCount = await prisma.order.count({ where });
+    const { skip, take, page: pageNum, limit: limitNum } = getPaginationParams(page, limit);
+
+    const orders = await prisma.order.findMany({
+      where,
+      skip,
+      take,
+      orderBy: { createdAt: "desc" },
+      include: {
+        buyer: { select: { id: true, name: true, email: true, role: true, city: true, area: true } },
+        seller: { select: { id: true, name: true, email: true, role: true, city: true, area: true } },
+        payment: true,
+        items: {
+          include: {
+            listing: { select: { id: true, title: true, category: true, materialType: true, city: true, area: true } }
+          }
+        }
+      }
+    });
+
+    sendPaginated(res, orders, totalCount, pageNum, limitNum);
+  } catch (err) {
+    sendError(res, "Failed to fetch admin orders", err);
+  }
+}
+
+export async function getAdminPayments(req, res) {
+  try {
+    const { status, provider, page = 1, limit = 25 } = req.query;
+    const where = {};
+
+    if (status) where.status = status;
+    if (provider) where.provider = provider;
+
+    const totalCount = await prisma.payment.count({ where });
+    const { skip, take, page: pageNum, limit: limitNum } = getPaginationParams(page, limit);
+
+    const payments = await prisma.payment.findMany({
+      where,
+      skip,
+      take,
+      orderBy: { createdAt: "desc" },
+      include: {
+        order: {
+          include: {
+            buyer: { select: { id: true, name: true, email: true, role: true } },
+            seller: { select: { id: true, name: true, email: true, role: true } }
+          }
+        }
+      }
+    });
+
+    sendPaginated(res, payments, totalCount, pageNum, limitNum);
+  } catch (err) {
+    sendError(res, "Failed to fetch admin payments", err);
+  }
+}
+
+export async function getAdminListings(req, res) {
+  try {
+    const { status, category, materialType, city, page = 1, limit = 25 } = req.query;
+    const where = {};
+
+    if (status) where.status = status;
+    if (category) where.category = { equals: category, mode: "insensitive" };
+    if (materialType) where.materialType = { equals: materialType, mode: "insensitive" };
+    if (city) where.city = { equals: city, mode: "insensitive" };
+
+    const totalCount = await prisma.listing.count({ where });
+    const { skip, take, page: pageNum, limit: limitNum } = getPaginationParams(page, limit);
+
+    const listings = await prisma.listing.findMany({
+      where,
+      skip,
+      take,
+      orderBy: { createdAt: "desc" },
+      include: {
+        user: { select: { id: true, name: true, email: true, role: true, verificationStatus: true } }
+      }
+    });
+
+    sendPaginated(res, listings, totalCount, pageNum, limitNum);
+  } catch (err) {
+    sendError(res, "Failed to fetch admin listings", err);
+  }
+}
+
+export async function getRates(req, res) {
+  try {
+    let rates = await prisma.rate.findMany({ orderBy: { category: "asc" } });
+    
+    // Auto-seed default categories if empty
+    if (rates.length === 0) {
+        await prisma.rate.createMany({
+            data: [
+                { category: 'Plastic', pricePerUnit: 20, unit: 'kg' },
+                { category: 'Metal', pricePerUnit: 40, unit: 'kg' },
+                { category: 'E-Waste', pricePerUnit: 100, unit: 'kg' },
+                { category: 'Paper', pricePerUnit: 15, unit: 'kg' }
+            ],
+            skipDuplicates: true
+        });
+        rates = await prisma.rate.findMany({ orderBy: { category: "asc" } });
+    }
+
+    sendSuccess(res, "Rates fetched", rates);
+  } catch (err) {
+    sendError(res, "Failed to fetch rates", err);
+  }
+}
+
 export async function suspendUser(req, res) {
   try {
     const { id } = req.params;
-    const { suspended } = req.body; // true or false
+    const { suspended } = req.body;
 
     const status = suspended ? VerificationStatus.SUSPENDED : VerificationStatus.VERIFIED;
 
@@ -202,19 +327,19 @@ export async function suspendUser(req, res) {
 
 export async function updateRates(req, res) {
   try {
-    const { category, pricePerUnit } = req.body;
+    const { category, pricePerUnit, unit = "kg" } = req.body;
 
     const rate = await prisma.rate.upsert({
       where: { category },
-      update: { pricePerUnit: parseFloat(pricePerUnit) },
-      create: { category, pricePerUnit: parseFloat(pricePerUnit) }
+      update: { pricePerUnit: parseFloat(pricePerUnit), unit },
+      create: { category, pricePerUnit: parseFloat(pricePerUnit), unit }
     });
 
     await logActivity({
       action: "UPDATE_RATES",
       resourceType: "rate",
       resourceId: category,
-      meta: { pricePerUnit },
+      meta: { pricePerUnit, unit },
       req
     });
 
@@ -224,20 +349,92 @@ export async function updateRates(req, res) {
   }
 }
 
+export async function deleteRate(req, res) {
+  try {
+    const { category } = req.params;
+
+    const existing = await prisma.rate.findUnique({ where: { category } });
+    if (!existing) return sendError(res, "Rate not found", null, 404);
+
+    await prisma.rate.delete({ where: { category } });
+
+    await logActivity({
+      action: "DELETE_RATE",
+      resourceType: "rate",
+      resourceId: category,
+      meta: { deletedRate: existing },
+      req
+    });
+
+    sendSuccess(res, "Rate deleted successfully");
+  } catch (err) {
+    sendError(res, "Failed to delete rate", err);
+  }
+}
+
 export async function getDashboardStats(req, res) {
   try {
-    const [userCount, itemCount, transactionCount, revenue] = await prisma.$transaction([
+    const [
+      userCount,
+      itemCount,
+      transactionCount,
+      revenue,
+      orderCount,
+      completedOrderCount,
+      cancelledOrderCount,
+      activeCollectors,
+      roleCounts,
+      paymentCounts,
+      processedWeight,
+      openDisputes,
+      suspendedUsers
+    ] = await prisma.$transaction([
       prisma.user.count(),
       prisma.item.count(),
       prisma.transaction.count(),
-      prisma.transaction.aggregate({ _sum: { totalAmount: true } })
+      prisma.transaction.aggregate({ _sum: { totalAmount: true } }),
+      prisma.order.count(),
+      prisma.order.count({ where: { status: "COMPLETED" } }),
+      prisma.order.count({ where: { status: "CANCELLED" } }),
+      prisma.user.count({ where: { role: UserRole.COLLECTOR, verificationStatus: VerificationStatus.VERIFIED } }),
+      prisma.user.groupBy({ by: ["role"], _count: { role: true } }),
+      prisma.payment.groupBy({ by: ["provider"], _count: { provider: true }, _sum: { amount: true } }),
+      prisma.orderItem.aggregate({
+        where: { order: { status: "COMPLETED" } },
+        _sum: { quantity: true }
+      }),
+      prisma.activityLog.count({ where: { action: { contains: "DISPUTE" } } }),
+      prisma.user.count({ where: { verificationStatus: VerificationStatus.SUSPENDED } })
     ]);
 
     sendSuccess(res, "Dashboard stats fetched", {
       users: userCount,
       items: itemCount,
       transactions: transactionCount,
-      revenue: revenue._sum.totalAmount || 0
+      revenue: revenue._sum.totalAmount || 0,
+      orders: {
+        total: orderCount,
+        completed: completedOrderCount,
+        cancelled: cancelledOrderCount
+      },
+      activeCollectors,
+      totalProcessedKg: processedWeight._sum.quantity || 0,
+      roles: roleCounts.reduce((acc, item) => {
+        acc[item.role] = item._count.role;
+        return acc;
+      }, {}),
+      payments: paymentCounts.reduce((acc, item) => {
+        acc[item.provider] = {
+          count: item._count.provider,
+          amount: item._sum.amount || 0
+        };
+        return acc;
+      }, {}),
+      alerts: {
+        openDisputes,
+        suspendedUsers,
+        cancelledOrders: cancelledOrderCount
+      }
     });
   } catch (err) {
     sendError(res, "Failed to fetch dashboard stats", err);

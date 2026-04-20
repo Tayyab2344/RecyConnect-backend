@@ -1,15 +1,10 @@
 {
   "version": 2,
-  "env": {
-    "NODE_ENV": "production"
-  },
+  "buildCommand": "npm run build",
   "builds": [
     {
       "src": "src/index.js",
-      "use": "@vercel/node",
-      "config": {
-        "installCommand": "npm install && npx prisma generate"
-      }
+      "use": "@vercel/node"
     }
   ],
   "routes": [
@@ -17,5 +12,10 @@
       "src": "/(.*)",
       "dest": "src/index.js"
     }
-  ]
+  ],
+  "functions": {
+    "src/index.js": {
+      "maxDuration": 30
+    }
+  }
 }

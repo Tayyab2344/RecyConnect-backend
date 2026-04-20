@@ -1,5 +1,5 @@
 import bcrypt from 'bcrypt';
-import { uploadToCloudinary } from '../utils/uploadHelper.js';
+import { deleteCloudinaryAsset, encryptedDocumentData, uploadEncryptedToCloudinary, uploadToCloudinary } from '../utils/uploadHelper.js';
 import { extractTextFromUrl, extractCNIC, extractNTN } from '../services/ocrService.js';
 import { logger } from '../utils/logger.js';
 import { UserRole, VerificationStatus, KycStage } from '../constants/enums.js';
@@ -185,22 +185,29 @@ export async function requestRoleUpgrade(req, res) {
             const frontFile = files.cnicFront[0];
             const backFile = files.cnicBack[0];
 
-            const upFront = await uploadToCloudinary(frontFile, `recyconnect/kyc/${userId}`);
-            const upBack = await uploadToCloudinary(backFile, `recyconnect/kyc/${userId}`);
-
-            documentsData.push(
-                { docType: "CNIC_FRONT", fileUrl: upFront.secure_url, fileName: frontFile.originalname },
-                { docType: "CNIC_BACK", fileUrl: upBack.secure_url, fileName: backFile.originalname }
-            );
+            const ocrFront = await uploadToCloudinary(frontFile, `recyconnect/kyc-ocr/${userId}`);
+            const ocrBack = await uploadToCloudinary(backFile, `recyconnect/kyc-ocr/${userId}`);
 
             // OCR Check
-            const frontText = await extractTextFromUrl(upFront.secure_url);
-            const backText = await extractTextFromUrl(upBack.secure_url);
+            const frontText = await extractTextFromUrl(ocrFront.secure_url);
+            const backText = await extractTextFromUrl(ocrBack.secure_url);
+            await Promise.all([
+                deleteCloudinaryAsset(ocrFront),
+                deleteCloudinaryAsset(ocrBack)
+            ]);
             ocrCnic = extractCNIC(frontText) || extractCNIC(backText);
 
             if (!ocrCnic) {
                 return sendError(res, 'Could not verify CNIC from uploaded images. Please upload clear images.', null, 400);
             }
+
+            const upFront = await uploadEncryptedToCloudinary(frontFile, `recyconnect/kyc/${userId}`);
+            const upBack = await uploadEncryptedToCloudinary(backFile, `recyconnect/kyc/${userId}`);
+
+            documentsData.push(
+                encryptedDocumentData("CNIC_FRONT", frontFile, upFront),
+                encryptedDocumentData("CNIC_BACK", backFile, upBack)
+            );
         }
 
         if (requestedRole === UserRole.COMPANY) {
@@ -213,28 +220,31 @@ export async function requestRoleUpgrade(req, res) {
             const ntnFile = files.ntn[0];
             const regFile = files.registration[0];
 
-            const upNtn = await uploadToCloudinary(ntnFile, `recyconnect/kyc/${userId}`);
-            const upReg = await uploadToCloudinary(regFile, `recyconnect/kyc/${userId}`);
-
-            documentsData.push(
-                { docType: "NTN", fileUrl: upNtn.secure_url, fileName: ntnFile.originalname },
-                { docType: "REGISTRATION", fileUrl: upReg.secure_url, fileName: regFile.originalname }
-            );
+            const ocrNtnUpload = await uploadToCloudinary(ntnFile, `recyconnect/kyc-ocr/${userId}`);
 
             // OCR Check
-            const ntnText = await extractTextFromUrl(upNtn.secure_url);
+            const ntnText = await extractTextFromUrl(ocrNtnUpload.secure_url);
+            await deleteCloudinaryAsset(ocrNtnUpload);
             ocrNtn = extractNTN(ntnText);
 
             if (!ocrNtn) {
                 return sendError(res, 'Could not verify NTN from uploaded document.', null, 400);
             }
+
+            const upNtn = await uploadEncryptedToCloudinary(ntnFile, `recyconnect/kyc/${userId}`);
+            const upReg = await uploadEncryptedToCloudinary(regFile, `recyconnect/kyc/${userId}`);
+
+            documentsData.push(
+                encryptedDocumentData("NTN", ntnFile, upNtn),
+                encryptedDocumentData("REGISTRATION", regFile, upReg)
+            );
         }
 
         // Utility Bill (Required for both)
         if (files.utility?.[0]) {
             const utilFile = files.utility[0];
-            const upUtil = await uploadToCloudinary(utilFile, `recyconnect/kyc/${userId}`);
-            documentsData.push({ docType: "UTILITY", fileUrl: upUtil.secure_url, fileName: utilFile.originalname });
+            const upUtil = await uploadEncryptedToCloudinary(utilFile, `recyconnect/kyc/${userId}`);
+            documentsData.push(encryptedDocumentData("UTILITY", utilFile, upUtil));
         } else {
             return sendError(res, 'Utility Bill is required', null, 400);
         }
@@ -337,5 +347,160 @@ export async function checkCnic(req, res) {
         sendSuccess(res, 'CNIC check completed', { exists: false });
     } catch (err) {
         sendError(res, 'Failed to check CNIC', err);
+    }
+}
+
+/**
+ * Delete user account and all related data
+ * DELETE /api/user/account
+ */
+export async function deleteAccount(req, res) {
+    try {
+        const userId = req.user.id;
+        const { password } = req.body;
+
+        if (!password) {
+            return sendError(res, 'Password is required to delete account', null, 400);
+        }
+
+        // 1. Verify user exists and password is correct
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        if (!user || !user.password) {
+            return sendError(res, 'User not found', null, 404);
+        }
+
+        const isValidPassword = await bcrypt.compare(password, user.password);
+        if (!isValidPassword) {
+            return sendError(res, 'Incorrect password', null, 401);
+        }
+
+        // 2. Delete all related data in a transaction (respecting FK order)
+        await prisma.$transaction(async (tx) => {
+            // --- Chat data ---
+            // Delete messages in conversations where user is a participant
+            const userConversations = await tx.conversation.findMany({
+                where: {
+                    OR: [
+                        { participant1Id: userId },
+                        { participant2Id: userId }
+                    ]
+                },
+                select: { id: true }
+            });
+            const conversationIds = userConversations.map(c => c.id);
+
+            if (conversationIds.length > 0) {
+                await tx.message.deleteMany({
+                    where: { conversationId: { in: conversationIds } }
+                });
+                await tx.conversation.deleteMany({
+                    where: { id: { in: conversationIds } }
+                });
+            }
+
+            // Delete messages sent by user in other conversations (edge case)
+            await tx.message.deleteMany({ where: { senderId: userId } });
+
+            // --- Financial data ---
+            await tx.financialTransaction.deleteMany({ where: { warehouseId: userId } });
+            await tx.expense.deleteMany({ where: { warehouseId: userId } });
+
+            // --- Inventory data ---
+            const userInventory = await tx.warehouseInventory.findMany({
+                where: { warehouseId: userId },
+                select: { id: true }
+            });
+            const inventoryIds = userInventory.map(i => i.id);
+            if (inventoryIds.length > 0) {
+                await tx.inventoryMovement.deleteMany({
+                    where: { inventoryId: { in: inventoryIds } }
+                });
+            }
+            await tx.inventoryMovement.deleteMany({ where: { performedBy: userId } });
+            await tx.warehouseInventory.deleteMany({ where: { warehouseId: userId } });
+            await tx.warehouseInventory.deleteMany({ where: { supplierId: userId } });
+
+            // --- Orders where user is buyer or seller ---
+            const userOrders = await tx.order.findMany({
+                where: {
+                    OR: [{ buyerId: userId }, { sellerId: userId }]
+                },
+                select: { id: true }
+            });
+            const orderIds = userOrders.map(o => o.id);
+
+            if (orderIds.length > 0) {
+                // Delete financial transactions linked to orders
+                await tx.financialTransaction.deleteMany({
+                    where: { orderId: { in: orderIds } }
+                });
+                // Delete payments linked to orders
+                await tx.payment.deleteMany({
+                    where: { orderId: { in: orderIds } }
+                });
+                // Delete reservations linked to orders
+                await tx.listingReservation.deleteMany({
+                    where: { orderId: { in: orderIds } }
+                });
+                // Delete order items
+                await tx.orderItem.deleteMany({
+                    where: { orderId: { in: orderIds } }
+                });
+                // Delete orders
+                await tx.order.deleteMany({
+                    where: { id: { in: orderIds } }
+                });
+            }
+
+            // --- Reservations as buyer (not linked to orders) ---
+            await tx.listingReservation.deleteMany({ where: { buyerId: userId } });
+
+            // --- Listings owned by user ---
+            const userListings = await tx.listing.findMany({
+                where: { userId },
+                select: { id: true }
+            });
+            const listingIds = userListings.map(l => l.id);
+            if (listingIds.length > 0) {
+                // Delete reservations on user's listings
+                await tx.listingReservation.deleteMany({
+                    where: { listingId: { in: listingIds } }
+                });
+                // Delete order items referencing user's listings
+                await tx.orderItem.deleteMany({
+                    where: { listingId: { in: listingIds } }
+                });
+                // Delete listings
+                await tx.listing.deleteMany({ where: { userId } });
+            }
+
+            // --- Transactions ---
+            await tx.transaction.deleteMany({
+                where: { OR: [{ buyerId: userId }, { sellerId: userId }] }
+            });
+
+            // --- Items ---
+            await tx.item.deleteMany({ where: { sellerId: userId } });
+
+            // --- Auth & profile data ---
+            await tx.otp.deleteMany({ where: { userId } });
+            await tx.refreshToken.deleteMany({ where: { userId } });
+            await tx.activityLog.deleteMany({ where: { userId } });
+            await tx.ocrData.deleteMany({ where: { userId } });
+            await tx.userDocument.deleteMany({ where: { userId } });
+
+            // --- Finally, delete the user ---
+            await tx.user.delete({ where: { id: userId } });
+        });
+
+        await logActivity({
+            action: "ACCOUNT_DELETED",
+            meta: { userId, email: user.email, reason: req.body.reason },
+            req
+        });
+
+        sendSuccess(res, 'Account deleted successfully');
+    } catch (err) {
+        sendError(res, 'Failed to delete account', err);
     }
 }
