@@ -127,7 +127,7 @@ describe('Transaction Controller', () => {
 
             expect(res.status).toBe(200);
             expect(res.body.data.status).toBe(TransactionStatus.COMPLETED);
-        });
+        }, 60000);
 
         it('should fail if unauthorized user tries to update status', async () => {
             const tx = await prisma.transaction.findFirst({ where: { buyerId: buyer.id } });

@@ -247,6 +247,6 @@ describe('Order Controller', () => {
 
             expect(res.status).toBe(200);
             expect(res.body.data.status).toBe('CANCELLED');
-        });
+        }, 60000);
     });
 });

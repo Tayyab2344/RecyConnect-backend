@@ -217,7 +217,21 @@ export const getListings = async (req, res) => {
         prisma.listing.count({ where }),
         prisma.listing.findMany({
           where,
-          include: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            materialType: true,
+            estimatedWeight: true,
+            price: true,
+            quantity: true,
+            pickupAddress: true,
+            images: true,
+            city: true,
+            area: true,
+            status: true,
+            createdAt: true,
+            updatedAt: true,
             user: {
               select: { id: true, name: true, city: true, area: true, role: true, profileImage: true, createdAt: true }
             }
@@ -257,6 +271,18 @@ export const getListings = async (req, res) => {
       prisma.listing.count({ where }),
       prisma.listing.findMany({
         where,
+        select: {
+          id: true,
+          title: true,
+          materialType: true,
+          estimatedWeight: true,
+          price: true,
+          quantity: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          images: true
+        },
         orderBy: { createdAt: 'desc' },
         skip,
         take
@@ -311,7 +337,19 @@ export const getPublicListings = async (req, res) => {
       prisma.listing.count({ where }),
       prisma.listing.findMany({
         where,
-        include: {
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          materialType: true,
+          estimatedWeight: true,
+          price: true,
+          quantity: true,
+          images: true,
+          city: true,
+          area: true,
+          status: true,
+          createdAt: true,
           user: {
             select: {
               id: true,

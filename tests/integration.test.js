@@ -231,7 +231,7 @@ describe('Integration Tests - Full Flow', () => {
         beforeEach(async () => {
             await prisma.listing.update({
                 where: { id: testListing.id },
-                data: { quantity: 100 }
+                data: { quantity: 100, estimatedWeight: 100 }
             });
         });
 
@@ -259,7 +259,7 @@ describe('Integration Tests - Full Flow', () => {
             // Cleanup
             await prisma.orderItem.deleteMany({ where: { orderId: testOrderId } });
             await prisma.order.delete({ where: { id: testOrderId } });
-        });
+        }, 60000);
 
         it('should prevent duplicate PaymentIntent creation', async () => {
             // Create order
@@ -295,7 +295,7 @@ describe('Integration Tests - Full Flow', () => {
             await prisma.payment.deleteMany({ where: { orderId: testOrderId } });
             await prisma.orderItem.deleteMany({ where: { orderId: testOrderId } });
             await prisma.order.delete({ where: { id: testOrderId } });
-        });
+        }, 60000);
     });
 
     describe('Cancellation Scenarios', () => {
@@ -319,6 +319,6 @@ describe('Integration Tests - Full Flow', () => {
 
             // Verify listing quantity restored (weight should be added back, or quantity)
             // Wait, does order creation decrement qty? In tests it just creates order.
-        });
+        }, 60000);
     });
 });

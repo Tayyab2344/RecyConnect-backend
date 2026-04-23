@@ -112,7 +112,7 @@ export const createPaymentIntent = async (req, res) => {
                 clientSecret: paymentIntent.client_secret,
                 paymentIntentId: paymentIntent.id
             };
-        });
+        }, { timeout: 30000 });
 
         await logActivity({
             userId,
@@ -198,7 +198,7 @@ export const createCodPayment = async (req, res) => {
             });
 
             return { payment, order };
-        });
+        }, { timeout: 30000 });
 
         await logActivity({
             userId,
@@ -266,7 +266,7 @@ export const confirmCodPayment = async (req, res) => {
             });
 
             return updatedPayment;
-        });
+        }, { timeout: 30000 });
 
         await logActivity({
             userId,
@@ -402,7 +402,7 @@ export const authorizePayment = async (req, res) => {
             });
 
             return updatedPayment;
-        });
+        }, { timeout: 30000 });
 
         await logActivity({
             userId,
@@ -477,7 +477,7 @@ export const capturePayment = async (req, res) => {
             });
 
             return updatedPayment;
-        });
+        }, { timeout: 30000 });
 
         await logActivity({
             userId,
@@ -538,7 +538,7 @@ export const releasePayment = async (req, res) => {
             });
 
             return updatedPayment;
-        });
+        }, { timeout: 30000 });
 
         await logActivity({
             userId,
@@ -616,7 +616,7 @@ export const refundPayment = async (req, res) => {
             });
 
             return updatedPayment;
-        });
+        }, { timeout: 30000 });
 
         await logActivity({
             userId,

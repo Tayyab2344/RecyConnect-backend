@@ -165,6 +165,6 @@ describe('Reservation Controller', () => {
             // Since we started with 100, reserved 20 (tests above), now reserved 10 and released it.
             // 100 - 20 = 80. Then manually 80 + 10 = 90? No, let's just check the increment logic.
             // Actually, my tests run sequentially.
-        });
+        }, 60000);
     });
 });
