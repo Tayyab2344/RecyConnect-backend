@@ -73,14 +73,20 @@ describe('Item Controller', () => {
     });
 
     afterAll(async () => {
-        // Cleanup using pattern matching since we have timestamps
+        // Cleanup in FK-safe order
+        await prisma.transaction.deleteMany({
+            where: { OR: [{ buyerId: buyer?.id }, { sellerId: seller?.id }] }
+        }).catch(() => {});
+        await prisma.item.deleteMany({
+            where: { sellerId: seller?.id }
+        }).catch(() => {});
         await prisma.user.deleteMany({
             where: { email: { startsWith: 'seller-' } }
-        });
+        }).catch(() => {});
         await prisma.user.deleteMany({
             where: { email: { startsWith: 'buyer-' } }
-        });
-    });
+        }).catch(() => {});
+    }, 60000);
 
     describe('POST /api/items', () => {
         it('should create a new item with images', async () => {

@@ -198,13 +198,13 @@ describe('Payment Controller - Stripe Integration', () => {
             expect(res.body.message).toContain('Only the buyer can initiate payment');
         });
 
-        it('should fail if order is not CONFIRMED', async () => {
-            // Create a CREATED order
-            const createdOrder = await prisma.order.create({
+        it('should fail if order is not CREATED or CONFIRMED', async () => {
+            // Create a PENDING order
+            const pendingOrder = await prisma.order.create({
                 data: {
                     buyerId: buyer.id,
                     sellerId: seller.id,
-                    status: 'CREATED',
+                    status: 'PENDING',
                     totalAmount: 200,
                     items: {
                         create: {
@@ -219,14 +219,14 @@ describe('Payment Controller - Stripe Integration', () => {
             const res = await request(app)
                 .post('/api/payments/create-intent')
                 .set('Authorization', `Bearer ${buyerToken}`)
-                .send({ orderId: createdOrder.id });
+                .send({ orderId: pendingOrder.id });
 
             expect(res.status).toBe(400);
-            expect(res.body.message).toContain('Order status must be CONFIRMED');
+            expect(res.body.message).toContain('Order status must be CREATED or CONFIRMED');
 
             // Cleanup
-            await prisma.orderItem.deleteMany({ where: { orderId: createdOrder.id } });
-            await prisma.order.delete({ where: { id: createdOrder.id } });
+            await prisma.orderItem.deleteMany({ where: { orderId: pendingOrder.id } });
+            await prisma.order.delete({ where: { id: pendingOrder.id } });
         });
 
         it('should create PaymentIntent successfully', async () => {

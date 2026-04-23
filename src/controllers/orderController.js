@@ -113,7 +113,7 @@ export const createOrder = async (req, res) => {
             });
 
             return { order };
-        }, { timeout: 15000 });
+        }, { timeout: 30000 });
 
         await logActivity({
             userId: req.user.id,
@@ -195,7 +195,7 @@ export const confirmOrder = async (req, res) => {
             }
 
             return updatedOrder;
-        });
+        }, { timeout: 30000 });
 
         await logActivity({
             userId,
@@ -350,7 +350,7 @@ export const cancelOrder = async (req, res) => {
             }
 
             return { order: updatedOrder, paymentRefunded };
-        }, { timeout: 15000 });
+        }, { timeout: 30000 });
 
         await logActivity({
             userId,
@@ -440,7 +440,7 @@ export const completeOrder = async (req, res) => {
             });
 
             return updatedOrder;
-        });
+        }, { timeout: 30000 });
 
         await logActivity({
             userId,
@@ -491,15 +491,25 @@ export const getBuyerOrders = async (req, res) => {
 
         const orders = await prisma.order.findMany({
             where,
-            include: {
+            select: {
+                id: true,
+                status: true,
+                totalAmount: true,
+                paymentMethod: true,
+                createdAt: true,
+                buyerId: true,
+                sellerId: true,
                 buyer: { select: { id: true, name: true, email: true, contactNo: true } },
                 seller: { select: { id: true, name: true, email: true, contactNo: true, address: true } },
                 items: {
-                    include: {
+                    select: {
+                        id: true,
+                        quantity: true,
+                        price: true,
                         listing: { select: { id: true, title: true, materialType: true, images: true } }
                     }
                 },
-                reservation: true
+                reservation: { select: { id: true, status: true, expiresAt: true } }
             },
             orderBy: { createdAt: 'desc' },
             skip,
@@ -544,15 +554,25 @@ export const getSellerOrders = async (req, res) => {
 
         const orders = await prisma.order.findMany({
             where,
-            include: {
+            select: {
+                id: true,
+                status: true,
+                totalAmount: true,
+                paymentMethod: true,
+                createdAt: true,
+                buyerId: true,
+                sellerId: true,
                 buyer: { select: { id: true, name: true, email: true, contactNo: true } },
                 seller: { select: { id: true, name: true, email: true, contactNo: true, address: true } },
                 items: {
-                    include: {
+                    select: {
+                        id: true,
+                        quantity: true,
+                        price: true,
                         listing: { select: { id: true, title: true, materialType: true, images: true } }
                     }
                 },
-                reservation: true
+                reservation: { select: { id: true, status: true, expiresAt: true } }
             },
             orderBy: { createdAt: 'desc' },
             skip,
@@ -656,15 +676,25 @@ export const getOrders = async (req, res) => {
                     }
                 })
             },
-            include: {
+            select: {
+                id: true,
+                status: true,
+                totalAmount: true,
+                paymentMethod: true,
+                createdAt: true,
+                buyerId: true,
+                sellerId: true,
                 buyer: { select: { id: true, name: true, email: true, contactNo: true } },
                 seller: { select: { id: true, name: true, email: true, contactNo: true, address: true } },
                 items: {
-                    include: {
+                    select: {
+                        id: true,
+                        quantity: true,
+                        price: true,
                         listing: { select: { materialType: true } }
                     }
                 },
-                reservation: true
+                reservation: { select: { id: true, status: true, expiresAt: true } }
             },
             orderBy: { createdAt: 'desc' },
             skip,
@@ -790,11 +820,17 @@ export const exportOrders = async (req, res) => {
                     }
                 })
             },
-            include: {
+            select: {
+                id: true,
+                status: true,
+                totalAmount: true,
+                createdAt: true,
                 buyer: { select: { name: true, email: true } },
                 seller: { select: { name: true, email: true } },
                 items: {
-                    include: {
+                    select: {
+                        id: true,
+                        quantity: true,
                         listing: { select: { materialType: true } }
                     }
                 }

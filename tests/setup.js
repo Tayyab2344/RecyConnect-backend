@@ -56,7 +56,11 @@ afterEach(async () => {
     // Optionally clean things
 });
 
-// Do NOT disconnect between test suites - forceExit handles cleanup.
-// Disconnecting causes Neon cold-start failures on reconnect for the next suite.
+// Disconnect between test suites to prevent connection exhaustion.
+// Jest isolates modules per test file, so each suite gets a new PrismaClient instance.
+// Without disconnecting, Neon connection pools will quickly reach their max connection limit.
+afterAll(async () => {
+    await prisma.$disconnect();
+});
 
 export { prisma };

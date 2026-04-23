@@ -164,7 +164,12 @@ export async function getUsers(req, res) {
 
     const users = await prisma.user.findMany({
       where,
-      select: { id: true, name: true, email: true, role: true, verificationStatus: true, createdAt: true },
+      select: {
+        id: true, name: true, email: true, role: true,
+        contactNo: true, city: true, area: true,
+        businessName: true, companyName: true,
+        verificationStatus: true, createdAt: true
+      },
       orderBy: { createdAt: 'desc' }
     });
 

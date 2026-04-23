@@ -96,7 +96,7 @@ export const reserveListing = async (req, res) => {
             });
 
             return { reservation, updatedListing };
-        });
+        }, { timeout: 30000 });
 
         await logActivity({
             userId: buyerId,
@@ -156,7 +156,7 @@ export const releaseReservation = async (req, res) => {
             });
 
             return updatedReservation;
-        });
+        }, { timeout: 30000 });
 
         await logActivity({
             userId,

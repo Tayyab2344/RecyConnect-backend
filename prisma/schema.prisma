@@ -45,8 +45,8 @@ enum PaymentStatus {
   RELEASED
   REFUNDED
   FAILED
-  PENDING    // Legacy
-  COMPLETED  // Legacy
+  PENDING // Legacy
+  COMPLETED // Legacy
 }
 
 enum TransactionStatus {
@@ -60,7 +60,7 @@ model User {
   name          String?
   email         String?   @unique
   password      String?
-  plainPassword String?   // Explicitly requested for Warehouse visibility
+  plainPassword String? // Explicitly requested for Warehouse visibility
   role          String
   businessName  String?
   companyName   String?
@@ -98,21 +98,21 @@ model User {
   warehouseCapacity Float? // Total warehouse capacity in kg
   operatingHours    Json? // Business operating hours
 
-  otps          Otp[]
-  documents     UserDocument[]
-  ocrDatas      OcrData[]
-  refreshTokens RefreshToken[]
-  activityLogs  ActivityLog[]  @relation("actorLogs")
-  items         Item[]
-  listings      Listing[]
-  buyerOrders   Order[]        @relation("BuyerOrders")
-  sellerOrders  Order[]        @relation("SellerOrders")
+  otps              Otp[]
+  documents         UserDocument[]
+  ocrDatas          OcrData[]
+  refreshTokens     RefreshToken[]
+  activityLogs      ActivityLog[]        @relation("actorLogs")
+  items             Item[]
+  listings          Listing[]
+  buyerOrders       Order[]              @relation("BuyerOrders")
+  sellerOrders      Order[]              @relation("SellerOrders")
   buyerReservations ListingReservation[] @relation("BuyerReservations")
 
   // Chat Relations
-  conversations1   Conversation[] @relation("Participant1")
-  conversations2   Conversation[] @relation("Participant2")
-  sentMessages     Message[]      @relation("SentMessages")
+  conversations1 Conversation[] @relation("Participant1")
+  conversations2 Conversation[] @relation("Participant2")
+  sentMessages   Message[]      @relation("SentMessages")
 
   // Warehouse ERP Relations
   warehouseInventory    WarehouseInventory[]   @relation("WarehouseInventory")
@@ -122,11 +122,11 @@ model User {
   inventoryMovements    InventoryMovement[]
 
   // Transaction Relations
-  buyerTransactions    Transaction[] @relation("BuyerTransactions")
-  sellerTransactions   Transaction[] @relation("SellerTransactions")
+  buyerTransactions  Transaction[] @relation("BuyerTransactions")
+  sellerTransactions Transaction[] @relation("SellerTransactions")
 
   // Complaint Relations
-  complaints           Complaint[]
+  complaints Complaint[]
 
   @@index([role])
   @@index([contactNo])
@@ -215,10 +215,10 @@ model ActivityLog {
 
 model SystemLog {
   id        Int      @id @default(autoincrement())
-  level     String   // info, warn, error
-  type      String   // API, DATABASE, ERROR, SYSTEM
+  level     String // info, warn, error
+  type      String // API, DATABASE, ERROR, SYSTEM
   message   String
-  metadata  Json?    // Detailed tracking data (stack trace, path, execution time)
+  metadata  Json? // Detailed tracking data (stack trace, path, execution time)
   createdAt DateTime @default(now())
 
   @@index([level])
@@ -260,54 +260,56 @@ model Listing {
   id              Int           @id @default(autoincrement())
   userId          Int
   user            User          @relation(fields: [userId], references: [id])
-  category        String        // Category of items (e.g., Plastic, Metal)
-  title           String?       // Optional title
-  description     String?       // Optional description
-  materialType    String        // plastic, paper, metal, e-waste
-  estimatedWeight Float         // in kg, max 10kg for individuals
+  category        String // Category of items (e.g., Plastic, Metal)
+  title           String? // Optional title
+  description     String? // Optional description
+  materialType    String // plastic, paper, metal, e-waste
+  estimatedWeight Float // in kg, max 10kg for individuals
   price           Float         @default(0.0) // Price per kg or total price
   quantity        Float         @default(1.0) // Quantity available
   pickupAddress   String?
-  images          String[]      // Array of image URLs or base64 strings
+  images          String[] // Array of image URLs or base64 strings
   latitude        Float?
   longitude       Float?
-  city            String?       // Denormalized from user
-  area            String?       // Denormalized from user
-  locationMethod  String?       // "auto" or "manual"
+  city            String? // Denormalized from user
+  area            String? // Denormalized from user
+  locationMethod  String? // "auto" or "manual"
   notes           String?
   status          ListingStatus @default(DRAFT)
-  metadata        Json?         // Flexible JSON metadata 
-  
-  reservations    ListingReservation[]
-  orderItems      OrderItem[]
+  metadata        Json? // Flexible JSON metadata 
 
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  reservations ListingReservation[]
+  orderItems   OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([category])
   @@index([status])
   @@index([price])
   @@index([createdAt])
   @@index([userId, status])
+  @@index([userId, status, createdAt])
   @@index([materialType])
+  @@index([materialType, status, createdAt])
   @@index([userId])
   @@index([materialType, status, city])
 }
 
 model ListingReservation {
-  id              Int               @id @default(autoincrement())
-  listingId       Int
-  listing         Listing           @relation(fields: [listingId], references: [id])
-  buyerId         Int
-  buyer           User              @relation("BuyerReservations", fields: [buyerId], references: [id])
-  orderId         Int?              @unique // Reservation must reference an order if it proceeds
-  order           Order?            @relation(fields: [orderId], references: [id])
-  quantity        Float             // Quantity reserved
-  status          ReservationStatus @default(ACTIVE)
-  expiresAt       DateTime
-  
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  id        Int               @id @default(autoincrement())
+  listingId Int
+  listing   Listing           @relation(fields: [listingId], references: [id])
+  buyerId   Int
+  buyer     User              @relation("BuyerReservations", fields: [buyerId], references: [id])
+  orderId   Int?              @unique // Reservation must reference an order if it proceeds
+  order     Order?            @relation(fields: [orderId], references: [id])
+  quantity  Float // Quantity reserved
+  status    ReservationStatus @default(ACTIVE)
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([listingId])
   @@index([buyerId])
@@ -316,24 +318,24 @@ model ListingReservation {
 }
 
 model Order {
-  id             Int           @id @default(autoincrement())
-  buyerId        Int
-  buyer          User          @relation("BuyerOrders", fields: [buyerId], references: [id])
-  sellerId       Int
-  seller         User          @relation("SellerOrders", fields: [sellerId], references: [id])
-  
-  status         OrderStatus   @default(PENDING)
-  totalAmount    Float         @default(0.0)
-  paymentMethod  String?       // 'cod' or 'stripe'
-  
+  id       Int  @id @default(autoincrement())
+  buyerId  Int
+  buyer    User @relation("BuyerOrders", fields: [buyerId], references: [id])
+  sellerId Int
+  seller   User @relation("SellerOrders", fields: [sellerId], references: [id])
+
+  status        OrderStatus @default(PENDING)
+  totalAmount   Float       @default(0.0)
+  paymentMethod String? // 'cod' or 'stripe'
+
   // Link to reservation
-  reservation    ListingReservation?
-  
+  reservation ListingReservation?
+
   // Items in this order
-  items          OrderItem[]
-  
+  items OrderItem[]
+
   // Payment for this order
-  payment        Payment?
+  payment Payment?
 
   // Legacy/Financial Tracking Fields
   cogs            Float? // Cost of Goods Sold
@@ -341,10 +343,10 @@ model Order {
   collectorCost   Float? // Cost paid to collector
   netProfit       Float? // totalAmount - costs
   stripePaymentId String? // Stripe payment intent ID
-  metadata        Json?  // Flexible tracking details
+  metadata        Json? // Flexible tracking details
 
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   financialTransactions FinancialTransaction[]
 
@@ -353,17 +355,19 @@ model Order {
   @@index([sellerId])
   @@index([createdAt])
   @@index([buyerId, status])
+  @@index([buyerId, status, createdAt])
   @@index([sellerId, status])
+  @@index([sellerId, status, createdAt])
 }
 
 model OrderItem {
-  id        Int      @id @default(autoincrement())
+  id        Int     @id @default(autoincrement())
   orderId   Int
-  order     Order    @relation(fields: [orderId], references: [id])
+  order     Order   @relation(fields: [orderId], references: [id])
   listingId Int
-  listing   Listing  @relation(fields: [listingId], references: [id])
-  quantity  Float    // Checked by application logic (no negative)
-  price     Float    // At time of purchase
+  listing   Listing @relation(fields: [listingId], references: [id])
+  quantity  Float // Checked by application logic (no negative)
+  price     Float // At time of purchase
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -378,15 +382,16 @@ model Payment {
   order           Order         @relation(fields: [orderId], references: [id])
   amount          Float
   currency        String        @default("PKR")
-  provider        String        @default("STRIPE")  // STRIPE, COD
-  paymentMethod   String?       // card, bank_transfer, etc.
+  provider        String        @default("STRIPE") // STRIPE, COD
+  paymentMethod   String? // card, bank_transfer, etc.
   status          PaymentStatus @default(INITIATED)
-  paymentIntentId String?       @unique  // Stripe PaymentIntent ID
-  
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  paymentIntentId String?       @unique // Stripe PaymentIntent ID
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([status])
+  @@index([status, createdAt])
   @@index([orderId])
 }
 
@@ -496,37 +501,39 @@ model Message {
 }
 
 model Transaction {
-  id          Int      @id @default(autoincrement())
+  id          Int               @id @default(autoincrement())
   buyerId     Int
-  buyer       User     @relation("BuyerTransactions", fields: [buyerId], references: [id])
+  buyer       User              @relation("BuyerTransactions", fields: [buyerId], references: [id])
   sellerId    Int
-  seller      User     @relation("SellerTransactions", fields: [sellerId], references: [id])
+  seller      User              @relation("SellerTransactions", fields: [sellerId], references: [id])
   itemId      Int
-  item        Item     @relation(fields: [itemId], references: [id])
+  item        Item              @relation(fields: [itemId], references: [id])
   quantity    Float
   totalAmount Float
   status      TransactionStatus @default(PENDING)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 
   @@index([buyerId])
+  @@index([buyerId, status])
   @@index([sellerId])
+  @@index([sellerId, status])
   @@index([itemId])
   @@index([status])
 }
 
 model Complaint {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   userId      Int
-  user        User     @relation(fields: [userId], references: [id])
-  category    String   // Pickup Issues, Order Issues, App Bugs, Payment Problem, etc.
+  user        User      @relation(fields: [userId], references: [id])
+  category    String // Pickup Issues, Order Issues, App Bugs, Payment Problem, etc.
   description String
-  status      String   @default("PENDING") // PENDING, IN_REVIEW, RESOLVED, DISMISSED
-  adminNotes  String?  // Admin response/notes
+  status      String    @default("PENDING") // PENDING, IN_REVIEW, RESOLVED, DISMISSED
+  adminNotes  String? // Admin response/notes
   resolvedAt  DateTime?
-  resolvedBy  Int?     // Admin who resolved it
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  resolvedBy  Int? // Admin who resolved it
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([userId])
   @@index([status])
