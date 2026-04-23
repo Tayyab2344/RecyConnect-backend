@@ -191,7 +191,7 @@ export const getListings = async (req, res) => {
         status: 'PUBLISHED',
         userId: { not: userId }, // Never show own listings
         user: {
-          role: { in: allowedSellerRoles, mode: 'insensitive' }
+          role: { in: allowedSellerRoles }
         }
       };
 
