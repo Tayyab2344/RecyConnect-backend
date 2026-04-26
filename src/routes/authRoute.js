@@ -544,6 +544,7 @@ router.post(
 );
 router.post(
   "/login",
+  [loginLimiterByIP, loginLimiterByEmail, trackFailedLoginAttempt],
   [
     body("identifier")
       .trim()
