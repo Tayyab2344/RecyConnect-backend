@@ -19,6 +19,7 @@ import {
   analyzeDocument
 } from '../controllers/authController.js'
 import { authenticateToken } from "../middlewares/authMiddleware.js";
+import { loginLimiterByIP, loginLimiterByEmail, trackFailedLoginAttempt } from "../middlewares/loginLimiter.js";
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = express.Router();
