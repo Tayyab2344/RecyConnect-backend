@@ -1,5 +1,5 @@
-import rateLimit from "express-rate-limit";
-import RedisStore from "rate-limit-redis";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import { RedisStore } from "rate-limit-redis";
 import redis from "../lib/redis.js";
 import { logger } from "../utils/logger.js";
 
@@ -12,14 +12,21 @@ import { logger } from "../utils/logger.js";
  * 3. Temporary IP block after threshold exceeded
  */
 
+const createLoginStore = (prefix) => {
+  if (!redis) return undefined;
+
+  return new RedisStore({
+    prefix,
+    sendCommand: (command, ...args) => redis.call(command, ...args),
+  });
+};
+
 // IP-based limiter: 5 attempts per 15 minutes
 export const loginLimiterByIP = rateLimit({
-  store: new RedisStore({
-    client: redis,
-    prefix: "login:ip:",
-  }),
+  store: createLoginStore("login:ip:"),
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5, // 5 attempts
+  passOnStoreError: true,
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
   handler: (req, res) => {
@@ -38,7 +45,7 @@ export const loginLimiterByIP = rateLimit({
   },
   keyGenerator: (req) => {
     // Get real IP from X-Forwarded-For (for load balancers/proxies)
-    return req.ip || req.connection.remoteAddress || "unknown";
+    return ipKeyGenerator(req.ip || req.connection.remoteAddress || "unknown");
   },
   skip: (req) => {
     // Skip for GET/health checks
@@ -48,12 +55,10 @@ export const loginLimiterByIP = rateLimit({
 
 // Email-based limiter: 10 attempts per hour
 export const loginLimiterByEmail = rateLimit({
-  store: new RedisStore({
-    client: redis,
-    prefix: "login:email:",
-  }),
+  store: createLoginStore("login:email:"),
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 10, // 10 attempts
+  passOnStoreError: true,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
