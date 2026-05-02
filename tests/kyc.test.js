@@ -99,10 +99,14 @@ describe('KYC Controller', () => {
         });
 
         it('should successfully verify company with valid docs', async () => {
+            const uniqueSuffix = Date.now().toString().slice(-8);
+            const mockCnic = `35201${uniqueSuffix}`;
+            const mockNtn = uniqueSuffix;
+
             // Setup Mocks
-            ocrService.extractTextFromUrl.mockResolvedValue('Valid CNIC: 12345-1234567-1 NTN: 1234567-8');
-            ocrService.extractCNIC.mockReturnValue('12345-1234567-1');
-            ocrService.extractNTN.mockReturnValue('1234567-8');
+            ocrService.extractTextFromUrl.mockResolvedValue(`Valid CNIC: ${mockCnic} NTN: ${mockNtn}`);
+            ocrService.extractCNIC.mockReturnValue(mockCnic);
+            ocrService.extractNTN.mockReturnValue(mockNtn);
 
             const res = await request(app)
                 .post('/api/kyc/register')

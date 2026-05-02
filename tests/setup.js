@@ -8,6 +8,8 @@ jest.mock('ioredis', () => {
         return {
             get: jest.fn().mockResolvedValue(null),
             setex: jest.fn().mockResolvedValue('OK'),
+            incr: jest.fn().mockResolvedValue(1),
+            expire: jest.fn().mockResolvedValue(1),
             del: jest.fn().mockResolvedValue(1),
             keys: jest.fn().mockResolvedValue([]),
             pipeline: jest.fn().mockReturnValue({

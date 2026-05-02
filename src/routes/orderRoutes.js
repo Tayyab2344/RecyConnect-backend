@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticateToken } from '../middlewares/authMiddleware.js';
+import { cacheResponse } from '../middlewares/cacheMiddleware.js';
 import {
     createOrder,
     confirmOrder,
@@ -94,7 +95,7 @@ router.post('/', createOrder);
  *       200:
  *         description: Buyer orders retrieved successfully with pagination
  */
-router.get('/buyer', getBuyerOrders);
+router.get('/buyer', cacheResponse(60), getBuyerOrders);
 
 /**
  * @swagger
@@ -139,7 +140,7 @@ router.get('/buyer', getBuyerOrders);
  *       200:
  *         description: Seller orders retrieved successfully with pagination
  */
-router.get('/seller', getSellerOrders);
+router.get('/seller', cacheResponse(60), getSellerOrders);
 
 /**
  * @swagger
@@ -160,7 +161,7 @@ router.get('/seller', getSellerOrders);
  *       200:
  *         description: Statistics retrieved successfully
  */
-router.get('/stats', getOrderStats);
+router.get('/stats', cacheResponse(300), getOrderStats);
 
 /**
  * @swagger
@@ -252,7 +253,7 @@ router.get('/export', exportOrders);
  *       200:
  *         description: Orders retrieved successfully with pagination
  */
-router.get('/', getOrders);
+router.get('/', cacheResponse(60), getOrders);
 
 /**
  * @swagger
@@ -276,7 +277,7 @@ router.get('/', getOrders);
  *       404:
  *         description: Order not found
  */
-router.get('/:id', getOrderById);
+router.get('/:id', cacheResponse(60), getOrderById);
 
 /**
  * @swagger
