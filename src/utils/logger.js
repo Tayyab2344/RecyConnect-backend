@@ -56,10 +56,12 @@ class PrismaTransport extends Transport {
 }
 
 const isProduction = process.env.NODE_ENV === 'production'
+const isVercel = !!process.env.VERCEL
 
 const transports = []
 
-if (isProduction) {
+if (isProduction || isVercel) {
+  // Vercel has a read-only filesystem — only use console transport
   transports.push(new winston.transports.Console({
     format: winston.format.combine(
       winston.format.timestamp(),
