@@ -1,0 +1,384 @@
+@startuml RecyConnect_Class_Diagram
+
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+skinparam defaultFontSize 11
+
+' ========== ENUMS ==========
+
+enum ListingStatus {
+  DRAFT
+  PUBLISHED
+  PAUSED
+  RESERVED
+  SOLD
+  CANCELLED
+}
+
+enum ReservationStatus {
+  ACTIVE
+  RELEASED
+  EXPIRED
+  COMPLETED
+  CANCELLED
+  PENDING
+  CONFIRMED
+}
+
+enum OrderStatus {
+  CREATED
+  CONFIRMED
+  PENDING
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  COMPLETED
+}
+
+enum PaymentStatus {
+  INITIATED
+  AUTHORIZED
+  CAPTURED
+  RELEASED
+  REFUNDED
+  FAILED
+  PENDING
+  COMPLETED
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+' ========== ENTITIES ==========
+
+entity "User" as user {
+  * id : Int <<PK>>
+  --
+  name : String
+  email : String <<unique>>
+  password : String
+  plainPassword : String
+  role : String
+  businessName : String
+  companyName : String
+  collectorId : String <<unique>>
+  profileImage : String
+  address : String
+  contactNo : String
+  emailVerified : Boolean
+  deletedAt : DateTime
+  createdAt : DateTime
+  createdById : Int <<FK>>
+  verificationStatus : String
+  kycStage : String
+  assignedWarehouseId : Int
+  permissions : Json
+  rejectionReason : String
+  requestedRole : String
+  cnic : String <<unique>>
+  latitude : Float
+  longitude : Float
+  city : String
+  area : String
+  locationMethod : String
+  locationPermission : Boolean
+  addressUpdatedAt : DateTime
+  stripeAccountId : String
+  businessLicense : String
+  taxNumber : String
+  warehouseCapacity : Float
+  operatingHours : Json
+}
+
+entity "UserDocument" as userDocument {
+  * id : Int <<PK>>
+  --
+  userId : Int <<FK>>
+  docType : String
+  fileUrl : String
+  fileName : String
+  encrypted : Boolean
+  encryptionAlgorithm : String
+  encryptionIv : String
+  encryptionAuthTag : String
+  encryptionKeyVersion : String
+  mimeType : String
+  fileSize : Int
+  createdAt : DateTime
+}
+
+entity "OcrData" as ocrData {
+  * id : Int <<PK>>
+  --
+  userId : Int <<FK>>
+  docType : String
+  ocrText : String
+  fileUrl : String
+  extractedData : Json
+  isMatch : Boolean
+  confidence : Float
+  createdAt : DateTime
+}
+
+entity "Otp" as otp {
+  * id : Int <<PK>>
+  --
+  userId : Int <<FK>>
+  email : String
+  otpHash : String
+  purpose : String
+  metadata : Json
+  used : Boolean
+  expiresAt : DateTime
+  createdAt : DateTime
+}
+
+entity "RefreshToken" as refreshToken {
+  * id : Int <<PK>>
+  --
+  userId : Int <<FK>>
+  tokenHash : String
+  revoked : Boolean
+  createdAt : DateTime
+  expiresAt : DateTime
+}
+
+entity "ActivityLog" as activityLog {
+  * id : Int <<PK>>
+  --
+  userId : Int <<FK>>
+  actorRole : String
+  action : String
+  resourceType : String
+  resourceId : String
+  meta : Json
+  ip : String
+  userAgent : String
+  createdAt : DateTime
+}
+
+entity "SystemLog" as systemLog {
+  * id : Int <<PK>>
+  --
+  level : String
+  type : String
+  message : String
+  metadata : Json
+  createdAt : DateTime
+}
+
+entity "Item" as item {
+  * id : Int <<PK>>
+  --
+  sellerId : Int <<FK>>
+  title : String
+  description : String
+  price : Float
+  quantity : Float
+  unit : String
+  category : String
+  images : String[]
+  status : String
+  createdAt : DateTime
+  updatedAt : DateTime
+}
+
+entity "Rate" as rate {
+  * id : Int <<PK>>
+  --
+  category : String <<unique>>
+  pricePerUnit : Float
+  unit : String
+  updatedAt : DateTime
+}
+
+entity "Listing" as listing {
+  * id : Int <<PK>>
+  --
+  userId : Int <<FK>>
+  category : String
+  title : String
+  description : String
+  materialType : String
+  estimatedWeight : Float
+  price : Float
+  quantity : Float
+  pickupAddress : String
+  images : String[]
+  latitude : Float
+  longitude : Float
+  city : String
+  area : String
+  locationMethod : String
+  notes : String
+  status : ListingStatus
+  metadata : Json
+  createdAt : DateTime
+  updatedAt : DateTime
+}
+
+entity "ListingReservation" as listingReservation {
+  * id : Int <<PK>>
+  --
+  listingId : Int <<FK>>
+  buyerId : Int <<FK>>
+  orderId : Int <<FK>> <<unique>>
+  quantity : Float
+  status : ReservationStatus
+  expiresAt : DateTime
+  createdAt : DateTime
+  updatedAt : DateTime
+}
+
+entity "Order" as order {
+  * id : Int <<PK>>
+  --
+  buyerId : Int <<FK>>
+  sellerId : Int <<FK>>
+  status : OrderStatus
+  totalAmount : Float
+  paymentMethod : String
+  cogs : Float
+  stripeFee : Float
+  collectorCost : Float
+  netProfit : Float
+  stripePaymentId : String
+  metadata : Json
+  createdAt : DateTime
+  updatedAt : DateTime
+}
+
+entity "OrderItem" as orderItem {
+  * id : Int <<PK>>
+  --
+  orderId : Int <<FK>>
+  listingId : Int <<FK>>
+  quantity : Float
+  price : Float
+  createdAt : DateTime
+  updatedAt : DateTime
+}
+
+entity "Payment" as payment {
+  * id : Int <<PK>>
+  --
+  orderId : Int <<FK>> <<unique>>
+  amount : Float
+  currency : String
+  provider : String
+  paymentMethod : String
+  status : PaymentStatus
+  paymentIntentId : String <<unique>>
+  createdAt : DateTime
+  updatedAt : DateTime
+}
+
+entity "Conversation" as conversation {
+  * id : Int <<PK>>
+  --
+  participant1Id : Int <<FK>>
+  participant2Id : Int <<FK>>
+  updatedAt : DateTime
+  createdAt : DateTime
+}
+
+entity "Message" as message {
+  * id : Int <<PK>>
+  --
+  conversationId : Int <<FK>>
+  senderId : Int <<FK>>
+  content : String
+  imageUrl : String
+  isRead : Boolean
+  createdAt : DateTime
+}
+
+entity "Transaction" as transaction {
+  * id : Int <<PK>>
+  --
+  buyerId : Int <<FK>>
+  sellerId : Int <<FK>>
+  itemId : Int <<FK>>
+  quantity : Float
+  totalAmount : Float
+  status : TransactionStatus
+  createdAt : DateTime
+  updatedAt : DateTime
+}
+
+entity "Complaint" as complaint {
+  * id : Int <<PK>>
+  --
+  userId : Int <<FK>>
+  category : String
+  description : String
+  status : String
+  adminNotes : String
+  resolvedAt : DateTime
+  resolvedBy : Int
+  createdAt : DateTime
+  updatedAt : DateTime
+}
+
+' ========== RELATIONSHIPS ==========
+
+' User self-reference
+user ||--o{ user : "createdBy"
+
+' User -> Auth & Identity
+user ||--o{ userDocument : "documents"
+user ||--o{ ocrData : "ocrDatas"
+user ||--o{ otp : "otps"
+user ||--o{ refreshToken : "refreshTokens"
+user ||--o{ activityLog : "actorLogs"
+
+' User -> Items & Listings
+user ||--o{ item : "items (seller)"
+user ||--o{ listing : "listings"
+
+' User -> Orders (buyer & seller)
+user ||--o{ order : "buyerOrders"
+user ||--o{ order : "sellerOrders"
+
+' User -> Reservations
+user ||--o{ listingReservation : "buyerReservations"
+
+' User -> Chat
+user ||--o{ conversation : "participant1"
+user ||--o{ conversation : "participant2"
+user ||--o{ message : "sentMessages"
+
+' User -> Transactions
+user ||--o{ transaction : "buyerTransactions"
+user ||--o{ transaction : "sellerTransactions"
+
+' User -> Complaints
+user ||--o{ complaint : "complaints"
+
+' Listing relationships
+listing ||--o{ listingReservation : "reservations"
+listing ||--o{ orderItem : "orderItems"
+
+' Order relationships
+order ||--o| listingReservation : "reservation"
+order ||--o{ orderItem : "items"
+order ||--|| payment : "payment"
+
+' Conversation -> Messages
+conversation ||--o{ message : "messages"
+
+' Item -> Transactions
+item ||--o{ transaction : "transactions"
+
+' Enum usages (dotted lines)
+listing ..> ListingStatus : "uses"
+listingReservation ..> ReservationStatus : "uses"
+order ..> OrderStatus : "uses"
+payment ..> PaymentStatus : "uses"
+transaction ..> TransactionStatus : "uses"
+
+@enduml

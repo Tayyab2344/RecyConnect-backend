@@ -18,17 +18,43 @@ app.use('/api/auth', authRoutes);
 // Test data
 const testEmail = `testauth${Date.now()}@test.com`;
 let createdUserId;
+const createdUserIds = new Set();
 
 describe('Auth Controller', () => {
 
     afterAll(async () => {
         // Cleanup test data
         if (createdUserId) {
+            await prisma.refreshToken.deleteMany({ where: { userId: createdUserId } }).catch(() => { });
             await prisma.user.delete({ where: { id: createdUserId } }).catch(() => { });
         }
-        await prisma.user.deleteMany({ where: { email: { contains: 'testauth' } } });
-        await prisma.user.deleteMany({ where: { email: { contains: 'logintest' } } });
-        await prisma.user.deleteMany({ where: { email: { contains: 'validlogin' } } });
+
+        if (createdUserIds.size > 0) {
+            const ids = [...createdUserIds];
+            await prisma.refreshToken.deleteMany({ where: { userId: { in: ids } } }).catch(() => { });
+            await prisma.user.deleteMany({ where: { id: { in: ids } } }).catch(() => { });
+        }
+
+        const authUsers = await prisma.user.findMany({
+            where: {
+                OR: [
+                    { email: { contains: 'testauth' } },
+                    { email: { contains: 'logintest' } },
+                    { email: { contains: 'validlogin' } },
+                ],
+            },
+            select: { id: true },
+        }).catch(() => []);
+
+        if (authUsers.length > 0) {
+            await prisma.refreshToken.deleteMany({
+                where: { userId: { in: authUsers.map((user) => user.id) } },
+            }).catch(() => { });
+        }
+
+        await prisma.user.deleteMany({ where: { email: { contains: 'testauth' } } }).catch(() => { });
+        await prisma.user.deleteMany({ where: { email: { contains: 'logintest' } } }).catch(() => { });
+        await prisma.user.deleteMany({ where: { email: { contains: 'validlogin' } } }).catch(() => { });
         // prisma disconnect handled by setup.js
     });
 
@@ -110,11 +136,11 @@ describe('Auth Controller', () => {
             const res = await request(app)
                 .post('/api/auth/login')
                 .send({
-                    email: 'nonexistent@test.com',
+                    identifier: 'nonexistent@test.com',
                     password: 'SomePassword123'
                 });
 
-            expect([400, 401, 404]).toContain(res.status);
+            expect([400, 401]).toContain(res.status);
         });
 
         it('should fail login with incorrect password', async () => {
@@ -130,11 +156,12 @@ describe('Auth Controller', () => {
                 }
             });
             createdUserId = user.id;
+            createdUserIds.add(user.id);
 
             const res = await request(app)
                 .post('/api/auth/login')
                 .send({
-                    email: user.email,
+                    identifier: user.email,
                     password: 'WrongPassword123'
                 });
 
@@ -146,7 +173,7 @@ describe('Auth Controller', () => {
             const hashedPassword = await bcrypt.hash(password, 10);
             const email = `validlogin${Date.now()}@test.com`;
 
-            await prisma.user.create({
+            const user = await prisma.user.create({
                 data: {
                     name: 'Valid Login User',
                     email,
@@ -155,15 +182,17 @@ describe('Auth Controller', () => {
                     emailVerified: true
                 }
             });
+            createdUserIds.add(user.id);
 
             const res = await request(app)
                 .post('/api/auth/login')
-                .send({ email, password });
+                .send({ identifier: email, password });
 
             expect([200, 400]).toContain(res.status);
             if (res.status === 200) {
                 expect(res.body.success).toBe(true);
-                expect(res.body.data).toHaveProperty('token');
+                expect(res.body.data).toHaveProperty('accessToken');
+                expect(res.body.data).toHaveProperty('refreshToken');
                 expect(res.body.data).toHaveProperty('user');
             }
         });

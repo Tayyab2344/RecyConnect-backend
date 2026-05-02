@@ -15,9 +15,25 @@ import { logger } from "../utils/logger.js";
 const createLoginStore = (prefix) => {
   if (!redis) return undefined;
 
+  const hasCallCommand = typeof redis.call === "function";
+  const hasSendCommand = typeof redis.sendCommand === "function";
+
+  if (!hasCallCommand && !hasSendCommand) {
+    logger.warn("[REDIS] Raw command API unavailable. Using memory rate-limit store.");
+    return undefined;
+  }
+
+  const sendRawCommand = (command, ...args) => {
+    if (hasCallCommand) {
+      return redis.call(command, ...args);
+    }
+
+    return redis.sendCommand([command, ...args]);
+  }
+
   return new RedisStore({
     prefix,
-    sendCommand: (command, ...args) => redis.call(command, ...args),
+    sendCommand: sendRawCommand,
   });
 };
 

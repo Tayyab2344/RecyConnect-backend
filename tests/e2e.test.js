@@ -15,8 +15,11 @@ jest.unstable_mockModule('../src/lib/redis.js', () => ({
 describe('System E2E Tests: Bootstrap Integration', () => {
     let app;
     let mockUser;
+    let mockEmail;
     
     beforeAll(async () => {
+        mockEmail = `e2e-${Date.now()}@test.recyconnect.com`;
+
         // Assemble dummy express pipeline combining Trace logic and the route
         app = express();
         app.use(express.json());
@@ -31,9 +34,8 @@ describe('System E2E Tests: Bootstrap Integration', () => {
         // Create Mock User directly bypassing auth pipeline
         mockUser = await prisma.user.create({
             data: {
-                id: 9999,
                 name: 'E2E Tester',
-                email: 'e2e@test.recyconnect.com',
+                email: mockEmail,
                 password: 'hash',
                 role: 'individual',
                 emailVerified: true
@@ -42,14 +44,14 @@ describe('System E2E Tests: Bootstrap Integration', () => {
     });
 
     afterAll(async () => {
-        await prisma.user.deleteMany({ where: { email: 'e2e@test.recyconnect.com' } });
+        await prisma.user.deleteMany({ where: { email: mockEmail } }).catch(() => {});
         // prisma disconnect handled by setup.js
     });
 
     it('GET /api/app/bootstrap - Returns combined system payload & trace injection', async () => {
         // Generate valid mock JWT
          const validToken = jwt.sign(
-            { userId: 9999, email: 'e2e@test.recyconnect.com', role: 'individual' },
+            { userId: mockUser.id, email: mockEmail, role: 'individual' },
             process.env.JWT_ACCESS_SECRET || 'test-secret-key-for-jest-testing',
             { expiresIn: '1h' }
         );
@@ -71,6 +73,6 @@ describe('System E2E Tests: Bootstrap Integration', () => {
         expect(res.body.data).toHaveProperty('activity');
         
         // Assure payload mapped properly down to the database row
-        expect(res.body.data.user.email).toBe('e2e@test.recyconnect.com');
+        expect(res.body.data.user.email).toBe(mockEmail);
     });
 });
