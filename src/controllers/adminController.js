@@ -207,7 +207,7 @@ export async function getAdminOrders(req, res) {
         payment: true,
         items: {
           include: {
-            listing: { select: { id: true, title: true, category: true, materialType: true, city: true, area: true } }
+            listing: { select: { id: true, title: true, category: true, materialType: true, images: true, city: true, area: true } }
           }
         }
       }
