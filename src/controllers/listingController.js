@@ -550,9 +550,9 @@ export const updateListing = async (req, res) => {
       return sendError(res, 'Quantity must be greater than zero', null, 400);
     }
 
-    // Allow update only if status = DRAFT
-    if (listing.status !== ListingStatus.DRAFT) {
-      return sendError(res, 'Only DRAFT listings can be updated', null, 400);
+    // Allow update only if status is DRAFT, PUBLISHED, or PAUSED
+    if (![ListingStatus.DRAFT, ListingStatus.PUBLISHED, ListingStatus.PAUSED].includes(listing.status)) {
+      return sendError(res, 'Only DRAFT, PUBLISHED, or PAUSED listings can be updated', null, 400);
     }
 
     // Perform update
@@ -560,8 +560,8 @@ export const updateListing = async (req, res) => {
       where: { id: parseInt(id) },
       data: {
         ...updateData,
-        // Ensure some fields aren't accidentally changed here if we want stricter control
-        status: ListingStatus.DRAFT // Keep it as draft
+        // Preserve original status
+        status: listing.status
       }
     });
 
