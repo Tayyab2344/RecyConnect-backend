@@ -56,10 +56,10 @@ app.use(compression());
 
 // CORS Configuration
 const defaultOrigins = [
-    'http://localhost:3000', 
-    'http://192.168.194.2:3000', 
+    'http://localhost:3000',
+    'http://192.168.194.2:3000',
     'http://localhost:5173',
-    'https://recy-connect-admin.vercel.app'
+    'https://admin.ranatayyab.dev/'
 ];
 
 const allowedOrigins = process.env.FRONTEND_URL
