@@ -289,7 +289,21 @@ export const getListings = async (req, res) => {
           status: true,
           createdAt: true,
           updatedAt: true,
-          images: true
+          images: true,
+          orderItems: {
+            select: {
+              quantity: true,
+              order: {
+                select: {
+                  id: true,
+                  status: true,
+                  buyer: { select: { id: true, name: true, contactNo: true } },
+                  createdAt: true
+                }
+              }
+            },
+            orderBy: { id: 'desc' }
+          }
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -395,41 +409,38 @@ export const getListingStats = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // Run all independent queries in parallel
-    const [totalListings, weightResult, materialBreakdown, pendingCount] = await Promise.all([
-      // Total listings count
+    const [totalListings, soldOrderItems, pendingCount] = await Promise.all([
       prisma.listing.count({ where: { userId } }),
-
-      // Total weight — use aggregate instead of findMany + reduce
-      prisma.listing.aggregate({
-        _sum: { estimatedWeight: true },
-        where: { userId, status: ListingStatus.SOLD }
+      prisma.orderItem.findMany({
+        where: {
+          order: { sellerId: userId },
+          listing: { userId }
+        },
+        select: {
+          quantity: true,
+          listing: { select: { materialType: true } }
+        }
       }),
-
-      // Material breakdown — use groupBy instead of findMany + reduce
-      prisma.listing.groupBy({
-        by: ['materialType'],
-        where: { userId, status: ListingStatus.SOLD },
-        _count: { id: true },
-        _sum: { estimatedWeight: true }
-      }),
-
-      // Pending listings count
       prisma.listing.count({
         where: { userId, status: ListingStatus.DRAFT }
       })
     ]);
 
-    const totalWeight = weightResult._sum.estimatedWeight || 0;
+    const totalWeight = soldOrderItems.reduce((sum, item) => sum + item.quantity, 0);
 
-    // Transform groupBy result into the expected format
-    const byMaterial = materialBreakdown.reduce((acc, item) => {
-      acc[item.materialType] = {
-        count: item._count.id,
-        weight: item._sum.estimatedWeight || 0
-      };
+    const byMaterial = soldOrderItems.reduce((acc, item) => {
+      const material = item.listing.materialType;
+      if (!acc[material]) {
+        acc[material] = { count: 0, weight: 0 };
+      }
+      acc[material].count += 1;
+      acc[material].weight += item.quantity;
       return acc;
     }, {});
+
+    Object.keys(byMaterial).forEach((material) => {
+      byMaterial[material].weight = parseFloat(byMaterial[material].weight.toFixed(2));
+    });
 
     sendSuccess(res, 'Stats fetched successfully', {
       totalListings,

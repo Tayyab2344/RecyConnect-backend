@@ -1,5 +1,13 @@
 import express from "express";
-import { getProfile, changePassword, updateProfile, requestRoleUpgrade, checkCnic, deleteAccount } from "../controllers/userController.js";
+import {
+    getProfile,
+    changePassword,
+    updateProfile,
+    requestRoleUpgrade,
+    checkCnic,
+    deleteAccount,
+    updateFcmToken,
+} from "../controllers/userController.js";
 import { authenticateToken } from "../middlewares/authMiddleware.js";
 import multer from "multer";
 
@@ -26,6 +34,7 @@ const router = express.Router();
  *         description: Profile retrieved successfully
  */
 router.get("/profile", authenticateToken, getProfile);
+router.post("/fcm-token", authenticateToken, updateFcmToken);
 
 /**
  * @swagger

@@ -90,6 +90,7 @@ model User {
   locationMethod     String? // "auto" or "manual"
   locationPermission Boolean   @default(false)
   addressUpdatedAt   DateTime?
+  fcmToken           String?
 
   // Warehouse Business Profile Fields
   stripeAccountId   String? // Stripe Connected Account ID
