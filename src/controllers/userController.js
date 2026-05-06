@@ -69,6 +69,30 @@ export async function getProfile(req, res) {
 }
 
 /**
+ * Save the current device FCM token for push notifications.
+ * POST /api/user/fcm-token
+ */
+export async function updateFcmToken(req, res) {
+  try {
+    const userId = req.user.id;
+    const { fcmToken } = req.body;
+
+    if (!fcmToken || typeof fcmToken !== "string") {
+      return sendError(res, "fcmToken is required", null, 400);
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { fcmToken },
+    });
+
+    sendSuccess(res, "FCM token saved successfully", { saved: true });
+  } catch (err) {
+    sendError(res, "Failed to save FCM token", err);
+  }
+}
+
+/**
  * Change password
  * PUT /api/profile/password
  */
