@@ -11,7 +11,8 @@ import {
    updateListing,
    publishListing,
    pauseListing,
-   deleteListing
+   deleteListing,
+   classifyListingImage
 } from '../controllers/listingController.js';
 
 const router = express.Router();
@@ -107,6 +108,35 @@ router.use(authenticateToken);
  *       400:
  *         description: Validation error (weight >10kg or missing location)
  */
+/**
+ * @swagger
+ * /api/listings/classify:
+ *   post:
+ *     summary: Classify a recyclable material image using AI (Groq → Gemini → TFLite fallback)
+ *     tags: [Listings]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               imageUrl:
+ *                 type: string
+ *                 description: Public URL of the image to classify
+ *               imageBase64:
+ *                 type: string
+ *                 description: Base64 encoded image
+ *     responses:
+ *       200:
+ *         description: Classification result with materialType, confidence, source
+ *       503:
+ *         description: Cloud classification unavailable, use on-device fallback
+ */
+router.post('/classify', classifyListingImage);
+
 router.post('/', createListing);
 
 /**

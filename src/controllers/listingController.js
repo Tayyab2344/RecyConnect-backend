@@ -7,6 +7,7 @@ import cloudinary from '../config/cloudinary.js';
 import { withExponentialBackoff } from '../utils/retryHelper.js';
 import { invalidateCache } from '../lib/redis.js';
 import { EventBus } from '../events/eventBus.js';
+import { classifyImage } from '../services/imageClassificationService.js';
 
 /**
  * Upload a base64 image to Cloudinary
@@ -107,6 +108,23 @@ export const createListing = async (req, res) => {
       }
     }
 
+    // ── AI Classification (non-blocking) ────────────────────────
+    let aiClassification = null;
+    try {
+      if (imageUrls.length > 0) {
+        aiClassification = await classifyImage(imageUrls[0], null);
+      }
+    } catch (classifyErr) {
+      console.error('AI_CLASSIFICATION_ERROR:', classifyErr);
+      // Non-blocking — continue with listing creation
+    }
+
+    // Merge AI classification into metadata
+    const listingMetadata = req.body.metadata || {};
+    if (aiClassification) {
+      listingMetadata.aiClassification = aiClassification;
+    }
+
     const listing = await prisma.listing.create({
       data: {
         userId,
@@ -126,7 +144,7 @@ export const createListing = async (req, res) => {
         notes: notes || null,
         images: imageUrls,
         status,
-        metadata: req.body.metadata || null
+        metadata: Object.keys(listingMetadata).length > 0 ? listingMetadata : null
       }
     });
 
@@ -136,7 +154,7 @@ export const createListing = async (req, res) => {
       action: "CREATE_LISTING",
       resourceType: "listing",
       resourceId: listing.id,
-      meta: { materialType, price, quantity },
+      meta: { materialType, price, quantity, aiSource: aiClassification?.source || null },
       req
     });
 
@@ -149,6 +167,32 @@ export const createListing = async (req, res) => {
   } catch (error) {
     console.error('CREATE_LISTING_ERROR:', error);
     sendError(res, 'Failed to create listing', error);
+  }
+};
+
+/**
+ * Classify a recyclable material image using AI (Groq → Gemini fallback)
+ * POST /api/listings/classify
+ */
+export const classifyListingImage = async (req, res) => {
+  try {
+    const { imageUrl, imageBase64 } = req.body;
+
+    if (!imageUrl && !imageBase64) {
+      return sendError(res, 'Either imageUrl or imageBase64 is required', null, 400);
+    }
+
+    const result = await classifyImage(imageUrl || null, imageBase64 || null);
+
+    if (result) {
+      sendSuccess(res, 'Image classified successfully', result);
+    } else {
+      // Return a specific response so Flutter knows to fall back to TFLite
+      sendError(res, 'Cloud classification unavailable, use on-device fallback', null, 503);
+    }
+  } catch (error) {
+    console.error('CLASSIFY_IMAGE_ERROR:', error);
+    sendError(res, 'Failed to classify image', error);
   }
 };
 
