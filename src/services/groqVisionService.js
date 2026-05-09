@@ -1,0 +1,192 @@
+import { logger } from '../utils/logger.js';
+
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+const GROQ_TIMEOUT = 5000; // 5 seconds
+
+/**
+ * System prompt tailored for RecyConnect recyclable material classification.
+ */
+const SYSTEM_PROMPT = `You are an AI recyclable material classifier for RecyConnect, a waste management platform in Pakistan.
+Analyze the image and classify the recyclable material shown.
+
+You MUST respond with ONLY a valid JSON object (no markdown, no code fences, no explanation), using this exact structure:
+{
+  "materialType": "one of: plastic, paper, metal, ewaste, glass, organic, textile, rubber, wood, mixed",
+  "category": "specific sub-category (e.g., PET bottles, cardboard, copper wire, circuit boards)",
+  "condition": "one of: good, fair, poor, contaminated",
+  "confidence": 0.0 to 1.0,
+  "description": "brief 1-line description of what you see",
+  "isRecyclable": true or false
+}`;
+
+/**
+ * Classify an image using Groq Vision API (Llama 4 Scout).
+ * @param {string|null} imageUrl - Public URL of the image
+ * @param {string|null} imageBase64 - Base64 encoded image (without data URI prefix)
+ * @returns {Promise<object|null>} Classification result or null on failure
+ */
+export async function classifyWithGroq(imageUrl, imageBase64 = null) {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    logger.warn('GROQ_API_KEY not configured, skipping Groq classification');
+    return null;
+  }
+
+  try {
+    // Build the image content part
+    let imageContent;
+    if (imageUrl) {
+      imageContent = {
+        type: 'image_url',
+        image_url: { url: imageUrl }
+      };
+    } else if (imageBase64) {
+      const base64Data = imageBase64.startsWith('data:')
+        ? imageBase64
+        : `data:image/jpeg;base64,${imageBase64}`;
+      imageContent = {
+        type: 'image_url',
+        image_url: { url: base64Data }
+      };
+    } else {
+      logger.warn('Groq: No image URL or base64 provided');
+      return null;
+    }
+
+    const payload = {
+      model: GROQ_MODEL,
+      messages: [
+        {
+          role: 'system',
+          content: SYSTEM_PROMPT
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'Classify the recyclable material in this image. Return ONLY a JSON object.'
+            },
+            imageContent
+          ]
+        }
+      ],
+      temperature: 0.1,
+      max_completion_tokens: 512,
+      response_format: { type: 'json_object' }
+    };
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), GROQ_TIMEOUT);
+
+    const response = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      logger.error(`Groq API error ${response.status}: ${errorBody}`);
+      return null;
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+
+    if (!content) {
+      logger.warn('Groq: Empty response content');
+      return null;
+    }
+
+    // Parse JSON response
+    const result = parseClassificationJSON(content);
+    if (result) {
+      result.source = 'groq';
+      logger.info(`Groq classification: ${result.materialType} (${(result.confidence * 100).toFixed(0)}%)`);
+    }
+    return result;
+
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      logger.warn('Groq: Request timed out after 5s');
+    } else {
+      logger.error(`Groq classification error: ${err.message}`);
+    }
+    return null;
+  }
+}
+
+/**
+ * Parse the classification JSON from LLM response, handling edge cases.
+ */
+function parseClassificationJSON(content) {
+  try {
+    // Try direct parse first
+    const parsed = JSON.parse(content);
+    return validateClassificationResult(parsed);
+  } catch {
+    // Try extracting JSON from markdown code fences
+    const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[1].trim());
+        return validateClassificationResult(parsed);
+      } catch {
+        // ignore
+      }
+    }
+
+    // Try finding JSON object in the text
+    const objectMatch = content.match(/\{[\s\S]*\}/);
+    if (objectMatch) {
+      try {
+        const parsed = JSON.parse(objectMatch[0]);
+        return validateClassificationResult(parsed);
+      } catch {
+        // ignore
+      }
+    }
+
+    logger.warn(`Groq: Could not parse response as JSON: ${content.substring(0, 200)}`);
+    return null;
+  }
+}
+
+/**
+ * Validate and normalize the classification result.
+ */
+function validateClassificationResult(parsed) {
+  const validMaterials = [
+    'plastic', 'paper', 'metal', 'ewaste', 'e-waste',
+    'glass', 'organic', 'textile', 'rubber', 'wood', 'mixed'
+  ];
+
+  // Normalize e-waste
+  if (parsed.materialType === 'e-waste') {
+    parsed.materialType = 'ewaste';
+  }
+
+  if (!parsed.materialType || !validMaterials.includes(parsed.materialType.toLowerCase())) {
+    return null;
+  }
+
+  return {
+    materialType: parsed.materialType.toLowerCase(),
+    category: parsed.category || parsed.materialType,
+    condition: parsed.condition || 'fair',
+    confidence: typeof parsed.confidence === 'number'
+      ? Math.min(1, Math.max(0, parsed.confidence))
+      : 0.5,
+    description: parsed.description || '',
+    isRecyclable: parsed.isRecyclable !== false,
+    source: 'groq'
+  };
+}
