@@ -15,6 +15,7 @@ import { swaggerSpec } from "./utils/swagger.js";
 import { logger, stream } from "./utils/logger.js";
 import { initCronJobs } from "./services/cronService.js";
 import { initSocketGateway } from "./modules/chat/gateway/socketGateway.js";
+import { initializeTrie } from "./services/trieSearchService.js";
 import "./config/cloudinary.js";
 
 // ── Middlewares ────────────────────────────────────────────────
@@ -150,6 +151,7 @@ if (!process.env.VERCEL) {
         console.log(`\x1b[36m[SWAGGER] Documentation available at http://localhost:${PORT}/api-docs\x1b[0m`);
 
         initCronJobs();
+        initializeTrie().catch(err => logger.error(`[TRIE] Init error: ${err.message}`));
         logger.info(`Server started on port ${PORT}`);
 
         fetch('http://127.0.0.1:4040/api/tunnels')

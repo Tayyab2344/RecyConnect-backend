@@ -15,6 +15,8 @@ import {
   updateCollectorAvailability,
   updateCollectorTaskStatus,
   verifyWasteForTask,
+  getOptimizedRoute,
+  getNearestCollectors,
 } from "../controllers/collectorController.js";
 
 const router = express.Router();
@@ -72,10 +74,13 @@ const upload = multer({ storage: multer.memoryStorage() });
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
+router.get("/nearest", authenticateToken, permit("warehouse", "admin"), getNearestCollectors);
+
 router.use(authenticateToken, permit("collector"));
 
 router.get("/me", getCollectorProfile);
 router.get("/dashboard", getCollectorDashboard);
+router.get("/tasks/optimized-route", getOptimizedRoute);
 router.patch("/availability", updateCollectorAvailability);
 router.get("/tasks", getCollectorTasks);
 router.get("/history", (req, res, next) => {

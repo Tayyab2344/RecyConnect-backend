@@ -22,12 +22,14 @@ import {
   pauseListing,
   deleteListing,
   classifyListingImage,
+  getSearchAutocomplete,
 } from "../controllers/listingController.js";
 
 const router = express.Router();
 
 // ── Public (no auth) ──────────────────────────────────────────
 router.get("/public", cacheResponse(30), getPublicListings);
+router.get("/search/autocomplete", getSearchAutocomplete);
 
 // ── Authenticated ─────────────────────────────────────────────
 router.use(authenticateToken);

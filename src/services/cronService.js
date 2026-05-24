@@ -1,4 +1,5 @@
 import { autoExpireReservations } from '../modules/reservation/controllers/reservationController.js';
+import { recalculateLeaderboardRanks } from './rewardService.js';
 
 /**
  * Simple cron-like service to handle background maintenance tasks
@@ -14,6 +15,17 @@ export const initCronJobs = () => {
             console.log(`[CRON] Auto-expired ${result.count} reservations.`);
         }
     }, 2 * 60 * 1000);
+
+    // Sync database leaderboard ranks every 10 minutes
+    setInterval(async () => {
+        try {
+            console.log('[CRON] Syncing database leaderboard ranks...');
+            await recalculateLeaderboardRanks();
+            console.log('[CRON] Leaderboard ranks synced successfully.');
+        } catch (error) {
+            console.error(`[CRON] Leaderboard sync failed:`, error.message);
+        }
+    }, 10 * 60 * 1000);
 
     // Keep-Alive Ping (Prevent Render Free Tier from sleeping)
     // Runs every 14 minutes to beat Render's 15-minute inactivity timer

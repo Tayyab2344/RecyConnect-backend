@@ -2,6 +2,7 @@ import prisma from '../lib/prisma.js';
 import { logger } from '../utils/logger.js';
 import { createAndSendNotification } from './notificationService.js';
 import { getIO } from '../modules/chat/gateway/socketGateway.js';
+import redis, { isRedisConnected } from '../lib/redis.js';
 
 // Level thresholds
 const LEVEL_THRESHOLDS = [
@@ -197,8 +198,8 @@ export async function awardPoints({ userId, activityType, customPoints = null })
     // 6. Evaluate and award Badges (non-blocking)
     await evaluateBadges(parsedUserId, newPoints);
 
-    // 7. Update Leaderboard ranking (non-blocking)
-    await recalculateLeaderboardRanks();
+    // 7. Update Leaderboard ranking (optimized & real-time via Redis Sorted Set)
+    await updateUserLeaderboard(parsedUserId, newPoints, user.role);
 
     // 8. Emit live WebSocket update
     const io = getIO();
@@ -294,6 +295,56 @@ export async function evaluateBadges(userId, currentPoints) {
 
   } catch (err) {
     logger.error(`[REWARDS] Failed to evaluate badges: ${err.message}`);
+  }
+}
+
+/**
+ * Update a single user's leaderboard score in Redis and DB
+ */
+export async function updateUserLeaderboard(userId, points, role) {
+  try {
+    const cleanRole = (role || 'individual').toLowerCase();
+
+    // 1. Update Redis (real-time ZADD)
+    if (isRedisConnected() && redis) {
+      const redisKey = `leaderboard:${cleanRole}s`;
+      await redis.zadd(redisKey, points, userId);
+      await redis.zadd('leaderboard:all', points, userId);
+    }
+
+    // 2. Upsert user in DB Leaderboard (for persistence, rank updated via periodic cron)
+    await prisma.leaderboard.upsert({
+      where: { userId },
+      update: { totalPoints: points },
+      create: { userId, totalPoints: points, rank: 0 }
+    });
+  } catch (err) {
+    logger.error(`[REWARDS] Failed to update user leaderboard: ${err.message}`);
+  }
+}
+
+/**
+ * Re-populate Redis from DB if it gets cleared
+ */
+export async function populateRedisLeaderboard() {
+  if (!isRedisConnected() || !redis) return;
+
+  try {
+    const users = await prisma.user.findMany({
+      where: { ecoPoints: { gt: 0 }, deletedAt: null },
+      select: { id: true, ecoPoints: true, role: true }
+    });
+
+    const pipeline = redis.pipeline();
+    for (const u of users) {
+      const roleKey = `leaderboard:${u.role.toLowerCase()}s`;
+      pipeline.zadd(roleKey, u.ecoPoints, u.id);
+      pipeline.zadd('leaderboard:all', u.ecoPoints, u.id);
+    }
+    await pipeline.exec();
+    logger.info('[REDIS] Leaderboard populated from database successfully');
+  } catch (err) {
+    logger.error(`[REDIS] Failed to populate leaderboard: ${err.message}`);
   }
 }
 

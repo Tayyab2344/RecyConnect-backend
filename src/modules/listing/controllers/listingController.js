@@ -16,6 +16,7 @@ import { uploadBase64ToCloudinary } from "../../../utils/cloudinaryUploader.js";
 import { invalidateCache } from "../../../lib/redis.js";
 import { EventBus } from "../../../events/eventBus.js";
 import { classifyImage } from "../../../services/imageClassificationService.js";
+import { addWordsFromListing, autocompleteSearch } from "../../../services/trieSearchService.js";
 
 /**
  * Create a new listing with image upload and optional AI classification.
@@ -115,6 +116,7 @@ export const createListing = async (req, res) => {
     });
 
     EventBus.emit("listing.created", { listingId: listing.id, category: listing.category });
+    addWordsFromListing(listing);
     invalidateCache("cache:*/listings*").catch(() => {});
 
     sendSuccess(res, "Listing published successfully", listing, 201);
@@ -524,5 +526,23 @@ export const deleteListing = async (req, res) => {
     sendSuccess(res, "Listing deleted successfully");
   } catch (error) {
     sendError(res, "Failed to delete listing", error);
+  }
+};
+
+/**
+ * Get prefix autocomplete suggestions using Trie
+ * GET /api/listings/search/autocomplete
+ */
+export const getSearchAutocomplete = async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q) {
+      return sendSuccess(res, "Autocomplete results", []);
+    }
+    const results = autocompleteSearch(q);
+    // Limit to top 10 suggestions
+    sendSuccess(res, "Autocomplete results", results.slice(0, 10));
+  } catch (error) {
+    sendError(res, "Failed to get autocomplete suggestions", error);
   }
 };

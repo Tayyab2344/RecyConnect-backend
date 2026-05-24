@@ -1,7 +1,8 @@
 import prisma from '../../../lib/prisma.js';
 import { sendSuccess, sendError } from '../../../utils/responseHelper.js';
-import { getNextLevelInfo, awardPoints } from '../../../services/rewardService.js';
+import { getNextLevelInfo, awardPoints, populateRedisLeaderboard } from '../../../services/rewardService.js';
 import { logger } from '../../../utils/logger.js';
+import redis, { isRedisConnected } from '../../../lib/redis.js';
 
 /**
  * Get user's rewards status, points, level, progress, and badges.
@@ -171,6 +172,68 @@ export async function getLeaderboard(req, res) {
       roles = ["company"];
     }
 
+    // ── Real-Time Redis Sorted Set Lookup ────────────────────────────
+    if (isRedisConnected() && redis && typeof redis.zrevrange === "function") {
+      try {
+        // Map category query param to Redis key
+        let redisKey = 'leaderboard:individuals';
+        if (category === 'warehouses') redisKey = 'leaderboard:warehouses';
+        else if (category === 'companies') redisKey = 'leaderboard:companies';
+
+        const topIds = await redis.zrevrange(redisKey, 0, 19);
+      if (topIds && topIds.length > 0) {
+        const userIds = topIds.map(id => parseInt(id, 10));
+        
+        // Retrieve profile details for the ranked user IDs in a single query
+        const dbUsers = await prisma.user.findMany({
+          where: { id: { in: userIds }, deletedAt: null },
+          select: {
+            id: true,
+            name: true,
+            businessName: true,
+            companyName: true,
+            profileImage: true,
+            city: true,
+            area: true,
+            ecoPoints: true,
+            currentLevel: true,
+          }
+        });
+
+        // Re-align database results to match Redis ranking order
+        const userMap = new Map(dbUsers.map(u => [u.id, u]));
+        const sortedUsers = userIds
+          .map(id => userMap.get(id))
+          .filter(Boolean);
+
+        const data = sortedUsers.map((u, idx) => {
+          let displayName = u.name;
+          if (category === "warehouses") displayName = u.businessName || u.name;
+          if (category === "companies") displayName = u.companyName || u.name;
+
+          return {
+            userId: u.id,
+            displayName: displayName || "Anonymous Recycler",
+            profileImage: u.profileImage,
+            city: u.city,
+            area: u.area,
+            ecoPoints: u.ecoPoints,
+            currentLevel: u.currentLevel,
+            rank: idx + 1
+          };
+        });
+
+        return sendSuccess(res, "Leaderboard fetched successfully", data);
+      } else {
+        // If Redis is empty, trigger an async background repopulation
+        populateRedisLeaderboard().catch(err => logger.error(`[REDIS] Repopulate error: ${err.message}`));
+      }
+    } catch (redisErr) {
+      logger.error(`[REDIS] Leaderboard lookup failed: ${redisErr.message}`);
+    }
+  }
+
+    // ── Fallback: Database-Driven Sorted Query ───────────────────────
     // Fetch top users ordered by ecoPoints desc
     const users = await prisma.user.findMany({
       where: {

@@ -13,6 +13,8 @@ import { logActivity } from "../../../utils/activityLogger.js";
 import { sendError, sendPaginated, sendSuccess } from "../../../utils/responseHelper.js";
 import { uploadToCloudinary } from "../../../utils/uploadHelper.js";
 import { getIO } from "../../chat/gateway/socketGateway.js";
+import { solveTSP } from "../../../utils/algorithms/router.js";
+import { KDTree, getHaversineDistance } from "../../../utils/algorithms/kdTree.js";
 
 const terminalStatuses = [
   CollectorTaskStatus.COMPLETED,
@@ -976,5 +978,162 @@ export async function getCollectorEarnings(req, res) {
     });
   } catch (err) {
     sendError(res, "Failed to fetch earnings", err);
+  }
+}
+
+// ── Optimized TSP A* Routing ────────────────────────────────
+export async function getOptimizedRoute(req, res) {
+  try {
+    const collectorId = req.user.id;
+
+    // 1. Fetch active tasks for routing
+    const activeTasks = await prisma.collectorTask.findMany({
+      where: {
+        collectorId,
+        status: {
+          in: [
+            CollectorTaskStatus.ASSIGNED,
+            CollectorTaskStatus.ACCEPTED,
+            CollectorTaskStatus.EN_ROUTE_TO_PICKUP,
+            CollectorTaskStatus.ARRIVED_AT_SOURCE,
+            CollectorTaskStatus.VERIFIED,
+            CollectorTaskStatus.PICKED_UP,
+            CollectorTaskStatus.IN_TRANSIT,
+            CollectorTaskStatus.ARRIVED_AT_DESTINATION
+          ]
+        }
+      }
+    });
+
+    if (activeTasks.length === 0) {
+      return sendSuccess(res, "No active tasks for routing", {
+        sequence: [],
+        routePoints: [],
+        totalDistance: 0
+      });
+    }
+
+    // 2. Fetch collector starting location coordinates
+    const profile = await prisma.collectorProfile.findUnique({
+      where: { userId: collectorId },
+      select: { currentLatitude: true, currentLongitude: true }
+    });
+
+    // Fallback coordinates (Lahore centre)
+    const startCoords = {
+      latitude: profile?.currentLatitude || activeTasks[0].sourceLatitude || 31.4015,
+      longitude: profile?.currentLongitude || activeTasks[0].sourceLongitude || 74.2405
+    };
+
+    // 3. Solve Travelling Salesman Problem
+    const result = solveTSP(startCoords, activeTasks);
+
+    // Save optimized route state into the primary task
+    await prisma.collectorTask.update({
+      where: { id: activeTasks[0].id },
+      data: {
+        routeInfo: {
+          optimizedSequence: result.sequence.map(t => t.id),
+          coordinatesCount: result.routePoints.length,
+          totalDistanceKm: result.totalDistance
+        }
+      }
+    });
+
+    sendSuccess(res, "Optimized route calculated successfully", {
+      startLocation: startCoords,
+      optimizedTasks: result.sequence,
+      routePoints: result.routePoints,
+      totalDistanceKm: result.totalDistance
+    });
+  } catch (err) {
+    sendError(res, "Failed to optimize route", err);
+  }
+}
+
+// ── Spatial KD-Tree Proximity search ────────────────────────
+export async function getNearestCollectors(req, res) {
+  try {
+    const { lat, lng } = req.query;
+    if (!lat || !lng) {
+      return sendError(res, "Latitude (lat) and longitude (lng) are required", null, 400);
+    }
+
+    const latitude = parseFloat(lat);
+    const longitude = parseFloat(lng);
+
+    if (isNaN(latitude) || isNaN(longitude)) {
+      return sendError(res, "Invalid coordinates provided", null, 400);
+    }
+
+    // 1. Fetch online collectors with valid coordinates
+    const activeProfiles = await prisma.collectorProfile.findMany({
+      where: {
+        availabilityStatus: {
+          in: [CollectorAvailability.ONLINE, CollectorAvailability.ON_DUTY, CollectorAvailability.BUSY]
+        },
+        currentLatitude: { not: null },
+        currentLongitude: { not: null }
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            collectorId: true,
+            contactNo: true,
+            profileImage: true
+          }
+        }
+      }
+    });
+
+    if (activeProfiles.length === 0) {
+      return sendSuccess(res, "No online collectors found", {
+        nearestCollector: null,
+        distanceKm: 0,
+        activeCollectorsCount: 0
+      });
+    }
+
+    // 2. Build 2D KD-Tree
+    const points = activeProfiles.map(p => ({
+      ...p,
+      latitude: p.currentLatitude,
+      longitude: p.currentLongitude
+    }));
+
+    const tree = new KDTree(points);
+
+    // 3. Locate closest point
+    const target = { latitude, longitude };
+    const nearestPoint = tree.nearest(target);
+
+    if (!nearestPoint) {
+      return sendSuccess(res, "No nearest collector could be determined", null);
+    }
+
+    // Compute Haversine distance in km
+    const distance = getHaversineDistance(target, {
+      latitude: nearestPoint.latitude,
+      longitude: nearestPoint.longitude
+    });
+
+    sendSuccess(res, "Nearest collector found successfully", {
+      nearestCollector: {
+        id: nearestPoint.userId,
+        employeeId: nearestPoint.employeeId,
+        availabilityStatus: nearestPoint.availabilityStatus,
+        location: {
+          latitude: nearestPoint.latitude,
+          longitude: nearestPoint.longitude
+        },
+        user: nearestPoint.user
+      },
+      distanceKm: parseFloat(distance.toFixed(3)),
+      activeCollectorsCount: activeProfiles.length
+    });
+  } catch (err) {
+    sendError(res, "Failed to locate nearest collector", err);
   }
 }
