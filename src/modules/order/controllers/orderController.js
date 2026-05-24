@@ -559,6 +559,13 @@ export const completeOrder = async (req, res) => {
     invalidateCache("cache:*/orders*").catch(() => {});
     invalidateCache("cache:*/reports*").catch(() => {});
 
+    // Emit order completion event for points and side effects
+    EventBus.emit("order.completed", {
+      orderId: result.id,
+      buyerId: result.buyerId,
+      sellerId: result.sellerId,
+    });
+
     sendSuccess(
       res,
       "Order completed successfully. You can now release the payment.",

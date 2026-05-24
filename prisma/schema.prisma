@@ -183,6 +183,16 @@ model User {
   collectorIncidents        CollectorIncident[] @relation("CollectorIncidentUser")
   collectorEarnings         CollectorEarning[]  @relation("CollectorEarningUser")
   notifications             Notification[]
+  ecoPoints                 Int                 @default(0)
+  currentLevel              String              @default("Beginner Recycler")
+  dailyStreak               Int                 @default(0)
+  lastLoginDate             DateTime?
+  referredById              Int?
+  referredBy                User?               @relation("Referral", fields: [referredById], references: [id])
+  referrals                 User[]              @relation("Referral")
+  rewards                   Reward[]            @relation("UserRewards")
+  badges                    Badge[]             @relation("UserBadges")
+  leaderboard               Leaderboard?        @relation("UserLeaderboard")
 
   @@index([role])
   @@index([contactNo])
@@ -800,5 +810,39 @@ model Notification {
   @@index([userId])
   @@index([isRead])
   @@index([createdAt])
+}
+
+model Reward {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  user         User     @relation("UserRewards", fields: [userId], references: [id], onDelete: Cascade)
+  points       Int
+  activityType String   // e.g. "LISTING_UPLOAD", "AI_CLASSIFICATION", "SUCCESSFUL_SALE", "PURCHASE", "DAILY_STREAK", "REFERRAL", "RATING", "CHALLENGE"
+  rewardType   String   // "POINTS", "CASHBACK", "COUPON"
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Badge {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user         User     @relation("UserBadges", fields: [userId], references: [id], onDelete: Cascade)
+  badgeName String   // e.g. "First Sale Badge", "Eco Hero", "Trusted Seller", "Green Contributor", "Recycling Master"
+  earnedAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Leaderboard {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @unique
+  user         User     @relation("UserLeaderboard", fields: [userId], references: [id], onDelete: Cascade)
+  totalPoints Int      @default(0)
+  rank        Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  @@index([totalPoints])
 }
 

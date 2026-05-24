@@ -43,6 +43,7 @@ import batchRoutes from "./modules/batch/routes/batchRoutes.js";
 import appRoutes from "./modules/app/routes/appRoutes.js";
 import logRoutes from "./modules/log/routes/logRoutes.js";
 import notificationRoutes from "./modules/notification/routes/notificationRoutes.js";
+import rewardsRoutes from "./modules/rewards/routes/rewardsRoutes.js";
 
 
 // ── App Initialization ───────────────────────────────────────
@@ -125,6 +126,7 @@ app.use("/api/batch", batchRoutes);
 app.use("/api/app", appRoutes);
 app.use("/api/logs", logRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/rewards", rewardsRoutes);
 
 
 // ── Static Files ──────────────────────────────────────────────
