@@ -12,7 +12,16 @@ export async function authenticateToken(req, res, next) {
     const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET)
     const user = await prisma.user.findUnique({ where: { id: payload.userId } })
     if (!user) return sendError(res, 'Invalid token', null, 401)
-    req.user = { id: user.id, role: user.role, email: user.email, collectorId: user.collectorId, city: user.city, area: user.area }
+    req.user = {
+      id: user.id,
+      role: user.role,
+      email: user.email,
+      collectorId: user.collectorId,
+      city: user.city,
+      area: user.area,
+      assignedWarehouseId: user.assignedWarehouseId,
+      createdById: user.createdById
+    }
     next()
   } catch (err) {
     return sendError(res, 'Unauthorized', null, 401)
@@ -29,7 +38,16 @@ export async function optionalAuth(req, res, next) {
     const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET)
     const user = await prisma.user.findUnique({ where: { id: payload.userId } })
     if (user) {
-      req.user = { id: user.id, role: user.role, email: user.email, collectorId: user.collectorId, city: user.city, area: user.area }
+      req.user = {
+        id: user.id,
+        role: user.role,
+        email: user.email,
+        collectorId: user.collectorId,
+        city: user.city,
+        area: user.area,
+        assignedWarehouseId: user.assignedWarehouseId,
+        createdById: user.createdById
+      }
     }
     next()
   } catch (err) {

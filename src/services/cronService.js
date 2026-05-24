@@ -1,4 +1,4 @@
-import { autoExpireReservations } from '../controllers/reservationController.js';
+import { autoExpireReservations } from '../modules/reservation/controllers/reservationController.js';
 
 /**
  * Simple cron-like service to handle background maintenance tasks

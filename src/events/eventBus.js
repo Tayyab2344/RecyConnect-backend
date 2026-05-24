@@ -3,7 +3,8 @@ import { logger } from '../utils/logger.js';
 import { invalidateCache } from '../lib/redis.js';
 import { queueOfflineRequest } from '../lib/queueManager.js';
 import prisma from '../lib/prisma.js';
-import { sendPushNotification } from '../services/firebaseService.js';
+import { createAndSendNotification } from '../services/notificationService.js';
+
 
 // Central Event Bus Node
 class SystemEventBus extends EventEmitter {}
@@ -52,32 +53,20 @@ EventBus.on('order.created', async (payload) => {
             }
         });
 
-        if (!order?.seller?.fcmToken) {
-            logger.info(`[EVENT] Seller has no FCM token for order: ${payload.orderId}`);
-            return;
-        }
-
         const firstItem = order.items?.[0];
         const itemName = firstItem?.listing?.title || firstItem?.listing?.materialType || 'your product';
         const buyerName = order.buyer?.name || 'A buyer';
 
-        const result = await sendPushNotification({
-            token: order.seller.fcmToken,
+        await createAndSendNotification({
+            userId: order.sellerId,
             title: 'New order received',
-            body: `${buyerName} purchased ${itemName}.`,
-            data: {
-                type: 'ORDER_CREATED',
-                orderId: String(order.id),
-                buyerId: String(order.buyerId),
-                sellerId: String(order.sellerId),
-            }
+            message: `${buyerName} purchased ${itemName}.`,
+            type: 'ORDER',
+            priority: 'HIGH',
+            actionUrl: `/orders/${order.id}`,
         });
-
-        if (result.success) {
-            logger.info(`[EVENT] Push notification sent for order: ${payload.orderId}`);
-        }
     } catch (err) {
-        logger.warn(`[EVENT] Failed order.created push notification: ${err.message}`);
+        logger.warn(`[EVENT] Failed order.created notification dispatch: ${err.message}`);
     }
 
     // In the future, emit an email command to the background queue natively
