@@ -16,7 +16,8 @@ import {
   refreshToken,
   resendOtp,
   checkEmailExistence,
-  analyzeDocument
+  analyzeDocument,
+  verifyAdminMfa
 } from '../controllers/authController.js'
 import { authenticateToken } from '../../../middlewares/authMiddleware.js';
 import { loginLimiterByIP, loginLimiterByEmail, trackFailedLoginAttempt } from '../../../middlewares/loginLimiter.js';
@@ -556,6 +557,12 @@ router.post(
   ],
   login
 );
+
+router.post(
+  "/verify-mfa",
+  verifyAdminMfa
+);
+
 router.post(
   "/forgot-password",
   [emailValidation],

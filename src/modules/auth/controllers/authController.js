@@ -480,6 +480,32 @@ export async function login(req, res) {
     }
 
     // Generate Tokens
+    if (user.role === UserRole.ADMIN && process.env.ADMIN_MFA_BYPASS !== "true") {
+      const otp = await createOtpForUser(user.id, "admin_mfa", user.email);
+      try {
+        await sendEmail({
+          to: user.email,
+          subject: "Verify your admin identity",
+          text: `Hello ${user.name},\n\nYour OTP code for administrative authentication is: ${otp}\n\nThis code is valid for 15 minutes.`,
+        });
+      } catch (err) {
+        logger.error(`Failed to send admin MFA email: ${err.message}`);
+      }
+
+      await logActivity({
+        userId: user.id,
+        actorRole: user.role,
+        action: "MFA_OTP_SENT",
+        meta: { email: user.email },
+        req
+      });
+
+      return sendSuccess(res, "MFA verification required. OTP sent to registered email.", {
+        requiresMfa: true,
+        email: user.email
+      });
+    }
+
     const accessToken = signAccessToken(user);
     const refreshToken = signRefreshToken(user);
     await saveRefreshToken(user.id, refreshToken);
@@ -500,6 +526,152 @@ export async function login(req, res) {
     });
   } catch (err) {
     sendError(res, "Login failed", err);
+  }
+}
+
+export async function verifyAdminMfa(req, res) {
+  try {
+    if (!validateRequest(req, res)) return;
+    const { email, otp } = req.body;
+    const sanitizedEmail = email?.toLowerCase().trim();
+
+    const user = await prisma.user.findUnique({
+      where: { email: sanitizedEmail }
+    });
+
+    if (!user || user.role !== UserRole.ADMIN) {
+      return sendError(res, "Access denied", null, 403);
+    }
+
+    // Verify OTP using the service
+    const ok = await verifyOtp(user.id, otp, "admin_mfa");
+    if (!ok) {
+      // Create a warning log for failed OTP attempt
+      await prisma.systemLog.create({
+        data: {
+          level: "warn",
+          type: "SECURITY",
+          message: `Failed admin MFA attempt for ${user.email} from IP: ${req.ip || "unknown"}`
+        }
+      });
+      return sendError(res, "Invalid or expired OTP code", null, 400);
+    }
+
+    // Session Security & Concurrent Session Limit
+    const activeRefreshTokens = await prisma.refreshToken.findMany({
+      where: { userId: user.id, revoked: false },
+      orderBy: { createdAt: "asc" }
+    });
+
+    // Limit to max 3 active concurrent sessions
+    if (activeRefreshTokens.length >= 3) {
+      // Revoke the oldest session(s) (leaving room for 2, since we will save 1 new)
+      const tokensToRevoke = activeRefreshTokens.slice(0, activeRefreshTokens.length - 2);
+      for (const token of tokensToRevoke) {
+        await prisma.refreshToken.update({
+          where: { id: token.id },
+          data: { revoked: true }
+        });
+      }
+    }
+
+    // Generate real tokens
+    const accessToken = signAccessToken(user);
+    const refreshToken = signRefreshToken(user);
+    await saveRefreshToken(user.id, refreshToken);
+
+    // Device Tracking & Fingerprinting (extract from request user-agent and IP)
+    const userAgent = req.headers["user-agent"] || "unknown";
+    const ip = req.ip || req.headers["x-forwarded-for"] || req.connection?.remoteAddress || "unknown";
+
+    // Simple parser for UserAgent/Device
+    let browser = "Other";
+    let os = "Other";
+    if (userAgent.includes("Chrome")) browser = "Chrome";
+    else if (userAgent.includes("Safari") && !userAgent.includes("Chrome")) browser = "Safari";
+    else if (userAgent.includes("Firefox")) browser = "Firefox";
+    else if (userAgent.includes("Edge")) browser = "Edge";
+
+    if (userAgent.includes("Windows")) os = "Windows";
+    else if (userAgent.includes("Macintosh") || userAgent.includes("Mac OS")) os = "macOS";
+    else if (userAgent.includes("Linux")) os = "Linux";
+    else if (userAgent.includes("Android")) os = "Android";
+    else if (userAgent.includes("iPhone") || userAgent.includes("iPad")) os = "iOS";
+
+    // Check for Device/UserAgent and Geolocation anomalies against previous successful logins
+    const previousLogins = await prisma.activityLog.findMany({
+      where: { userId: user.id, action: "LOGIN_SUCCESS" },
+      orderBy: { createdAt: "desc" },
+      take: 5
+    });
+
+    let isNewDevice = true;
+    if (previousLogins.length > 0) {
+      const matchingAgent = previousLogins.find(log => log.userAgent === userAgent);
+      if (matchingAgent) {
+        isNewDevice = false;
+      }
+    }
+
+    // Suspect Location / IP Prefix mismatch
+    let isSuspiciousLocation = false;
+    if (previousLogins.length > 0 && ip !== "unknown" && ip !== "127.0.0.1" && ip !== "::1") {
+      const lastLogin = previousLogins[0];
+      if (lastLogin.ip) {
+        const lastIpPrefix = lastLogin.ip.split(".").slice(0, 2).join(".");
+        const currentIpPrefix = ip.split(".").slice(0, 2).join(".");
+        if (lastIpPrefix !== currentIpPrefix) {
+          isSuspiciousLocation = true;
+        }
+      }
+    }
+
+    if (isNewDevice || isSuspiciousLocation) {
+      const anomalyReason = [];
+      if (isNewDevice) anomalyReason.push("Unseen device / browser profile");
+      if (isSuspiciousLocation) anomalyReason.push("Geographic/Network IP mismatch");
+
+      // Log security anomaly warning
+      await prisma.systemLog.create({
+        data: {
+          level: "warn",
+          type: "SECURITY",
+          message: `🚨 Suspicious admin login detected for ${user.email} (${anomalyReason.join(", ")})`,
+          metadata: { ip, userAgent, isNewDevice, isSuspiciousLocation }
+        }
+      });
+
+      // Send alert email to admin
+      try {
+        await sendEmail({
+          to: user.email,
+          subject: "Security Alert: Suspicious login attempt flagged",
+          text: `Hello ${user.name},\n\nWe detected an admin login attempt that looks different from your usual activity:\n\n- Device/Browser: ${browser} on ${os}\n- IP Address: ${ip}\n- Reason: ${anomalyReason.join(", ")}\n\nIf this was you, you can safely ignore this email. If not, please check active sessions and change your credentials immediately.`
+        });
+      } catch (emailErr) {
+        logger.error(`Failed to send security alert email: ${emailErr.message}`);
+      }
+    }
+
+    // Log login success activity with parsed device/OS
+    const readableDevice = `${browser} on ${os}`;
+    await logActivity({
+      userId: user.id,
+      actorRole: user.role,
+      action: "LOGIN_SUCCESS",
+      meta: { device: readableDevice, ip, userAgent },
+      req
+    });
+
+    sendSuccess(res, "MFA verification successful", {
+      accessToken,
+      refreshToken,
+      user: safeUserResponse(user),
+      verificationStatus: user.verificationStatus,
+      kycStage: user.kycStage
+    });
+  } catch (err) {
+    sendError(res, "MFA verification failed", err);
   }
 }
 

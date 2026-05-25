@@ -14,7 +14,7 @@ import { cacheResponse } from "../../../middlewares/cacheMiddleware.js";
 
 // ── Admin Controllers ─────────────────────────────────────────
 import { getPendingKYCUsers, approveKYC, rejectKYC } from "../controllers/kycController.js";
-import { getUsers, suspendUser } from "../controllers/userManagementController.js";
+import { getUsers, suspendUser, banUser, resetUserPassword, getActiveSessions, revokeSession } from "../controllers/userManagementController.js";
 import {
   getDashboardStats,
   getAdminOrders,
@@ -57,6 +57,12 @@ router.post("/kyc/reject", rejectKYC);
 // ── User Management ───────────────────────────────────────────
 router.get("/users", getUsers);
 router.put("/users/:id/suspend", suspendUser);
+router.put("/users/:id/ban", banUser);
+router.post("/users/:id/reset-password", resetUserPassword);
+
+// ── Sessions Management ─────────────────────────────────────────
+router.get("/sessions", getActiveSessions);
+router.post("/sessions/:id/revoke", revokeSession);
 
 // ── Orders / Payments / Listings Oversight ────────────────────
 router.get("/orders", getAdminOrders);
