@@ -54,7 +54,7 @@ describe('KYC Controller', () => {
         ocrService = await import('../src/services/ocrService.js');
 
         // Dynamic router import (depends on ocrService)
-        const kycRouter = (await import('../src/routes/kycRoute.js')).default;
+        const kycRouter = (await import('../src/modules/kyc/routes/kycRoutes.js')).default;
 
         app = createTestApp(kycRouter, '/api/kyc');
 

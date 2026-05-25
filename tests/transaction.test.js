@@ -6,7 +6,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
 // Import routes
-import transactionRoutes from '../src/routes/transactionRoutes.js';
+import transactionRoutes from '../src/modules/transaction/routes/transactionRoutes.js';
 import { ItemStatus, TransactionStatus } from '../src/constants/enums.js';
 
 const app = express();

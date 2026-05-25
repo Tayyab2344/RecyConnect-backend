@@ -35,6 +35,9 @@ import { logger } from '../src/utils/logger.js';
 // Suppress Winston DB writing during tests
 logger.silent = true;
 
+// Prevent Express app from starting server on port 5000 in Jest workers
+process.env.VERCEL = 'true';
+
 // Set test-specific environment variables if not already set
 if (!process.env.JWT_ACCESS_SECRET) {
     process.env.JWT_ACCESS_SECRET = 'test-secret-key-for-jest-testing';

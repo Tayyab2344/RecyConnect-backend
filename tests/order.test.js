@@ -9,8 +9,8 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
 // Import routes
-import orderRoutes from '../src/routes/orderRoutes.js';
-import listingRoutes from '../src/routes/listingRoutes.js';
+import orderRoutes from '../src/modules/order/routes/orderRoutes.js';
+import listingRoutes from '../src/modules/listing/routes/listingRoutes.js';
 
 const app = express();
 app.use(express.json());
@@ -86,6 +86,9 @@ describe('Order Controller', () => {
         });
         await prisma.listingReservation.deleteMany();
         await prisma.listing.deleteMany({
+            where: { userId: { in: [seller.id, buyer.id] } }
+        });
+        await prisma.notification.deleteMany({
             where: { userId: { in: [seller.id, buyer.id] } }
         });
         await prisma.user.deleteMany({
