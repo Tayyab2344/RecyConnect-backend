@@ -90,4 +90,8 @@ router.get("/monitoring/analytics", monitoringCtrl.getAnalyticsSnapshot);
 router.get("/monitoring/errors", monitoringCtrl.getRecentErrors);
 router.get("/monitoring/slow-endpoints", monitoringCtrl.getSlowEndpoints);
 
+// ── AI Observability & AIOps ──────────────────────────────────
+import observabilityRouter from "./observabilityRoutes.js";
+router.use("/observability", observabilityRouter);
+
 export default router;
