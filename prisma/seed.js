@@ -18,7 +18,8 @@ async function main() {
     { name: 'Muhammad Umer Liaqat', email: 'umer@recyconnect.com' },
     { name: 'Rana M Tayyab Atiq', email: 'tayyab@recyconnect.com' },
     { name: 'Warda Sohail', email: 'warda@recyconnect.com' },
-    { name: 'Super Admin', email: adminEmail }
+    { name: 'Super Admin', email: adminEmail },
+    { name: 'RecyConnect Admin', email: 'recyconnect5@gmail.com' }
   ]
 
   for (const admin of admins) {
