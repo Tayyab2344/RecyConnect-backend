@@ -111,7 +111,7 @@ export const initKafka = async () => {
  * @param {object} payload - The event payload
  */
 export const sendKafkaEvent = async (type, payload) => {
-    if (!isEnabled || !producer || !isHealthy) {
+    if (!isEnabled || !producer || !isProducerHealthy) {
         logger.warn(`[KAFKA] Cannot publish event ${type} - Kafka is disabled or unhealthy.`);
         return false;
     }
