@@ -17,6 +17,7 @@ import { initCronJobs } from "./services/cronService.js";
 import { initSocketGateway } from "./modules/chat/gateway/socketGateway.js";
 import { initializeTrie } from "./services/trieSearchService.js";
 import "./config/cloudinary.js";
+import { initKafka, startKafkaConsumer, disconnectKafka } from "./lib/kafka.js";
 
 // ── Middlewares ────────────────────────────────────────────────
 import { errorHandler } from "./middlewares/errorMiddleware.js";
@@ -154,6 +155,9 @@ if (!process.env.VERCEL) {
 
         initCronJobs();
         initializeTrie().catch(err => logger.error(`[TRIE] Init error: ${err.message}`));
+        initKafka()
+            .then(() => startKafkaConsumer())
+            .catch(err => logger.error(`[KAFKA] Startup error: ${err.message}`));
         logger.info(`Server started on port ${PORT}`);
 
         fetch('http://127.0.0.1:4040/api/tunnels')
@@ -166,6 +170,14 @@ if (!process.env.VERCEL) {
             })
             .catch(() => {});
     });
+
+    const handleShutdown = async () => {
+        logger.info('Shutting down server and disconnecting Kafka...');
+        await disconnectKafka();
+        process.exit(0);
+    };
+    process.on('SIGTERM', handleShutdown);
+    process.on('SIGINT', handleShutdown);
 }
 
 export default app;

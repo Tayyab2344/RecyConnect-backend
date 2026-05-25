@@ -4,12 +4,19 @@ import { invalidateCache } from '../lib/redis.js';
 import { queueOfflineRequest } from '../lib/queueManager.js';
 import prisma from '../lib/prisma.js';
 import { createAndSendNotification } from '../services/notificationService.js';
+import { sendKafkaEvent, registerKafkaEventHandler, isKafkaHealthy } from '../lib/kafka.js';
 
 
 // Central Event Bus Node
 class SystemEventBus extends EventEmitter {}
 
 export const EventBus = new SystemEventBus();
+
+// Register the handler to consume events from Kafka and execute them locally
+registerKafkaEventHandler(async (type, payload) => {
+    logger.info(`[EVENT_BUS] Consumed Kafka event: ${type}`);
+    EventBus.emit(type, { ...payload, __fromKafka: true });
+});
 
 /**
  * Event: 'cache.invalidate'
@@ -32,6 +39,16 @@ EventBus.on('cache.invalidate', async (payload) => {
  * like clearing caches and triggering confirmation emails asynchronously.
  */
 EventBus.on('order.created', async (payload) => {
+    // If not from Kafka and Kafka is healthy, route to Kafka and stop local processing
+    if (!payload.__fromKafka && isKafkaHealthy()) {
+        const success = await sendKafkaEvent('order.created', payload);
+        if (success) {
+            logger.info(`[EVENT_BUS] order.created event routed via Kafka.`);
+            return;
+        }
+        logger.warn(`[EVENT_BUS] Kafka publish failed. Falling back to local execution for order.created.`);
+    }
+
     logger.info(`[EVENT] order.created received for order: ${payload.orderId}`);
     
     // Abstract cache clears
@@ -74,6 +91,16 @@ EventBus.on('order.created', async (payload) => {
 });
 
 EventBus.on('listing.created', async (payload) => {
+    // If not from Kafka and Kafka is healthy, route to Kafka and stop local processing
+    if (!payload.__fromKafka && isKafkaHealthy()) {
+        const success = await sendKafkaEvent('listing.created', payload);
+        if (success) {
+            logger.info(`[EVENT_BUS] listing.created event routed via Kafka.`);
+            return;
+        }
+        logger.warn(`[EVENT_BUS] Kafka publish failed. Falling back to local execution for listing.created.`);
+    }
+
     logger.info(`[EVENT] listing.created received for listing: ${payload.listingId}`);
     EventBus.emit('cache.invalidate', { pattern: 'cache:*/listings*' });
     EventBus.emit('cache.invalidate', { pattern: 'cache:*/reports*' });
@@ -103,6 +130,16 @@ EventBus.on('listing.created', async (payload) => {
  * Payload: { orderId: number, buyerId: number, sellerId: number }
  */
 EventBus.on('order.completed', async (payload) => {
+    // If not from Kafka and Kafka is healthy, route to Kafka and stop local processing
+    if (!payload.__fromKafka && isKafkaHealthy()) {
+        const success = await sendKafkaEvent('order.completed', payload);
+        if (success) {
+            logger.info(`[EVENT_BUS] order.completed event routed via Kafka.`);
+            return;
+        }
+        logger.warn(`[EVENT_BUS] Kafka publish failed. Falling back to local execution for order.completed.`);
+    }
+
     logger.info(`[EVENT] order.completed received for order: ${payload.orderId}`);
     EventBus.emit('cache.invalidate', { pattern: 'cache:*/orders*' });
     EventBus.emit('cache.invalidate', { pattern: 'cache:*/reports*' });
