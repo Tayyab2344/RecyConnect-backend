@@ -480,31 +480,6 @@ export async function login(req, res) {
     }
 
     // Generate Tokens
-    if (user.role === UserRole.ADMIN && process.env.ADMIN_MFA_BYPASS !== "true") {
-      const otp = await createOtpForUser(user.id, "admin_mfa", user.email);
-      try {
-        await sendEmail({
-          to: user.email,
-          subject: "Verify your admin identity",
-          text: `Hello ${user.name},\n\nYour OTP code for administrative authentication is: ${otp}\n\nThis code is valid for 15 minutes.`,
-        });
-      } catch (err) {
-        logger.error(`Failed to send admin MFA email: ${err.message}`);
-      }
-
-      await logActivity({
-        userId: user.id,
-        actorRole: user.role,
-        action: "MFA_OTP_SENT",
-        meta: { email: user.email },
-        req
-      });
-
-      return sendSuccess(res, "MFA verification required. OTP sent to registered email.", {
-        requiresMfa: true,
-        email: user.email
-      });
-    }
 
     const accessToken = signAccessToken(user);
     const refreshToken = signRefreshToken(user);
