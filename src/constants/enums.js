@@ -84,3 +84,46 @@ export const TransactionStatus = {
     COMPLETED: 'COMPLETED',
     CANCELLED: 'CANCELLED'
 };
+
+export const CollectorAvailability = {
+    OFFLINE: 'OFFLINE',
+    ONLINE: 'ONLINE',
+    ON_DUTY: 'ON_DUTY',
+    BUSY: 'BUSY',
+    BREAK: 'BREAK'
+};
+
+export const CollectorTaskType = {
+    SELLER_TO_WAREHOUSE: 'SELLER_TO_WAREHOUSE',
+    SELLER_TO_BUYER: 'SELLER_TO_BUYER',
+    WAREHOUSE_TO_BUYER: 'WAREHOUSE_TO_BUYER',
+    BUYER_REQUESTED_PICKUP: 'BUYER_REQUESTED_PICKUP'
+};
+
+export const CollectorTaskStatus = {
+    ASSIGNED: 'ASSIGNED',
+    ACCEPTED: 'ACCEPTED',
+    EN_ROUTE_TO_PICKUP: 'EN_ROUTE_TO_PICKUP',
+    ARRIVED_AT_SOURCE: 'ARRIVED_AT_SOURCE',
+    VERIFIED: 'VERIFIED',
+    PICKED_UP: 'PICKED_UP',
+    IN_TRANSIT: 'IN_TRANSIT',
+    ARRIVED_AT_DESTINATION: 'ARRIVED_AT_DESTINATION',
+    DELIVERED: 'DELIVERED',
+    COMPLETED: 'COMPLETED',
+    CANCELLED: 'CANCELLED',
+    REJECTED: 'REJECTED'
+};
+
+export const WasteVerificationStatus = {
+    PENDING: 'PENDING',
+    VERIFIED: 'VERIFIED',
+    FLAGGED: 'FLAGGED',
+    REJECTED: 'REJECTED'
+};
+
+export const CollectorDeliveryStatus = {
+    PENDING: 'PENDING',
+    DELIVERED: 'DELIVERED',
+    FAILED: 'FAILED'
+};

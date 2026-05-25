@@ -55,6 +55,49 @@ enum TransactionStatus {
   CANCELLED
 }
 
+enum CollectorAvailability {
+  OFFLINE
+  ONLINE
+  ON_DUTY
+  BUSY
+  BREAK
+}
+
+enum CollectorTaskType {
+  SELLER_TO_WAREHOUSE
+  SELLER_TO_BUYER
+  WAREHOUSE_TO_BUYER
+  BUYER_REQUESTED_PICKUP
+}
+
+enum CollectorTaskStatus {
+  ASSIGNED
+  ACCEPTED
+  EN_ROUTE_TO_PICKUP
+  ARRIVED_AT_SOURCE
+  VERIFIED
+  PICKED_UP
+  IN_TRANSIT
+  ARRIVED_AT_DESTINATION
+  DELIVERED
+  COMPLETED
+  CANCELLED
+  REJECTED
+}
+
+enum WasteVerificationStatus {
+  PENDING
+  VERIFIED
+  FLAGGED
+  REJECTED
+}
+
+enum CollectorDeliveryStatus {
+  PENDING
+  DELIVERED
+  FAILED
+}
+
 model User {
   id            Int       @id @default(autoincrement())
   name          String?
@@ -116,18 +159,40 @@ model User {
   sentMessages   Message[]      @relation("SentMessages")
 
   // Warehouse ERP Relations
-  // warehouseInventory    WarehouseInventory[]   @relation("WarehouseInventory")
-  // suppliedInventory     WarehouseInventory[]   @relation("SupplierInventory")
-  // expenses              Expense[]
-  // financialTransactions FinancialTransaction[]
-  // inventoryMovements    InventoryMovement[]
+  warehouseInventory    WarehouseInventory[]   @relation("WarehouseInventory")
+  suppliedInventory     WarehouseInventory[]   @relation("SupplierInventory")
+  expenses              Expense[]
+  financialTransactions FinancialTransaction[]
+  inventoryMovements    InventoryMovement[]
 
   // Transaction Relations
   buyerTransactions  Transaction[] @relation("BuyerTransactions")
   sellerTransactions Transaction[] @relation("SellerTransactions")
 
   // Complaint Relations
-  complaints Complaint[]
+  complaints                Complaint[]
+  collectorProfile          CollectorProfile?   @relation("CollectorProfileUser")
+  managedCollectorProfiles  CollectorProfile[]  @relation("CollectorProfileWarehouse")
+  assignedCollectorTasks    CollectorTask[]     @relation("TaskCollector")
+  warehouseCollectorTasks   CollectorTask[]     @relation("TaskWarehouse")
+  sourceCollectorTasks      CollectorTask[]     @relation("TaskSourceUser")
+  destinationCollectorTasks CollectorTask[]     @relation("TaskDestinationUser")
+  wasteVerifications        WasteVerification[] @relation("WasteVerificationCollector")
+  collectorDeliveries       CollectorDelivery[] @relation("CollectorDeliveryCollector")
+  collectorLocations        CollectorLocation[] @relation("CollectorLocationCollector")
+  collectorIncidents        CollectorIncident[] @relation("CollectorIncidentUser")
+  collectorEarnings         CollectorEarning[]  @relation("CollectorEarningUser")
+  notifications             Notification[]
+  ecoPoints                 Int                 @default(0)
+  currentLevel              String              @default("Beginner Recycler")
+  dailyStreak               Int                 @default(0)
+  lastLoginDate             DateTime?
+  referredById              Int?
+  referredBy                User?               @relation("Referral", fields: [referredById], references: [id])
+  referrals                 User[]              @relation("Referral")
+  rewards                   Reward[]            @relation("UserRewards")
+  badges                    Badge[]             @relation("UserBadges")
+  leaderboard               Leaderboard?        @relation("UserLeaderboard")
 
   @@index([role])
   @@index([contactNo])
@@ -350,6 +415,7 @@ model Order {
   updatedAt DateTime @updatedAt
 
   // financialTransactions FinancialTransaction[]
+  financialTransactions FinancialTransaction[]
 
   @@index([status])
   @@index([buyerId])
@@ -396,81 +462,261 @@ model Payment {
   @@index([orderId])
 }
 
+model CollectorProfile {
+  id                 Int                   @id @default(autoincrement())
+  userId             Int                   @unique
+  user               User                  @relation("CollectorProfileUser", fields: [userId], references: [id])
+  warehouseId        Int
+  warehouse          User                  @relation("CollectorProfileWarehouse", fields: [warehouseId], references: [id])
+  employeeId         String                @unique
+  availabilityStatus CollectorAvailability @default(OFFLINE)
+  dutyStatus         String                @default("OFF_DUTY")
+  vehicleInfo        Json?
+  currentLatitude    Float?
+  currentLongitude   Float?
+  lastLocationAt     DateTime?
+  lastActiveAt       DateTime?
+  checkedInAt        DateTime?
+  checkedOutAt       DateTime?
+  totalActiveMinutes Int                   @default(0)
+  completedTasks     Int                   @default(0)
+  cancelledTasks     Int                   @default(0)
+  totalCollectedKg   Float                 @default(0)
+  reliabilityScore   Float                 @default(100)
+  rating             Float?
+  suspendedAt        DateTime?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  @@index([warehouseId])
+  @@index([availabilityStatus])
+}
+
+model CollectorTask {
+  id                   Int                 @id @default(autoincrement())
+  warehouseId          Int
+  warehouse            User                @relation("TaskWarehouse", fields: [warehouseId], references: [id])
+  collectorId          Int?
+  collector            User?               @relation("TaskCollector", fields: [collectorId], references: [id])
+  taskType             CollectorTaskType
+  status               CollectorTaskStatus @default(ASSIGNED)
+  priority             String              @default("NORMAL")
+  sourceType           String
+  sourceUserId         Int?
+  sourceUser           User?               @relation("TaskSourceUser", fields: [sourceUserId], references: [id])
+  sourceName           String?
+  sourceAddress        String
+  sourceContact        String?
+  sourceLatitude       Float?
+  sourceLongitude      Float?
+  destinationType      String
+  destinationUserId    Int?
+  destinationUser      User?               @relation("TaskDestinationUser", fields: [destinationUserId], references: [id])
+  destinationName      String?
+  destinationAddress   String
+  destinationContact   String?
+  destinationLatitude  Float?
+  destinationLongitude Float?
+  materialCategory     String
+  materialType         String?
+  estimatedWeight      Float
+  unit                 String              @default("kg")
+  listedPrice          Float?
+  pricePerUnit         Float?
+  deliveryFee          Float?
+  estimatedValue       Float?
+  finalValue           Float?
+  images               String[]
+  notes                String?
+  instructions         String?
+  routeInfo            Json?
+  metadata             Json?
+  acceptedAt           DateTime?
+  pickupStartedAt      DateTime?
+  arrivedAtSourceAt    DateTime?
+  pickedUpAt           DateTime?
+  transitStartedAt     DateTime?
+  arrivedDestinationAt DateTime?
+  completedAt          DateTime?
+  cancelledAt          DateTime?
+  cancellationReason   String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  verification WasteVerification?
+  delivery     CollectorDelivery?
+  locations    CollectorLocation[]
+  otpCode      String?
+  incidents    CollectorIncident[]
+  earning      CollectorEarning?
+
+  @@index([warehouseId, status])
+  @@index([collectorId, status])
+  @@index([taskType])
+  @@index([createdAt])
+}
+
+model WasteVerification {
+  id               Int                     @id @default(autoincrement())
+  taskId           Int                     @unique
+  task             CollectorTask           @relation(fields: [taskId], references: [id])
+  listedWeight     Float
+  verifiedWeight   Float
+  listedCategory   String
+  verifiedCategory String
+  verifiedMaterial String?
+  proofImages      String[]
+  notes            String?
+  status           WasteVerificationStatus @default(VERIFIED)
+  weightDifference Float
+  priceBefore      Float?
+  priceAfter       Float?
+  verifiedById     Int
+  verifiedBy       User                    @relation("WasteVerificationCollector", fields: [verifiedById], references: [id])
+  verifiedAt       DateTime                @default(now())
+
+  @@index([verifiedById])
+  @@index([status])
+}
+
+model CollectorDelivery {
+  id                   Int                     @id @default(autoincrement())
+  taskId               Int                     @unique
+  task                 CollectorTask           @relation(fields: [taskId], references: [id])
+  status               CollectorDeliveryStatus @default(DELIVERED)
+  receiverName         String?
+  receiverContact      String?
+  receiverConfirmation String?
+  receivedWeight       Float?
+  packageCondition     String?
+  proofImages          String[]
+  notes                String?
+  deliveredById        Int
+  deliveredBy          User                    @relation("CollectorDeliveryCollector", fields: [deliveredById], references: [id])
+  deliveredAt          DateTime                @default(now())
+
+  @@index([deliveredById])
+  @@index([status])
+}
+
+model CollectorLocation {
+  id          Int            @id @default(autoincrement())
+  taskId      Int?
+  task        CollectorTask? @relation(fields: [taskId], references: [id])
+  collectorId Int
+  collector   User           @relation("CollectorLocationCollector", fields: [collectorId], references: [id])
+  latitude    Float
+  longitude   Float
+  accuracy    Float?
+  speed       Float?
+  heading     Float?
+  status      String?
+  createdAt   DateTime       @default(now())
+
+  @@index([collectorId, createdAt])
+  @@index([taskId, createdAt])
+}
+
 // ========================================
 // WAREHOUSE ERP MODELS
 // ========================================
 
-// model WarehouseInventory {
-//   id              Int      @id @default(autoincrement())
-//   warehouseId     Int
-//   warehouse       User     @relation("WarehouseInventory", fields: [warehouseId], references: [id])
-//   materialType    String // plastic, paper, metal, e-waste, glass
-//   category        String // AI-classified detailed category
-//   quantityInStock Float // current stock in kg
-//   reorderLevel    Float? // alert threshold
-//   purchasePrice   Float // cost per kg when acquired
-//   sellingPrice    Float // expected selling price per kg
-//   supplierId      Int? // who sold this to warehouse
-//   supplier        User?    @relation("SupplierInventory", fields: [supplierId], references: [id])
-//   location        String? // bin/zone in warehouse
-//   notes           String? // additional notes
-//   createdAt       DateTime @default(now())
-//   updatedAt       DateTime @updatedAt
+model WarehouseInventory {
+  id              Int      @id @default(autoincrement())
+  warehouseId     Int
+  warehouse       User     @relation("WarehouseInventory", fields: [warehouseId], references: [id])
+  materialType    String // plastic, paper, metal, e-waste, glass
+  category        String // AI-classified detailed category
+  quantityInStock Float // current stock in kg
+  reorderLevel    Float? // alert threshold
+  purchasePrice   Float // cost per kg when acquired
+  sellingPrice    Float // expected selling price per kg
+  supplierId      Int? // who sold this to warehouse
+  supplier        User?    @relation("SupplierInventory", fields: [supplierId], references: [id])
+  location        String? // bin/zone in warehouse
+  notes           String? // additional notes
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-//   movements InventoryMovement[]
+  movements InventoryMovement[]
 
-//   @@index([warehouseId, materialType])
-//   @@index([warehouseId, quantityInStock])
-// }
+  @@index([warehouseId, materialType])
+  @@index([warehouseId, quantityInStock])
+}
 
-// model InventoryMovement {
-//   id          Int                @id @default(autoincrement())
-//   inventoryId Int
-//   inventory   WarehouseInventory @relation(fields: [inventoryId], references: [id])
-//   type        String // INFLOW, OUTFLOW, ADJUSTMENT, LOSS
-//   quantity    Float // in kg (positive for INFLOW, negative for OUTFLOW)
-//   reference   String? // order ID, supplier invoice, etc.
-//   notes       String?
-//   performedBy Int
-//   user        User               @relation(fields: [performedBy], references: [id])
-//   createdAt   DateTime           @default(now())
+model InventoryMovement {
+  id          Int                @id @default(autoincrement())
+  inventoryId Int
+  inventory   WarehouseInventory @relation(fields: [inventoryId], references: [id])
+  type        String // INFLOW, OUTFLOW, ADJUSTMENT, LOSS
+  quantity    Float // in kg (positive for INFLOW, negative for OUTFLOW)
+  reference   String? // order ID, supplier invoice, etc.
+  notes       String?
+  performedBy Int
+  user        User               @relation(fields: [performedBy], references: [id])
+  createdAt   DateTime           @default(now())
 
-//   @@index([inventoryId, createdAt])
-// }
+  @@index([inventoryId, createdAt])
+}
 
-// model Expense {
-//   id          Int      @id @default(autoincrement())
-//   warehouseId Int
-//   warehouse   User     @relation(fields: [warehouseId], references: [id])
-//   category    String // OPERATIONAL, EMPLOYEE, TRANSPORTATION, RENT, UTILITIES, PACKAGING, COLLECTOR
-//   amount      Float
-//   description String?
-//   date        DateTime
-//   receipt     String? // cloudinary URL for receipt image
-//   createdAt   DateTime @default(now())
-//   updatedAt   DateTime @updatedAt
+model Expense {
+  id          Int      @id @default(autoincrement())
+  warehouseId Int
+  warehouse   User     @relation(fields: [warehouseId], references: [id])
+  category    String // OPERATIONAL, EMPLOYEE, TRANSPORTATION, RENT, UTILITIES, PACKAGING, COLLECTOR
+  amount      Float
+  description String?
+  date        DateTime
+  receipt     String? // cloudinary URL for receipt image
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-//   @@index([warehouseId, date])
-//   @@index([warehouseId, category])
-// }
+  @@index([warehouseId, date])
+  @@index([warehouseId, category])
+}
 
-// model FinancialTransaction {
-//   id          Int      @id @default(autoincrement())
-//   warehouseId Int
-//   warehouse   User     @relation(fields: [warehouseId], references: [id])
-//   type        String // REVENUE, EXPENSE, REFUND
-//   amount      Float
-//   orderId     Int?
-//   order       Order?   @relation(fields: [orderId], references: [id])
-//   description String?
-//   stripeFee   Float? // Stripe processing fee if applicable
-//   netAmount   Float // amount - stripeFee (for revenue) or just amount (for expense)
-//   metadata    Json? // Additional data (material type, customer info, etc.)
-//   createdAt   DateTime @default(now())
+model FinancialTransaction {
+  id          Int      @id @default(autoincrement())
+  warehouseId Int
+  warehouse   User     @relation(fields: [warehouseId], references: [id])
+  type        String // REVENUE, EXPENSE, REFUND
+  amount      Float
+  orderId     Int?
+  order       Order?   @relation(fields: [orderId], references: [id])
+  description String?
+  stripeFee   Float? // Stripe processing fee if applicable
+  netAmount   Float // amount - stripeFee (for revenue) or just amount (for expense)
+  metadata    Json? // Additional data (material type, customer info, etc.)
+  createdAt   DateTime @default(now())
 
-//   @@index([warehouseId, type, createdAt])
-//   @@index([warehouseId, createdAt])
-// }
+  @@index([warehouseId, type, createdAt])
+  @@index([warehouseId, createdAt])
+}
+
+model CollectorIncident {
+  id          Int            @id @default(autoincrement())
+  taskId      Int?
+  task        CollectorTask? @relation(fields: [taskId], references: [id])
+  collectorId Int
+  collector   User           @relation("CollectorIncidentUser", fields: [collectorId], references: [id])
+  type        String // e.g., blocked route, customer unavailable, danger
+  description String
+  proofImage  String?
+  status      String         @default("PENDING") // PENDING, RESOLVED, DISMISSED
+  createdAt   DateTime       @default(now())
+}
+
+model CollectorEarning {
+  id          Int           @id @default(autoincrement())
+  taskId      Int           @unique
+  task        CollectorTask @relation(fields: [taskId], references: [id])
+  collectorId Int
+  collector   User          @relation("CollectorEarningUser", fields: [collectorId], references: [id])
+  amount      Float
+  distance    Float?
+  status      String        @default("PENDING") // PENDING, PAID
+  createdAt   DateTime      @default(now())
+}
 
 model Conversation {
   id             Int       @id @default(autoincrement())
@@ -478,12 +724,16 @@ model Conversation {
   participant1   User      @relation("Participant1", fields: [participant1Id], references: [id])
   participant2Id Int
   participant2   User      @relation("Participant2", fields: [participant2Id], references: [id])
+  orderId        Int? // Links conversation to an order context
+  type           String    @default("GENERAL") // GENERAL, BUYER_SELLER, BUYER_COLLECTOR
   messages       Message[]
   updatedAt      DateTime  @updatedAt
   createdAt      DateTime  @default(now())
 
   @@index([participant1Id])
   @@index([participant2Id])
+  @@index([orderId])
+  @@index([type])
 }
 
 model Message {
@@ -494,11 +744,15 @@ model Message {
   sender         User         @relation("SentMessages", fields: [senderId], references: [id])
   content        String
   imageUrl       String?
+  messageType    String       @default("TEXT") // TEXT, IMAGE, VOICE_NOTE, SYSTEM, CALL_LOG
+  voiceUrl       String? // URL for voice note recordings
+  callDuration   Int? // Duration in seconds for call logs
   isRead         Boolean      @default(false)
   createdAt      DateTime     @default(now())
 
   @@index([conversationId])
   @@index([senderId])
+  @@index([messageType])
 }
 
 model Transaction {
@@ -540,3 +794,55 @@ model Complaint {
   @@index([status])
   @@index([createdAt])
 }
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  message   String
+  type      String   // ORDER, PAYMENT, CHAT, PICKUP, AI, REWARD, SECURITY, SYSTEM, TRACKING
+  priority  String   @default("MEDIUM") // HIGH, MEDIUM, LOW
+  isRead    Boolean  @default(false)
+  actionUrl String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+model Reward {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  user         User     @relation("UserRewards", fields: [userId], references: [id], onDelete: Cascade)
+  points       Int
+  activityType String   // e.g. "LISTING_UPLOAD", "AI_CLASSIFICATION", "SUCCESSFUL_SALE", "PURCHASE", "DAILY_STREAK", "REFERRAL", "RATING", "CHALLENGE"
+  rewardType   String   // "POINTS", "CASHBACK", "COUPON"
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Badge {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user         User     @relation("UserBadges", fields: [userId], references: [id], onDelete: Cascade)
+  badgeName String   // e.g. "First Sale Badge", "Eco Hero", "Trusted Seller", "Green Contributor", "Recycling Master"
+  earnedAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Leaderboard {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @unique
+  user         User     @relation("UserLeaderboard", fields: [userId], references: [id], onDelete: Cascade)
+  totalPoints Int      @default(0)
+  rank        Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  @@index([totalPoints])
+}
+

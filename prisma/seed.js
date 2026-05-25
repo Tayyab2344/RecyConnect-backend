@@ -12,13 +12,23 @@ async function main() {
 
   const hashed = await bcrypt.hash(adminPassword, saltRounds)
 
-  // 1. Create purely Administrative User
-  console.log('Seeding purely administrative credentials...')
-  await prisma.user.upsert({
-    where: { email: adminEmail },
-    update: { password: hashed, role: 'admin', emailVerified: true },
-    create: { name: 'Super Admin', email: adminEmail, password: hashed, role: 'admin', emailVerified: true }
-  })
+  // 1. Create purely Administrative Users (Founders & Fallback)
+  console.log('Seeding administrative credentials...')
+  const admins = [
+    { name: 'Muhammad Umer Liaqat', email: 'umer@recyconnect.com' },
+    { name: 'Rana M Tayyab Atiq', email: 'tayyab@recyconnect.com' },
+    { name: 'Warda Sohail', email: 'warda@recyconnect.com' },
+    { name: 'Super Admin', email: adminEmail }
+  ]
+
+  for (const admin of admins) {
+    console.log(`Upserting admin: ${admin.name} (${admin.email})...`)
+    await prisma.user.upsert({
+      where: { email: admin.email },
+      update: { password: hashed, role: 'admin', emailVerified: true },
+      create: { name: admin.name, email: admin.email, password: hashed, role: 'admin', emailVerified: true }
+    })
+  }
 
   console.log('Seed completed successfully (Admin-only).')
 }

@@ -12,8 +12,11 @@ jest.mock('ioredis', () => {
             expire: jest.fn().mockResolvedValue(1),
             del: jest.fn().mockResolvedValue(1),
             keys: jest.fn().mockResolvedValue([]),
+            zadd: jest.fn().mockResolvedValue(1),
+            zrevrange: jest.fn().mockResolvedValue([]),
             pipeline: jest.fn().mockReturnValue({
                 del: jest.fn().mockReturnThis(),
+                zadd: jest.fn().mockReturnThis(),
                 exec: jest.fn().mockResolvedValue([])
             }),
             lpush: jest.fn().mockResolvedValue(1),
@@ -25,6 +28,7 @@ jest.mock('ioredis', () => {
         };
     });
 });
+
 import prisma from '../src/lib/prisma.js';
 import { logger } from '../src/utils/logger.js';
 

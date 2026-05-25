@@ -3,17 +3,20 @@ import fs from 'fs/promises';
 import { logger } from './logger.js';
 import { encryptBuffer } from './encryptionHelper.js';
 
+
 /**
  * Upload a file to Cloudinary (supports both disk and memory storage)
  * @param {Object} file - The file object from multer
  * @param {string} folder - The folder to upload to
  * @returns {Promise<Object>} - The Cloudinary upload result
  */
-export const uploadToCloudinary = (file, folder) => {
+export const uploadToCloudinary = (file, folder, options = {}) => {
     return new Promise((resolve, reject) => {
+        const uploadOptions = { folder, resource_type: "auto", ...options };
+
         // 1. If we have a file path (Disk Storage)
         if (file.path) {
-            cloudinary.uploader.upload(file.path, { folder })
+            cloudinary.uploader.upload(file.path, uploadOptions)
                 .then((result) => {
                     // Try to clean up local file
                     fs.unlink(file.path).catch((err) => logger.warn(`Failed to delete local file: ${err.message}`));
@@ -24,7 +27,7 @@ export const uploadToCloudinary = (file, folder) => {
         // 2. If we have a buffer (Memory Storage)
         else if (file.buffer) {
             const stream = cloudinary.uploader.upload_stream(
-                { folder },
+                uploadOptions,
                 (error, result) => {
                     if (error) return reject(error);
                     resolve(result);
