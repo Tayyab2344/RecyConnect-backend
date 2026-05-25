@@ -28,7 +28,7 @@ describe('System E2E Tests: Bootstrap Integration', () => {
         app.use(traceMiddleware);
         
         // Import the bootstrap route dynamically after mocks are loaded
-        const appRoutes = (await import('../src/routes/appRoutes.js')).default;
+        const appRoutes = (await import('../src/modules/app/routes/appRoutes.js')).default;
         app.use('/api/app', appRoutes);
         
         // Create Mock User directly bypassing auth pipeline

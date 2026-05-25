@@ -40,7 +40,7 @@ describe('Item Controller', () => {
 
     beforeAll(async () => {
         // Dynamic import to ensure mocks apply
-        const itemRouter = (await import('../src/routes/itemRoutes.js')).default;
+        const itemRouter = (await import('../src/modules/item/routes/itemRoutes.js')).default;
         app = createTestApp(itemRouter, '/api/items');
 
         const timestamp = Date.now();

@@ -6,7 +6,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
 // Import routes
-import reservationRoutes from '../src/routes/reservationRoutes.js';
+import reservationRoutes from '../src/modules/reservation/routes/reservationRoutes.js';
 import { ListingStatus, ReservationStatus } from '../src/constants/enums.js';
 
 const app = express();

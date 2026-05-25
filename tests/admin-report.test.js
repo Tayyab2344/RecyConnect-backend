@@ -10,11 +10,11 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
 
-import adminReportRoutes from '../src/routes/adminReportRoutes.js';
+import adminReportRoutes from '../src/modules/admin/routes/index.js';
 
 const app = express();
 app.use(express.json());
-app.use('/api/admin/reports', adminReportRoutes);
+app.use('/api/admin', adminReportRoutes);
 
 function generateToken(user) {
     return jwt.sign(

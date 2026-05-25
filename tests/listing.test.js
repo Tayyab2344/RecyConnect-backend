@@ -10,7 +10,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
 // Import routes
-import listingRoutes from '../src/routes/listingRoutes.js';
+import listingRoutes from '../src/modules/listing/routes/listingRoutes.js';
 
 const app = express();
 app.use(express.json());

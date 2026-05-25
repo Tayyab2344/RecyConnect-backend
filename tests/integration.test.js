@@ -50,10 +50,10 @@ const stripeSpies = {
 jest.unstable_mockModule('../src/services/stripeService.js', () => stripeSpies);
 
 // 2. Dynamically import routes
-const orderRoutes = (await import('../src/routes/orderRoutes.js')).default;
-const reservationRoutes = (await import('../src/routes/reservationRoutes.js')).default;
-const paymentRoutes = (await import('../src/routes/paymentRoutes.js')).default;
-const listingRoutes = (await import('../src/routes/listingRoutes.js')).default;
+const orderRoutes = (await import('../src/modules/order/routes/orderRoutes.js')).default;
+const reservationRoutes = (await import('../src/modules/reservation/routes/reservationRoutes.js')).default;
+const paymentRoutes = (await import('../src/modules/payment/routes/paymentRoutes.js')).default;
+const listingRoutes = (await import('../src/modules/listing/routes/listingRoutes.js')).default;
 
 const app = express();
 app.use(express.json());

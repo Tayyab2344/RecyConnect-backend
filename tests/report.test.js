@@ -6,7 +6,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
 // Import routes
-import reportRoutes from '../src/routes/reportRoutes.js';
+import reportRoutes from '../src/modules/report/routes/reportRoutes.js';
 
 const app = express();
 app.use(express.json());

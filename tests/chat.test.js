@@ -6,7 +6,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
 // Import routes
-import chatRoutes from '../src/routes/chatRoutes.js';
+import chatRoutes from '../src/modules/chat/routes/chatRoutes.js';
 
 const app = express();
 app.use(express.json());

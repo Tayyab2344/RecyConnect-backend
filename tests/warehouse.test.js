@@ -10,7 +10,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
 // Import routes
-import warehouseRoutes from '../src/routes/warehouseRoute.js';
+import warehouseRoutes from '../src/modules/warehouse/routes/warehouseRoutes.js';
 
 const app = express();
 app.use(express.json());
