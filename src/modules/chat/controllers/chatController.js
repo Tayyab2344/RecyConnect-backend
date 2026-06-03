@@ -98,6 +98,46 @@ export async function getOrCreateConversation(req, res) {
       return sendError(res, 'Cannot create conversation with yourself', null, 400);
     }
 
+    // Fetch the other user to verify role
+    const otherUser = await prisma.user.findUnique({
+      where: { id: parseInt(otherUserId) },
+      select: { id: true, role: true },
+    });
+
+    if (!otherUser) {
+      return sendError(res, 'Other user not found', null, 404);
+    }
+
+    // Chat between buyer and seller is restricted until an order is placed
+    const buyerSellerRoles = ['individual', 'company', 'warehouse'];
+    if (buyerSellerRoles.includes(req.user.role) && buyerSellerRoles.includes(otherUser.role)) {
+      let orderExists;
+      if (orderId) {
+        orderExists = await prisma.order.findFirst({
+          where: {
+            id: parseInt(orderId),
+            OR: [
+              { buyerId: userId, sellerId: otherUser.id },
+              { buyerId: otherUser.id, sellerId: userId },
+            ],
+          },
+        });
+      } else {
+        orderExists = await prisma.order.findFirst({
+          where: {
+            OR: [
+              { buyerId: userId, sellerId: otherUser.id },
+              { buyerId: otherUser.id, sellerId: userId },
+            ],
+          },
+        });
+      }
+
+      if (!orderExists) {
+        return sendError(res, 'Cannot start a chat session before an order is placed.', null, 403);
+      }
+    }
+
     // Check if conversation already exists
     const whereClause = {
       OR: [
