@@ -1,6 +1,4 @@
 import express from "express";
-import path from "path";
-import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import helmet from "helmet";
 import cors from "cors";
@@ -17,7 +15,11 @@ import { initCronJobs } from "./services/cronService.js";
 import { initSocketGateway } from "./modules/chat/gateway/socketGateway.js";
 import { initializeTrie } from "./services/trieSearchService.js";
 import "./config/cloudinary.js";
-import { initKafka, startKafkaConsumer, disconnectKafka } from "./lib/kafka.js";
+import { initKafka, startKafkaConsumer, disconnectKafka, isKafkaHealthy } from "./lib/kafka.js";
+import { startQueueProcessor } from "./lib/queueManager.js";
+import { isRedisConnected } from "./lib/redis.js";
+import { initKafkaEventRouter } from "./events/kafkaEventRouter.js";
+import prisma from "./lib/prisma.js";
 
 // ── Middlewares ────────────────────────────────────────────────
 import { errorHandler } from "./middlewares/errorMiddleware.js";
@@ -51,8 +53,6 @@ import rewardsRoutes from "./modules/rewards/routes/rewardsRoutes.js";
 
 // ── App Initialization ───────────────────────────────────────
 dotenv.config({ quiet: true });
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 const app = express();
 
 // Enable trust proxy only in production to handle X-Forwarded-For headers
@@ -133,14 +133,37 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/rewards", rewardsRoutes);
 
 
-// ── Static Files ──────────────────────────────────────────────
-app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
-
 // ── System Monitoring ─────────────────────────────────────────
 app.use(performanceMonitor);
 
-// ── Health Check ──────────────────────────────────────────────
-app.get("/health", (req, res) => res.json({ ok: true }));
+// ── Health Check (comprehensive service readiness) ────────────
+app.get("/health", async (req, res) => {
+    const health = {
+        ok: true,
+        uptime: Math.round(process.uptime()),
+        timestamp: new Date().toISOString(),
+        memory: {
+            rss: Math.round(process.memoryUsage().rss / 1024 / 1024) + 'MB',
+            heap: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
+        },
+        services: {
+            database: 'unknown',
+            redis: isRedisConnected() ? 'connected' : 'disconnected',
+            kafka: isKafkaHealthy() ? 'healthy' : 'disabled',
+        },
+    };
+
+    try {
+        await prisma.$queryRaw`SELECT 1`;
+        health.services.database = 'connected';
+    } catch (err) {
+        health.services.database = 'error';
+        health.ok = false;
+        logger.error(`[HEALTH] Database check failed: ${err.message}`);
+    }
+
+    res.status(health.ok ? 200 : 503).json(health);
+});
 
 // ── Error Handler (must be last) ──────────────────────────────
 app.use(errorHandler);
@@ -148,18 +171,47 @@ app.use(errorHandler);
 // ── Server Startup ────────────────────────────────────────────
 initSocketGateway(httpServer);
 
+// Configure server timeouts for production reliability
+httpServer.setTimeout(30000); // 30s request timeout
+httpServer.keepAliveTimeout = 65000; // Must exceed load balancer timeout
+httpServer.headersTimeout = 66000; // Must exceed keepAliveTimeout
+
 if (!process.env.VERCEL) {
     httpServer.listen(PORT, '0.0.0.0', () => {
         console.log(`\x1b[32m[SERVER] Running successfully on http://localhost:${PORT}\x1b[0m`);
         console.log(`\x1b[36m[SWAGGER] Documentation available at http://localhost:${PORT}/api-docs\x1b[0m`);
-
-        initCronJobs();
-        initializeTrie().catch(err => logger.error(`[TRIE] Init error: ${err.message}`));
-        initKafka()
-            .then(() => startKafkaConsumer())
-            .catch(err => logger.error(`[KAFKA] Startup error: ${err.message}`));
         logger.info(`Server started on port ${PORT}`);
 
+        // ── Deferred Background Initialization ────────────────
+        // Start HTTP server immediately, then initialize heavy services
+        // in parallel using Promise.allSettled to prevent one failure
+        // from blocking others.
+        setImmediate(async () => {
+            // Wire Kafka event router BEFORE starting consumer
+            initKafkaEventRouter();
+
+            const results = await Promise.allSettled([
+                initializeTrie(),
+                initKafka().then(() => startKafkaConsumer()),
+            ]);
+
+            results.forEach((result, index) => {
+                const names = ['Trie', 'Kafka'];
+                if (result.status === 'rejected') {
+                    logger.error(`[STARTUP] ${names[index]} initialization failed: ${result.reason?.message}`);
+                } else {
+                    logger.info(`[STARTUP] ${names[index]} initialized successfully`);
+                }
+            });
+
+            // Start cron jobs and background queue processor
+            initCronJobs();
+            startQueueProcessor();
+
+            logger.info('[STARTUP] All background services initialized');
+        });
+
+        // Detect ngrok tunnel (development only)
         fetch('http://127.0.0.1:4040/api/tunnels')
             .then(res => res.json())
             .then(data => {

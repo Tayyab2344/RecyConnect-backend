@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authenticateToken } from "../../../middlewares/authMiddleware.js";
+import { cacheResponse } from "../../../middlewares/cacheMiddleware.js";
 import {
   getRewardsStatus,
   checkIn,
@@ -22,7 +23,7 @@ router.use(authenticateToken);
  *     security:
  *       - bearerAuth: []
  */
-router.get("/status", getRewardsStatus);
+router.get("/status", cacheResponse(30), getRewardsStatus);
 
 /**
  * @swagger
@@ -51,7 +52,7 @@ router.post("/check-in", checkIn);
  *           enum: [individuals, warehouses, companies]
  *           default: individuals
  */
-router.get("/leaderboard", getLeaderboard);
+router.get("/leaderboard", cacheResponse(60), getLeaderboard);
 
 /**
  * @swagger
@@ -73,6 +74,6 @@ router.get("/history", getHistory);
  *     security:
  *       - bearerAuth: []
  */
-router.get("/challenges", getChallenges);
+router.get("/challenges", cacheResponse(60), getChallenges);
 
 export default router;

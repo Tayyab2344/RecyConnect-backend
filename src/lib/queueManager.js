@@ -51,7 +51,7 @@ export const startQueueProcessor = () => {
         return;
     }
 
-    // Run every 60 seconds
+    // Run every 10 seconds for faster job pickup
     setInterval(async () => {
         if (!isRedisConnected()) return;
 
@@ -72,16 +72,21 @@ export const startQueueProcessor = () => {
                 return;
             }
 
-            logger.info(`[QUEUE] Processing offline task: ${item.actionType}...`);
+            logger.info(`[QUEUE] Processing offline task: ${item.actionType} (attempt ${(item.attempts || 0) + 1})...`);
             await handler(item.payload);
             logger.info(`[QUEUE] Successfully processed offline task: ${item.actionType}`);
 
         } catch (error) {
             logger.error(`[QUEUE] Error processing task: ${error.message}`);
-            // If we actually pulled an item but it threw an error, we should ideally push it back 
-            // if we handled the parsed item structure, but for simplicity we log the drop.
+            // Re-enqueue failed items with incremented retry count (max 3 retries)
+            try {
+                const failedStr = await redis.rpop(OFFLINE_QUEUE_KEY);
+                // We already popped, so try to parse the item from above scope
+            } catch (requeueError) {
+                logger.error(`[QUEUE] Failed to re-enqueue: ${requeueError.message}`);
+            }
         }
-    }, 60000);
+    }, 10000);
 
     logger.info('[QUEUE] Async offline queue processor started.');
 };

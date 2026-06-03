@@ -8,6 +8,9 @@ import { traceMiddleware } from '../src/middlewares/traceMiddleware.js';
 
 jest.unstable_mockModule('../src/lib/redis.js', () => ({
     invalidateCache: jest.fn().mockResolvedValue(),
+    getCache: jest.fn().mockResolvedValue(null),
+    setCache: jest.fn().mockResolvedValue(),
+    deleteCache: jest.fn().mockResolvedValue(),
     default: { get: jest.fn(), setex: jest.fn() },
     isRedisConnected: jest.fn().mockReturnValue(false)
 }));

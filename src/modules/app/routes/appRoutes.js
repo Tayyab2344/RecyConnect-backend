@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticateToken } from '../../../middlewares/authMiddleware.js';
+import { cacheResponse } from '../../../middlewares/cacheMiddleware.js';
 import { syncAppInit, getPublicRates } from '../controllers/appController.js';
 
 const router = express.Router();
@@ -19,7 +20,7 @@ const router = express.Router();
  *       401:
  *         description: Unauthorized
  */
-router.get('/bootstrap', authenticateToken, syncAppInit);
+router.get('/bootstrap', authenticateToken, cacheResponse(30), syncAppInit);
 
 /**
  * @swagger
@@ -33,6 +34,6 @@ router.get('/bootstrap', authenticateToken, syncAppInit);
  *       200:
  *         description: Rates retrieved successfully
  */
-router.get('/rates', authenticateToken, getPublicRates);
+router.get('/rates', authenticateToken, cacheResponse(300), getPublicRates);
 
 export default router;
