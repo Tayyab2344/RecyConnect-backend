@@ -31,8 +31,14 @@ export function getIO() {
           if (typeof room === 'string') {
             if (room.startsWith('user:')) {
               channel = `private-user-${room.split(':')[1]}`;
+            } else if (room.startsWith('warehouse:')) {
+              channel = `private-warehouse-${room.split(':')[1]}`;
             } else if (room.startsWith('task:')) {
               channel = `private-task-${room.split(':')[1]}`;
+            } else if (room.startsWith('trip:')) {
+              channel = `private-trip-${room.split(':')[1]}`;
+            } else if (room.startsWith('chat:')) {
+              channel = `private-chat-${room.split(':')[1]}`;
             }
           }
           

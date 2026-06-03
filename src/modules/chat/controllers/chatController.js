@@ -98,6 +98,46 @@ export async function getOrCreateConversation(req, res) {
       return sendError(res, 'Cannot create conversation with yourself', null, 400);
     }
 
+    // Fetch the other user to verify role
+    const otherUser = await prisma.user.findUnique({
+      where: { id: parseInt(otherUserId) },
+      select: { id: true, role: true },
+    });
+
+    if (!otherUser) {
+      return sendError(res, 'Other user not found', null, 404);
+    }
+
+    // Chat between buyer and seller is restricted until an order is placed
+    const buyerSellerRoles = ['individual', 'company', 'warehouse'];
+    if (buyerSellerRoles.includes(req.user.role) && buyerSellerRoles.includes(otherUser.role)) {
+      let orderExists;
+      if (orderId) {
+        orderExists = await prisma.order.findFirst({
+          where: {
+            id: parseInt(orderId),
+            OR: [
+              { buyerId: userId, sellerId: otherUser.id },
+              { buyerId: otherUser.id, sellerId: userId },
+            ],
+          },
+        });
+      } else {
+        orderExists = await prisma.order.findFirst({
+          where: {
+            OR: [
+              { buyerId: userId, sellerId: otherUser.id },
+              { buyerId: otherUser.id, sellerId: userId },
+            ],
+          },
+        });
+      }
+
+      if (!orderExists) {
+        return sendError(res, 'Cannot start a chat session before an order is placed.', null, 403);
+      }
+    }
+
     // Check if conversation already exists
     const whereClause = {
       OR: [
@@ -416,6 +456,74 @@ export async function pusherAuth(req, res) {
     if (channel_name === `private-user-${userId}`) {
       const auth = pusher.authorizeChannel(socket_id, channel_name);
       return res.json(auth);
+    }
+
+    // Authenticate private chat channel
+    if (channel_name.startsWith('private-chat-')) {
+      const conversationId = parseInt(channel_name.split('-')[2]);
+      if (!isNaN(conversationId)) {
+        const conversation = await prisma.conversation.findFirst({
+          where: {
+            id: conversationId,
+            OR: [
+              { participant1Id: userId },
+              { participant2Id: userId }
+            ]
+          }
+        });
+        if (conversation) {
+          const auth = pusher.authorizeChannel(socket_id, channel_name);
+          return res.json(auth);
+        }
+      }
+    }
+
+    // Authenticate private trip channel (live tracking/trip updates)
+    if (channel_name.startsWith('private-trip-')) {
+      const tripId = parseInt(channel_name.split('-')[2]);
+      if (!isNaN(tripId)) {
+        const trip = await prisma.trip.findFirst({
+          where: {
+            id: tripId,
+            OR: [
+              { collectorId: userId },
+              { warehouseId: userId }
+            ]
+          }
+        });
+        if (trip) {
+          const auth = pusher.authorizeChannel(socket_id, channel_name);
+          return res.json(auth);
+        }
+      }
+    }
+
+    // Authenticate private warehouse channel
+    if (channel_name.startsWith('private-warehouse-')) {
+      const warehouseId = parseInt(channel_name.split('-')[2]);
+      if (!isNaN(warehouseId)) {
+        if (userId === warehouseId) {
+          const auth = pusher.authorizeChannel(socket_id, channel_name);
+          return res.json(auth);
+        }
+        
+        // Or if the user is a collector assigned to this warehouse
+        const collector = await prisma.user.findFirst({
+          where: {
+            id: userId,
+            role: 'COLLECTOR',
+            deletedAt: null,
+            OR: [
+              { assignedWarehouseId: warehouseId },
+              { createdById: warehouseId }
+            ]
+          }
+        });
+        if (collector) {
+          const auth = pusher.authorizeChannel(socket_id, channel_name);
+          return res.json(auth);
+        }
+      }
     }
 
     // 2. Authenticate private task channel (live tracking)

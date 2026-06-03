@@ -39,7 +39,7 @@ const isValidTransition = (currentStatus, newStatus) => {
  */
 export const createOrder = async (req, res) => {
   try {
-    const { listingId, weight, paymentMethod } = req.body;
+    const { listingId, weight, paymentMethod, deliveryMethod } = req.body;
     const buyerId = req.user.id;
 
     if (!listingId) {
@@ -105,6 +105,7 @@ export const createOrder = async (req, res) => {
         const totalAmount = pricePerKg * requestedWeight;
 
         // 6. Create order with status CREATED
+        const handshakeOtp = Math.floor(1000 + Math.random() * 9000).toString();
         const order = await tx.order.create({
           data: {
             buyerId,
@@ -112,6 +113,8 @@ export const createOrder = async (req, res) => {
             status: OrderStatus.CREATED,
             totalAmount,
             paymentMethod: paymentMethod || "cod",
+            deliveryMethod: deliveryMethod || "SELF_TRANSPORTATION",
+            handshakeOtp,
             items: {
               create: {
                 listingId: listing.id,
@@ -507,6 +510,17 @@ export const completeOrder = async (req, res) => {
           throw new Error("Invalid state transition");
         }
 
+        // 4.5. If Self Transportation, verify handshake OTP
+        if (order.deliveryMethod === "SELF_TRANSPORTATION" && order.handshakeOtp) {
+          const { handshakeOtp } = req.body;
+          if (!handshakeOtp) {
+            throw new Error("Handshake OTP is required for self transportation verification");
+          }
+          if (handshakeOtp.toString() !== order.handshakeOtp.toString()) {
+            throw new Error("Invalid Handshake OTP code. Verification failed.");
+          }
+        }
+
         // 5. Validate payment is CAPTURED
         if (!order.payment) {
           throw new Error("Cannot complete order. No payment found.");
@@ -814,6 +828,7 @@ export const getOrders = async (req, res) => {
       status,
       startDate,
       endDate,
+      unassigned,
       page = 1,
       limit = 10,
     } = req.query;
@@ -829,7 +844,21 @@ export const getOrders = async (req, res) => {
             }),
     };
 
-    if (status) where.status = status;
+    if (status) {
+      where.status = status;
+    }
+
+    if (unassigned === "true") {
+      where.deliveryMethod = "WAREHOUSE_COLLECTOR_SERVICE";
+      where.collectorTasks = {
+        none: {
+          status: { not: "CANCELLED" }
+        }
+      };
+      if (!status) {
+        where.status = { in: ["CONFIRMED", "PROCESSING", "PENDING"] };
+      }
+    }
 
     // Use helpers for date
     Object.assign(where, buildDateFilter(startDate, endDate));
@@ -863,12 +892,13 @@ export const getOrders = async (req, res) => {
         status: true,
         totalAmount: true,
         paymentMethod: true,
+        deliveryMethod: true,
         createdAt: true,
         updatedAt: true,
         buyerId: true,
         sellerId: true,
         buyer: {
-          select: { id: true, name: true, email: true, contactNo: true },
+          select: { id: true, name: true, email: true, contactNo: true, address: true, latitude: true, longitude: true },
         },
         seller: {
           select: {
@@ -877,6 +907,8 @@ export const getOrders = async (req, res) => {
             email: true,
             contactNo: true,
             address: true,
+            latitude: true,
+            longitude: true,
           },
         },
         items: {
@@ -885,7 +917,15 @@ export const getOrders = async (req, res) => {
             listingId: true,
             quantity: true,
             price: true,
-            listing: { select: { materialType: true } },
+            listing: {
+              select: {
+                materialType: true,
+                pickupAddress: true,
+                estimatedWeight: true,
+                title: true,
+                images: true,
+              }
+            },
           },
         },
         reservation: { select: { id: true, status: true, expiresAt: true } },

@@ -38,6 +38,21 @@ enum OrderStatus {
   COMPLETED
 }
 
+enum DeliveryMethod {
+  SELF_TRANSPORTATION
+  WAREHOUSE_COLLECTOR_SERVICE
+}
+
+enum TripStatus {
+  DRAFT
+  PENDING_DISPATCH
+  ASSIGNED
+  ACCEPTED
+  IN_TRANSIT
+  COMPLETED
+  CANCELLED
+}
+
 enum PaymentStatus {
   INITIATED
   AUTHORIZED
@@ -177,6 +192,8 @@ model User {
   warehouseCollectorTasks   CollectorTask[]     @relation("TaskWarehouse")
   sourceCollectorTasks      CollectorTask[]     @relation("TaskSourceUser")
   destinationCollectorTasks CollectorTask[]     @relation("TaskDestinationUser")
+  warehouseTrips            Trip[]              @relation("WarehouseTrips")
+  collectorTrips            Trip[]              @relation("CollectorTrips")
   wasteVerifications        WasteVerification[] @relation("WasteVerificationCollector")
   collectorDeliveries       CollectorDelivery[] @relation("CollectorDeliveryCollector")
   collectorLocations        CollectorLocation[] @relation("CollectorLocationCollector")
@@ -390,9 +407,13 @@ model Order {
   sellerId Int
   seller   User @relation("SellerOrders", fields: [sellerId], references: [id])
 
-  status        OrderStatus @default(PENDING)
-  totalAmount   Float       @default(0.0)
-  paymentMethod String? // 'cod' or 'stripe'
+  status         OrderStatus    @default(PENDING)
+  totalAmount    Float          @default(0.0)
+  paymentMethod  String? // 'cod' or 'stripe'
+  deliveryMethod DeliveryMethod @default(SELF_TRANSPORTATION)
+  handshakeOtp   String?
+
+  collectorTasks CollectorTask[]
 
   // Link to reservation
   reservation ListingReservation?
@@ -492,12 +513,38 @@ model CollectorProfile {
   @@index([availabilityStatus])
 }
 
+model Trip {
+  id             Int             @id @default(autoincrement())
+  warehouseId    Int
+  warehouse      User            @relation("WarehouseTrips", fields: [warehouseId], references: [id])
+  collectorId    Int?
+  collector      User?           @relation("CollectorTrips", fields: [collectorId], references: [id])
+  status         TripStatus      @default(DRAFT)
+  optimizedPath  Json?           // Array of coordinates or segments
+  totalDistance  Float?          // in km
+  totalDuration  Float?          // in seconds
+  tasks          CollectorTask[] // Collector tasks grouped under this trip
+  conversations  Conversation[]  // Conversations tied to this trip
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([warehouseId])
+  @@index([collectorId])
+  @@index([status])
+}
+
 model CollectorTask {
   id                   Int                 @id @default(autoincrement())
   warehouseId          Int
   warehouse            User                @relation("TaskWarehouse", fields: [warehouseId], references: [id])
   collectorId          Int?
   collector            User?               @relation("TaskCollector", fields: [collectorId], references: [id])
+  tripId               Int?
+  trip                 Trip?               @relation(fields: [tripId], references: [id])
+  sequenceIndex        Int?
+  orderId              Int?
+  order                Order?              @relation(fields: [orderId], references: [id])
   taskType             CollectorTaskType
   status               CollectorTaskStatus @default(ASSIGNED)
   priority             String              @default("NORMAL")
@@ -725,6 +772,9 @@ model Conversation {
   participant2Id Int
   participant2   User      @relation("Participant2", fields: [participant2Id], references: [id])
   orderId        Int? // Links conversation to an order context
+  tripId         Int? // Links conversation to a trip context
+  trip           Trip?     @relation(fields: [tripId], references: [id])
+  status         String    @default("ACTIVE") // ACTIVE, ARCHIVED
   type           String    @default("GENERAL") // GENERAL, BUYER_SELLER, BUYER_COLLECTOR
   messages       Message[]
   updatedAt      DateTime  @updatedAt

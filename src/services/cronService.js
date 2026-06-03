@@ -32,7 +32,7 @@ export const initCronJobs = () => {
     if (process.env.RENDER_FREE_TIER === 'true') {
         setInterval(async () => {
             try {
-                const url = process.env.PUBLIC_URL || 'https://recyconnect-backend.onrender.com';
+                const url = process.env.PUBLIC_URL || 'https://recy-connect-backend.vercel.app';
                 const response = await fetch(`${url}/health`);
                 console.log(`[CRON] Keep-Alive ping: ${response.status} ${response.statusText}`);
             } catch (error) {
