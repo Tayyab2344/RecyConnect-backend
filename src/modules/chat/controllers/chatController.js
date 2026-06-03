@@ -458,6 +458,74 @@ export async function pusherAuth(req, res) {
       return res.json(auth);
     }
 
+    // Authenticate private chat channel
+    if (channel_name.startsWith('private-chat-')) {
+      const conversationId = parseInt(channel_name.split('-')[2]);
+      if (!isNaN(conversationId)) {
+        const conversation = await prisma.conversation.findFirst({
+          where: {
+            id: conversationId,
+            OR: [
+              { participant1Id: userId },
+              { participant2Id: userId }
+            ]
+          }
+        });
+        if (conversation) {
+          const auth = pusher.authorizeChannel(socket_id, channel_name);
+          return res.json(auth);
+        }
+      }
+    }
+
+    // Authenticate private trip channel (live tracking/trip updates)
+    if (channel_name.startsWith('private-trip-')) {
+      const tripId = parseInt(channel_name.split('-')[2]);
+      if (!isNaN(tripId)) {
+        const trip = await prisma.trip.findFirst({
+          where: {
+            id: tripId,
+            OR: [
+              { collectorId: userId },
+              { warehouseId: userId }
+            ]
+          }
+        });
+        if (trip) {
+          const auth = pusher.authorizeChannel(socket_id, channel_name);
+          return res.json(auth);
+        }
+      }
+    }
+
+    // Authenticate private warehouse channel
+    if (channel_name.startsWith('private-warehouse-')) {
+      const warehouseId = parseInt(channel_name.split('-')[2]);
+      if (!isNaN(warehouseId)) {
+        if (userId === warehouseId) {
+          const auth = pusher.authorizeChannel(socket_id, channel_name);
+          return res.json(auth);
+        }
+        
+        // Or if the user is a collector assigned to this warehouse
+        const collector = await prisma.user.findFirst({
+          where: {
+            id: userId,
+            role: 'COLLECTOR',
+            deletedAt: null,
+            OR: [
+              { assignedWarehouseId: warehouseId },
+              { createdById: warehouseId }
+            ]
+          }
+        });
+        if (collector) {
+          const auth = pusher.authorizeChannel(socket_id, channel_name);
+          return res.json(auth);
+        }
+      }
+    }
+
     // 2. Authenticate private task channel (live tracking)
     if (channel_name.startsWith('private-task-')) {
       const taskId = parseInt(channel_name.split('-')[2]);

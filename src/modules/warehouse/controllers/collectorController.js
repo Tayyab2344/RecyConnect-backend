@@ -15,6 +15,7 @@ import { uploadToCloudinary } from "../../../utils/uploadHelper.js";
 import { getIO } from "../../chat/gateway/socketGateway.js";
 import { solveTSP } from "../../../utils/algorithms/router.js";
 import { KDTree, getHaversineDistance } from "../../../utils/algorithms/kdTree.js";
+import { EventBus } from "../../../events/eventBus.js";
 
 const terminalStatuses = [
   CollectorTaskStatus.COMPLETED,
@@ -498,6 +499,43 @@ export async function updateCollectorTaskStatus(req, res) {
       });
     }
 
+    // Direct side-effects on parent Order status
+    if (task.orderId) {
+      let newOrderStatus = null;
+      if (status === CollectorTaskStatus.ACCEPTED) newOrderStatus = "PROCESSING";
+      if (status === CollectorTaskStatus.PICKED_UP) newOrderStatus = "SHIPPED";
+
+      if (newOrderStatus) {
+        await prisma.order.update({
+          where: { id: task.orderId },
+          data: { status: newOrderStatus }
+        });
+
+        // Broadcast order status update
+        const io = getIO();
+        if (io) {
+          io.to(`warehouse:${task.warehouseId}`).emit("order:status_updated", {
+            orderId: task.orderId,
+            status: newOrderStatus
+          });
+        }
+      }
+    }
+
+    // Fire FCM notification to warehouse admin
+    try {
+      const { createAndSendNotification } = await import("../../../services/notificationService.js");
+      await createAndSendNotification({
+        userId: task.warehouseId,
+        title: "Task Status Updated",
+        message: `Collector ${req.user.name || "Agent"} marked task #${task.id} as ${status.replace(/_/g, " ")}.`,
+        type: "STATUS_UPDATE",
+        priority: "MEDIUM"
+      });
+    } catch (notifErr) {
+      console.error("FCM notify failed inside updateTaskStatus:", notifErr.message);
+    }
+
     await logActivity({
       userId: req.user.id,
       role: UserRole.COLLECTOR,
@@ -571,6 +609,12 @@ export async function recordCollectorLocation(req, res) {
       // Emit to warehouse room so warehouse operators can track live
       if (taskId) {
         io.to(`task:${taskId}`).emit("collector:location", payload);
+        prisma.collectorTask.findUnique({ where: { id: taskId }, select: { tripId: true } })
+          .then(t => {
+            if (t?.tripId) {
+              io.to(`trip:${t.tripId}`).emit("collector:location", payload);
+            }
+          }).catch(() => {});
       }
       io.to(`user:${req.user.id}`).emit("collector:location", payload);
     }
@@ -704,7 +748,7 @@ export async function confirmDeliveryForTask(req, res) {
 
     const task = await prisma.collectorTask.findFirst({
       where: { id: taskId, collectorId: req.user.id },
-      include: { verification: true },
+      include: { verification: true, order: true },
     });
     if (!task) return sendError(res, "Task not found", null, 404);
 
@@ -803,6 +847,15 @@ export async function confirmDeliveryForTask(req, res) {
         })
       );
 
+      if (task.orderId) {
+        txnOps.push(
+          prisma.order.update({
+            where: { id: task.orderId },
+            data: { status: "COMPLETED" },
+          })
+        );
+      }
+
       // Auto-update warehouse inventory: find or create an inventory row and add inflow
       const materialType = task.verification?.verifiedCategory || task.materialCategory;
       const existingInventory = await prisma.warehouseInventory.findFirst({
@@ -858,6 +911,50 @@ export async function confirmDeliveryForTask(req, res) {
       meta: { status, receivedWeight: deliveredWeight, otpVerified: !!task.otpCode },
       req,
     });
+
+    if (completeTask && task.orderId && task.order) {
+      // Emit the EventBus order.completed event
+      EventBus.emit("order.completed", {
+        orderId: task.orderId,
+        buyerId: task.order.buyerId,
+        sellerId: task.order.sellerId,
+      });
+
+      // Broadcast socket status update to warehouse
+      const io = getIO();
+      if (io) {
+        io.to(`warehouse:${task.warehouseId}`).emit("order:status_updated", {
+          orderId: task.orderId,
+          status: "COMPLETED"
+        });
+      }
+
+      // Notify the warehouse of delivery completion
+      try {
+        const { createAndSendNotification } = await import("../../../services/notificationService.js");
+        await createAndSendNotification({
+          userId: task.warehouseId,
+          title: "Delivery Completed",
+          message: `Delivery for task #${task.id} (Order #${task.orderId}) has been successfully completed.`,
+          type: "DELIVERY_COMPLETE",
+          priority: "HIGH"
+        });
+
+        // Notify counterpart client that delivery was successful
+        const counterpartId = task.warehouseId === task.order.buyerId ? task.order.sellerId : task.order.buyerId;
+        if (counterpartId) {
+          await createAndSendNotification({
+            userId: counterpartId,
+            title: "Order Delivered",
+            message: `Your order #${task.orderId} has been delivered successfully.`,
+            type: "ORDER_DELIVERED",
+            priority: "HIGH"
+          });
+        }
+      } catch (notifErr) {
+        console.error("FCM notify failed inside confirmDeliveryForTask:", notifErr.message);
+      }
+    }
 
     sendSuccess(res, "Delivery confirmation saved successfully", { delivery, task: updatedTask });
   } catch (err) {
