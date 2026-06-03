@@ -15,6 +15,7 @@ import {
   sendMessage,
   getOrderChats,
   uploadVoiceMessage,
+  pusherAuth,
 } from '../controllers/chatController.js';
 import { authenticateToken } from '../../../middlewares/authMiddleware.js';
 import multer from 'multer';
@@ -24,6 +25,10 @@ const router = express.Router();
 
 // All chat routes require authentication
 router.use(authenticateToken);
+
+// ── Pusher Channel Authorization ──────────────────────────────
+router.post('/pusher/auth', pusherAuth);
+
 
 // ── Conversations ─────────────────────────────────────────────
 router.get('/conversations', getConversations);

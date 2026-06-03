@@ -12,6 +12,8 @@ import { sendSuccess, sendError } from '../../../utils/responseHelper.js';
 import { logActivity } from '../../../utils/activityLogger.js';
 import { getIO, isUserOnline } from '../gateway/socketGateway.js';
 import { uploadToCloudinary } from '../../../utils/uploadHelper.js';
+import pusher from '../../../lib/pusher.js';
+import { logger } from '../../../utils/logger.js';
 
 const PARTICIPANT_SELECT = {
   id: true, name: true, profileImage: true, role: true, businessName: true,
@@ -67,7 +69,7 @@ export async function getConversations(req, res) {
           orderId: conv.orderId,
           otherParticipant: {
             ...otherParticipant,
-            isOnline: isUserOnline(otherParticipant.id),
+            isOnline: await isUserOnline(otherParticipant.id),
           },
           lastMessage,
           unreadCount,
@@ -155,7 +157,7 @@ export async function getOrCreateConversation(req, res) {
       orderId: conversation.orderId,
       otherParticipant: {
         ...otherParticipant,
-        isOnline: isUserOnline(otherParticipant.id),
+        isOnline: await isUserOnline(otherParticipant.id),
       },
     }, 201);
   } catch (err) {
@@ -314,19 +316,21 @@ export async function getOrderChats(req, res) {
       orderBy: { type: 'asc' },
     });
 
-    const formatted = conversations.map((conv) => {
-      const otherParticipant = conv.participant1Id === userId
-        ? conv.participant2 : conv.participant1;
-      return {
-        id: conv.id,
-        type: conv.type,
-        otherParticipant: {
-          ...otherParticipant,
-          isOnline: isUserOnline(otherParticipant.id),
-        },
-        lastMessage: conv.messages[0] || null,
-      };
-    });
+    const formatted = await Promise.all(
+      conversations.map(async (conv) => {
+        const otherParticipant = conv.participant1Id === userId
+          ? conv.participant2 : conv.participant1;
+        return {
+          id: conv.id,
+          type: conv.type,
+          otherParticipant: {
+            ...otherParticipant,
+            isOnline: await isUserOnline(otherParticipant.id),
+          },
+          lastMessage: conv.messages[0] || null,
+        };
+      })
+    );
 
     sendSuccess(res, 'Order chats fetched', formatted);
   } catch (err) {
@@ -389,3 +393,70 @@ export async function autoCreateCollectorChat(orderId, buyerId, collectorId) {
 
   return conversation;
 }
+
+/**
+ * Authorize subscribing clients to Pusher private and presence channels.
+ * POST /api/chat/pusher/auth
+ */
+export async function pusherAuth(req, res) {
+  try {
+    const { socket_id, channel_name } = req.body;
+    const userId = req.user.id;
+
+    if (!pusher) {
+      logger.warn('[PUSHER AUTH] Pusher client is not initialized');
+      return res.status(500).send('Pusher service is not configured');
+    }
+
+    if (!socket_id || !channel_name) {
+      return res.status(400).send('socket_id and channel_name are required');
+    }
+
+    // 1. Authenticate private user channel
+    if (channel_name === `private-user-${userId}`) {
+      const auth = pusher.authorizeChannel(socket_id, channel_name);
+      return res.json(auth);
+    }
+
+    // 2. Authenticate private task channel (live tracking)
+    if (channel_name.startsWith('private-task-')) {
+      const taskId = parseInt(channel_name.split('-')[2]);
+      const task = await prisma.collectorTask.findFirst({
+        where: {
+          id: taskId,
+          OR: [
+            { collectorId: userId },
+            { warehouseId: userId },
+            { sourceUserId: userId },
+            { destinationUserId: userId }
+          ]
+        }
+      });
+      if (task) {
+        const auth = pusher.authorizeChannel(socket_id, channel_name);
+        return res.json(auth);
+      }
+    }
+
+    // 3. Authenticate presence channel
+    if (channel_name === 'presence-online') {
+      const presenceData = {
+        user_id: userId.toString(),
+        user_info: {
+          id: userId,
+          name: req.user.name,
+          role: req.user.role,
+        }
+      };
+      const auth = pusher.authorizeChannel(socket_id, channel_name, presenceData);
+      return res.json(auth);
+    }
+
+    logger.warn(`[PUSHER AUTH] Access denied for user ${userId} to channel ${channel_name}`);
+    return res.status(403).send('Forbidden: Access denied to this channel');
+  } catch (err) {
+    logger.error('[PUSHER AUTH] Error:', err.message);
+    res.status(500).send('Internal Server Error');
+  }
+}
+

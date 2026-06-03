@@ -47,7 +47,7 @@ router.use(authenticateToken);
 router.use(permit("admin"));
 
 // ── Dashboard ─────────────────────────────────────────────────
-router.get("/dashboard", getDashboardStats);
+router.get("/dashboard", cacheResponse(120), getDashboardStats);
 
 // ── KYC Management ────────────────────────────────────────────
 router.get("/kyc/pending", getPendingKYCUsers);

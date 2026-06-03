@@ -29,7 +29,7 @@ const router = express.Router();
 
 // ── Public (no auth) ──────────────────────────────────────────
 router.get("/public", cacheResponse(30), getPublicListings);
-router.get("/search/autocomplete", getSearchAutocomplete);
+router.get("/search/autocomplete", cacheResponse(60), getSearchAutocomplete);
 
 // ── Authenticated ─────────────────────────────────────────────
 router.use(authenticateToken);
@@ -37,7 +37,7 @@ router.use(authenticateToken);
 router.post("/classify", classifyListingImage);
 router.post("/", createListing);
 router.get("/", cacheResponse(60), getListings);
-router.get("/stats", getListingStats);
+router.get("/stats", cacheResponse(120), getListingStats);
 router.get("/export", exportListings);
 router.get("/:id", getListingById);
 router.put("/:id", updateListing);

@@ -41,6 +41,7 @@
     "morgan": "^1.10.1",
     "multer": "^2.0.2",
     "nodemailer": "^7.0.10",
+    "pusher": "^5.3.3",
     "rate-limit-redis": "^4.3.1",
     "socket.io": "^4.8.3",
     "stripe": "^20.3.0",
