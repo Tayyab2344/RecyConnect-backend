@@ -1,6 +1,7 @@
 # Environment variables
 .env
 .env.*
+!.env.example
 *firebase-adminsdk*.json
 firebase-service-account.json
 # Node modules
