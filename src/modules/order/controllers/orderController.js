@@ -458,6 +458,12 @@ export const cancelOrder = async (req, res) => {
           });
         }
 
+        // Archive related conversations when order is cancelled
+        await tx.conversation.updateMany({
+          where: { orderId: order.id },
+          data: { status: "ARCHIVED" },
+        });
+
         return { order: updatedOrder, paymentRefunded };
       },
       { timeout: 30000 },
@@ -580,6 +586,12 @@ export const completeOrder = async (req, res) => {
             reservation: true,
             payment: true,
           },
+        });
+
+        // Archive related conversations when order is completed
+        await tx.conversation.updateMany({
+          where: { orderId: order.id },
+          data: { status: "ARCHIVED" },
         });
 
         return updatedOrder;
