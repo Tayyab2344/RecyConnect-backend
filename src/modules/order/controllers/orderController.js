@@ -60,6 +60,7 @@ export const createOrder = async (req, res) => {
                 email: true,
                 contactNo: true,
                 address: true,
+                role: true,
               },
             },
           },
@@ -106,6 +107,13 @@ export const createOrder = async (req, res) => {
 
         // 6. Create order with status CREATED
         const handshakeOtp = Math.floor(1000 + Math.random() * 9000).toString();
+        const sellerRole = listing.user?.role;
+        const buyerRole = req.user?.role;
+        const resolvedDeliveryMethod = deliveryMethod || 
+          ((sellerRole === "warehouse" || buyerRole === "warehouse") 
+            ? "WAREHOUSE_COLLECTOR_SERVICE" 
+            : "SELF_TRANSPORTATION");
+
         const order = await tx.order.create({
           data: {
             buyerId,
@@ -113,7 +121,7 @@ export const createOrder = async (req, res) => {
             status: OrderStatus.CREATED,
             totalAmount,
             paymentMethod: paymentMethod || "cod",
-            deliveryMethod: deliveryMethod || "SELF_TRANSPORTATION",
+            deliveryMethod: resolvedDeliveryMethod,
             handshakeOtp,
             items: {
               create: {
@@ -856,7 +864,7 @@ export const getOrders = async (req, res) => {
         }
       };
       if (!status) {
-        where.status = { in: ["CONFIRMED", "PROCESSING", "PENDING"] };
+        where.status = { in: ["CONFIRMED", "PROCESSING", "PENDING", "CREATED"] };
       }
     }
 

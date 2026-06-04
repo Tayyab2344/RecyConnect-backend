@@ -141,6 +141,7 @@ describe('Order Controller', () => {
             expect(res.body.data.status).toBe('CREATED');
             expect(res.body.data.buyerId).toBe(buyer.id);
             expect(res.body.data.totalAmount).toBe(100); // 10 weight * 10 price
+            expect(res.body.data.deliveryMethod).toBe('WAREHOUSE_COLLECTOR_SERVICE');
         });
         
         it('should fail if buyer equals seller', async () => {
