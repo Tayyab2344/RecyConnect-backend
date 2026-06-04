@@ -159,6 +159,25 @@ export const createOrder = async (req, res) => {
           },
         });
 
+        // 8. Auto-create BUYER_SELLER conversation and initial SYSTEM message
+        const conversation = await tx.conversation.create({
+          data: {
+            participant1Id: buyerId,
+            participant2Id: sellerId,
+            orderId: order.id,
+            type: "BUYER_SELLER",
+          },
+        });
+
+        await tx.message.create({
+          data: {
+            conversationId: conversation.id,
+            senderId: buyerId,
+            content: "Conversation started",
+            messageType: "SYSTEM",
+          },
+        });
+
         return { order };
       },
       { timeout: 30000 },
@@ -604,6 +623,64 @@ export const completeOrder = async (req, res) => {
   }
 };
 
+async function enrichOrdersWithChatInfo(orders, currentUserId) {
+  return await Promise.all(
+    orders.map(async (order) => {
+      const conversation = await prisma.conversation.findFirst({
+        where: {
+          orderId: order.id,
+          type: "BUYER_SELLER",
+        },
+        include: {
+          messages: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              content: true,
+              createdAt: true,
+              messageType: true,
+              senderId: true,
+              isRead: true,
+            },
+          },
+        },
+      });
+
+      let lastMessage = null;
+      let unreadCount = 0;
+
+      if (conversation) {
+        lastMessage = conversation.messages[0] || null;
+        unreadCount = await prisma.message.count({
+          where: {
+            conversationId: conversation.id,
+            isRead: false,
+            senderId: { not: currentUserId },
+          },
+        });
+      }
+
+      return {
+        ...order,
+        chat: {
+          conversationId: conversation ? conversation.id : null,
+          lastMessage: lastMessage
+            ? {
+                id: lastMessage.id,
+                content: lastMessage.content,
+                createdAt: lastMessage.createdAt,
+                messageType: lastMessage.messageType,
+                senderId: lastMessage.senderId,
+              }
+            : null,
+          unreadCount,
+        },
+      };
+    })
+  );
+}
+
 /**
  * Get buyer's orders with filters and pagination
  * GET /api/orders/buyer
@@ -677,7 +754,8 @@ export const getBuyerOrders = async (req, res) => {
       take,
     });
 
-    sendPaginated(res, orders, totalCount, pageNum, limitNum);
+    const enrichedOrders = await enrichOrdersWithChatInfo(orders, userId);
+    sendPaginated(res, enrichedOrders, totalCount, pageNum, limitNum);
   } catch (error) {
     sendError(res, "Failed to fetch buyer orders", error);
   }
@@ -764,7 +842,8 @@ export const getSellerOrders = async (req, res) => {
       take,
     });
 
-    sendPaginated(res, orders, totalCount, pageNum, limitNum);
+    const enrichedOrders = await enrichOrdersWithChatInfo(orders, userId);
+    sendPaginated(res, enrichedOrders, totalCount, pageNum, limitNum);
   } catch (error) {
     sendError(res, "Failed to fetch seller orders", error);
   }
@@ -943,7 +1022,8 @@ export const getOrders = async (req, res) => {
       take,
     });
 
-    sendPaginated(res, orders, totalCount, pageNum, limitNum);
+    const enrichedOrders = await enrichOrdersWithChatInfo(orders, userId);
+    sendPaginated(res, enrichedOrders, totalCount, pageNum, limitNum);
   } catch (error) {
     sendError(res, "Failed to fetch orders", error);
   }

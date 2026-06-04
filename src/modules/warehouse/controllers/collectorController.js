@@ -452,6 +452,44 @@ export async function getCollectorTaskDetails(req, res) {
   }
 }
 
+async function addSystemMessageToOrderChats(orderId, senderId, content) {
+  try {
+    const conversations = await prisma.conversation.findMany({
+      where: { orderId },
+      include: {
+        participant1: { select: { id: true, name: true, profileImage: true } },
+        participant2: { select: { id: true, name: true, profileImage: true } },
+      }
+    });
+    for (const conv of conversations) {
+      const message = await prisma.message.create({
+        data: {
+          conversationId: conv.id,
+          senderId,
+          content,
+          messageType: "SYSTEM"
+        },
+        include: {
+          sender: { select: { id: true, name: true, profileImage: true } }
+        }
+      });
+
+      await prisma.conversation.update({
+        where: { id: conv.id },
+        data: { updatedAt: new Date() }
+      });
+
+      const io = getIO();
+      if (io) {
+        io.to(`user:${conv.participant1Id}`).emit("message:received", message);
+        io.to(`user:${conv.participant2Id}`).emit("message:received", message);
+      }
+    }
+  } catch (err) {
+    console.error("Failed to add system message to order chats:", err.message);
+  }
+}
+
 export async function acceptCollectorTask(req, res) {
   req.body.status = CollectorTaskStatus.ACCEPTED;
   return updateCollectorTaskStatus(req, res);
@@ -519,6 +557,30 @@ export async function updateCollectorTaskStatus(req, res) {
             status: newOrderStatus
           });
         }
+      }
+
+      // Add system message to order chats based on status transition
+      let systemMsg = null;
+      if (status === CollectorTaskStatus.ACCEPTED) {
+        systemMsg = "Collector has accepted the task for your order.";
+      } else if (status === CollectorTaskStatus.EN_ROUTE_TO_PICKUP) {
+        systemMsg = "Collector is en route to pick up your order.";
+      } else if (status === CollectorTaskStatus.ARRIVED_AT_SOURCE) {
+        systemMsg = "Collector has arrived at the source location.";
+      } else if (status === CollectorTaskStatus.PICKED_UP) {
+        systemMsg = "Collector has picked up your order.";
+      } else if (status === CollectorTaskStatus.IN_TRANSIT) {
+        systemMsg = "Collector is in transit with your order.";
+      } else if (status === CollectorTaskStatus.ARRIVED_AT_DESTINATION) {
+        systemMsg = "Collector has arrived at the destination.";
+      } else if (status === CollectorTaskStatus.CANCELLED) {
+        systemMsg = `Collector task has been cancelled. Reason: ${cancellationReason || "None specified"}`;
+      } else if (status === CollectorTaskStatus.REJECTED) {
+        systemMsg = "Collector rejected the task.";
+      }
+
+      if (systemMsg) {
+        await addSystemMessageToOrderChats(task.orderId, req.user.id, systemMsg);
       }
     }
 
@@ -703,6 +765,13 @@ export async function verifyWasteForTask(req, res) {
         include: getTaskInclude(),
       }),
     ]);
+
+    if (task.orderId) {
+      const msg = verificationStatus === WasteVerificationStatus.REJECTED
+        ? `Collector has rejected the waste verification for your order. Reason: ${notes || "None specified"}`
+        : `Collector has verified the waste for your order. Verified Weight: ${actualWeight} kg.`;
+      await addSystemMessageToOrderChats(task.orderId, req.user.id, msg);
+    }
 
     // Warn on significant weight discrepancy (>20%)
     const discrepancyPct = Math.abs(weightDifference) / task.estimatedWeight * 100;
@@ -954,6 +1023,13 @@ export async function confirmDeliveryForTask(req, res) {
       } catch (notifErr) {
         console.error("FCM notify failed inside confirmDeliveryForTask:", notifErr.message);
       }
+    }
+
+    if (task.orderId) {
+      const msg = completeTask
+        ? `Collector has completed the delivery of your order.`
+        : `Collector delivery failed. Status: ${status}.`;
+      await addSystemMessageToOrderChats(task.orderId, req.user.id, msg);
     }
 
     sendSuccess(res, "Delivery confirmation saved successfully", { delivery, task: updatedTask });
