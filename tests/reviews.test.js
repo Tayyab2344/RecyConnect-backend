@@ -22,12 +22,14 @@ const { default: app } = await import('../src/index.js');
 describe('Order Reviews & Trust Score Integration Tests', () => {
     let buyer;
     let seller;
+    let stranger;
     let buyerToken;
     let sellerToken;
+    let strangerToken;
     let order;
 
     beforeAll(async () => {
-        // Create buyer and seller
+        // Create buyer, seller, and stranger
         buyer = await createTestUser({
             name: 'Eco Buyer',
             role: 'individual',
@@ -40,9 +42,16 @@ describe('Order Reviews & Trust Score Integration Tests', () => {
             ecoPoints: 0,
             currentLevel: 'Beginner Recycler',
         });
+        stranger = await createTestUser({
+            name: 'Stranger',
+            role: 'individual',
+            ecoPoints: 0,
+            currentLevel: 'Beginner Recycler',
+        });
 
         buyerToken = generateTestToken(buyer);
         sellerToken = generateTestToken(seller);
+        strangerToken = generateTestToken(stranger);
 
         // Create a completed order
         order = await prisma.order.create({
@@ -60,23 +69,23 @@ describe('Order Reviews & Trust Score Integration Tests', () => {
     afterAll(async () => {
         // Clean up review first due to relations
         await prisma.review.deleteMany({ where: { orderId: order.id } });
-        await prisma.reward.deleteMany({ where: { userId: { in: [buyer.id, seller.id] } } });
-        await prisma.badge.deleteMany({ where: { userId: { in: [buyer.id, seller.id] } } });
-        await prisma.leaderboard.deleteMany({ where: { userId: { in: [buyer.id, seller.id] } } });
-        await prisma.notification.deleteMany({ where: { userId: { in: [buyer.id, seller.id] } } });
+        await prisma.reward.deleteMany({ where: { userId: { in: [buyer.id, seller.id, stranger.id] } } });
+        await prisma.badge.deleteMany({ where: { userId: { in: [buyer.id, seller.id, stranger.id] } } });
+        await prisma.leaderboard.deleteMany({ where: { userId: { in: [buyer.id, seller.id, stranger.id] } } });
+        await prisma.notification.deleteMany({ where: { userId: { in: [buyer.id, seller.id, stranger.id] } } });
         await prisma.order.delete({ where: { id: order.id } });
-        await prisma.user.deleteMany({ where: { id: { in: [buyer.id, seller.id] } } });
+        await prisma.user.deleteMany({ where: { id: { in: [buyer.id, seller.id, stranger.id] } } });
     });
 
-    it('should block non-buyers from reviewing the order', async () => {
+    it('should block non-participants from reviewing the order', async () => {
         const res = await request(app)
             .post(`/api/orders/${order.id}/review`)
-            .set('Authorization', `Bearer ${sellerToken}`)
+            .set('Authorization', `Bearer ${strangerToken}`)
             .send({ rating: 5, feedback: 'Excellent buyer!' });
 
         expect(res.statusCode).toBe(403);
         expect(res.body.success).toBe(false);
-        expect(res.body.message).toContain('Only the buyer');
+        expect(res.body.message).toContain('participate');
     });
 
     it('should successfully submit a positive review and award points', async () => {

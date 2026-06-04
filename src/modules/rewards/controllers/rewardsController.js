@@ -413,7 +413,15 @@ export async function getChallenges(req, res) {
 export async function submitOrderReview(req, res) {
   try {
     const orderId = parseInt(req.params.id, 10);
-    const { rating, feedback } = req.body;
+    const {
+      rating,
+      feedback,
+      productQuality,
+      materialAccuracy,
+      communication,
+      deliveryExperience,
+      overallSatisfaction
+    } = req.body;
     const reviewerId = req.user.id;
 
     if (isNaN(orderId)) {
@@ -427,7 +435,7 @@ export async function submitOrderReview(req, res) {
     // 1. Fetch order details and check permissions
     const order = await prisma.order.findUnique({
       where: { id: orderId },
-      include: { review: true }
+      include: { reviews: true, payment: true }
     });
 
     if (!order) {
@@ -438,12 +446,50 @@ export async function submitOrderReview(req, res) {
       return sendError(res, "Only completed orders can be reviewed", null, 400);
     }
 
-    if (order.buyerId !== reviewerId) {
-      return sendError(res, "Only the buyer of this order can submit a review", null, 403);
+    if (order.payment && order.payment.status === 'REFUNDED') {
+      return sendError(res, "Cannot submit review for a refunded order", null, 400);
     }
 
-    if (order.review) {
+    const disputeLog = await prisma.activityLog.findFirst({
+      where: {
+        resourceType: 'order',
+        resourceId: orderId.toString(),
+        action: { contains: 'DISPUTE' }
+      }
+    });
+    if (disputeLog) {
+      return sendError(res, "Cannot submit review for an order with a dispute", null, 400);
+    }
+
+    const isBuyer = order.buyerId === reviewerId;
+    const isSeller = order.sellerId === reviewerId;
+    if (!isBuyer && !isSeller) {
+      return sendError(res, "You did not participate in this transaction", null, 403);
+    }
+
+    const revieweeId = isBuyer ? order.sellerId : order.buyerId;
+
+    // Check if this reviewer has already reviewed this order
+    const existingReview = order.reviews.find(r => r.reviewerId === reviewerId);
+    if (existingReview) {
       return sendError(res, "You have already reviewed this order", null, 400);
+    }
+
+    // Validate category ratings if provided
+    const categories = {
+      productQuality,
+      materialAccuracy,
+      communication,
+      deliveryExperience,
+      overallSatisfaction
+    };
+    for (const [key, val] of Object.entries(categories)) {
+      if (val !== undefined && val !== null) {
+        const intVal = parseInt(val, 10);
+        if (isNaN(intVal) || intVal < 1 || intVal > 5) {
+          return sendError(res, `${key} rating must be an integer between 1 and 5`, null, 400);
+        }
+      }
     }
 
     // 2. Create review inside transaction
@@ -452,34 +498,311 @@ export async function submitOrderReview(req, res) {
         data: {
           orderId,
           reviewerId,
-          revieweeId: order.sellerId,
+          revieweeId,
           rating: parseInt(rating, 10),
           feedback,
+          productQuality: productQuality ? parseInt(productQuality, 10) : null,
+          materialAccuracy: materialAccuracy ? parseInt(materialAccuracy, 10) : null,
+          communication: communication ? parseInt(communication, 10) : null,
+          deliveryExperience: deliveryExperience ? parseInt(deliveryExperience, 10) : null,
+          overallSatisfaction: overallSatisfaction ? parseInt(overallSatisfaction, 10) : null,
         }
       });
       return review;
     });
 
-    // 3. Award Eco Points on review submission
-    // Buyer gets +5 pts for submitting review
-    await awardPoints({
-      userId: reviewerId,
-      activityType: 'RATING',
-      customPoints: 5
-    });
-
-    // Seller gets +10 pts if the rating is positive (>= 4 stars)
-    if (rating >= 4) {
+    // 3. Award Eco Points on review submission (only if reviewer is buyer)
+    if (isBuyer) {
       await awardPoints({
-        userId: order.sellerId,
-        activityType: 'SUCCESSFUL_SALE',
-        customPoints: 10
+        userId: reviewerId,
+        activityType: 'RATING',
+        customPoints: 5
       });
+
+      if (rating >= 4) {
+        await awardPoints({
+          userId: revieweeId,
+          activityType: 'SUCCESSFUL_SALE',
+          customPoints: 10
+        });
+      }
     }
 
     sendSuccess(res, "Review submitted successfully", result, 201);
   } catch (error) {
     logger.error(`[REWARDS_CTRL] Review submission failed: ${error.message}`);
     sendError(res, "Failed to submit review", error);
+  }
+}
+
+/**
+ * Edit a review within 7 days
+ * PUT /api/orders/:id/review
+ */
+export async function editOrderReview(req, res) {
+  try {
+    const orderId = parseInt(req.params.id, 10);
+    const {
+      rating,
+      feedback,
+      productQuality,
+      materialAccuracy,
+      communication,
+      deliveryExperience,
+      overallSatisfaction
+    } = req.body;
+    const reviewerId = req.user.id;
+
+    if (isNaN(orderId)) {
+      return sendError(res, "Invalid order ID", null, 400);
+    }
+
+    const review = await prisma.review.findFirst({
+      where: { orderId, reviewerId }
+    });
+
+    if (!review) {
+      return sendError(res, "Review not found", null, 404);
+    }
+
+    // Check if within 7 days
+    const diffMs = Date.now() - new Date(review.createdAt).getTime();
+    const limitMs = 7 * 24 * 60 * 60 * 1000;
+    if (diffMs > limitMs) {
+      return sendError(res, "Review edit period has expired. Reviews can only be edited within 7 days.", null, 400);
+    }
+
+    // Validate category ratings if provided
+    const categories = {
+      productQuality,
+      materialAccuracy,
+      communication,
+      deliveryExperience,
+      overallSatisfaction
+    };
+    for (const [key, val] of Object.entries(categories)) {
+      if (val !== undefined && val !== null) {
+        const intVal = parseInt(val, 10);
+        if (isNaN(intVal) || intVal < 1 || intVal > 5) {
+          return sendError(res, `${key} rating must be an integer between 1 and 5`, null, 400);
+        }
+      }
+    }
+
+    const newRating = rating !== undefined ? parseInt(rating, 10) : review.rating;
+    if (newRating < 1 || newRating > 5) {
+      return sendError(res, "Rating must be an integer between 1 and 5", null, 400);
+    }
+
+    const updatedReview = await prisma.review.update({
+      where: { id: review.id },
+      data: {
+        rating: newRating,
+        feedback: feedback !== undefined ? feedback : review.feedback,
+        productQuality: productQuality !== undefined ? (productQuality ? parseInt(productQuality, 10) : null) : review.productQuality,
+        materialAccuracy: materialAccuracy !== undefined ? (materialAccuracy ? parseInt(materialAccuracy, 10) : null) : review.materialAccuracy,
+        communication: communication !== undefined ? (communication ? parseInt(communication, 10) : null) : review.communication,
+        deliveryExperience: deliveryExperience !== undefined ? (deliveryExperience ? parseInt(deliveryExperience, 10) : null) : review.deliveryExperience,
+        overallSatisfaction: overallSatisfaction !== undefined ? (overallSatisfaction ? parseInt(overallSatisfaction, 10) : null) : review.overallSatisfaction,
+      }
+    });
+
+    // Check if point adjustment is needed for the seller (only if reviewer is buyer)
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (order && order.buyerId === reviewerId) {
+      const oldWasPositive = review.rating >= 4;
+      const newIsPositive = newRating >= 4;
+
+      if (oldWasPositive && !newIsPositive) {
+        await awardPoints({
+          userId: order.sellerId,
+          activityType: 'SUCCESSFUL_SALE',
+          customPoints: -10
+        });
+      } else if (!oldWasPositive && newIsPositive) {
+        await awardPoints({
+          userId: order.sellerId,
+          activityType: 'SUCCESSFUL_SALE',
+          customPoints: 10
+        });
+      }
+    }
+
+    sendSuccess(res, "Review updated successfully", updatedReview);
+  } catch (error) {
+    logger.error(`[REWARDS_CTRL] Review edit failed: ${error.message}`);
+    sendError(res, "Failed to edit review", error);
+  }
+}
+
+/**
+ * Report a review
+ * POST /api/orders/:id/review/report
+ */
+export async function reportOrderReview(req, res) {
+  try {
+    const orderId = parseInt(req.params.id, 10);
+    const { reason } = req.body;
+    const userId = req.user.id;
+
+    if (isNaN(orderId)) {
+      return sendError(res, "Invalid order ID", null, 400);
+    }
+
+    if (!reason || reason.trim() === '') {
+      return sendError(res, "Reason is required to report a review", null, 400);
+    }
+
+    const review = await prisma.review.findFirst({
+      where: {
+        orderId,
+        reviewerId: { not: userId }
+      }
+    });
+
+    if (!review) {
+      return sendError(res, "Review to report not found", null, 404);
+    }
+
+    const updatedReview = await prisma.review.update({
+      where: { id: review.id },
+      data: {
+        isReported: true,
+        reportReason: reason
+      }
+    });
+
+    await prisma.complaint.create({
+      data: {
+        userId,
+        category: "REVIEW_REPORT",
+        description: `Review ID: ${review.id} for Order #${orderId} was reported by User #${userId}. Reason: ${reason}`,
+        status: "PENDING"
+      }
+    });
+
+    sendSuccess(res, "Review reported successfully", updatedReview);
+  } catch (error) {
+    logger.error(`[REWARDS_CTRL] Review report failed: ${error.message}`);
+    sendError(res, "Failed to report review", error);
+  }
+}
+
+/**
+ * Get reviews received by a user
+ * GET /api/users/:id/reviews
+ */
+export async function getUserReviews(req, res) {
+  try {
+    const userId = parseInt(req.params.id, 10);
+    if (isNaN(userId)) {
+      return sendError(res, "Invalid user ID", null, 400);
+    }
+
+    const reviews = await prisma.review.findMany({
+      where: {
+        revieweeId: userId,
+        isReported: false
+      },
+      include: {
+        reviewer: {
+          select: {
+            id: true,
+            name: true,
+            profileImage: true,
+            role: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const count = reviews.length;
+    let averageRating = 0;
+    let avgProductQuality = 0;
+    let avgMaterialAccuracy = 0;
+    let avgCommunication = 0;
+    let avgDeliveryExperience = 0;
+    let avgOverallSatisfaction = 0;
+
+    let pqCount = 0, maCount = 0, commCount = 0, deCount = 0, osCount = 0;
+
+    if (count > 0) {
+      let totalRating = 0;
+      reviews.forEach(r => {
+        totalRating += r.rating;
+        if (r.productQuality) { avgProductQuality += r.productQuality; pqCount++; }
+        if (r.materialAccuracy) { avgMaterialAccuracy += r.materialAccuracy; maCount++; }
+        if (r.communication) { avgCommunication += r.communication; commCount++; }
+        if (r.deliveryExperience) { avgDeliveryExperience += r.deliveryExperience; deCount++; }
+        if (r.overallSatisfaction) { avgOverallSatisfaction += r.overallSatisfaction; osCount++; }
+      });
+      averageRating = parseFloat((totalRating / count).toFixed(2));
+      avgProductQuality = pqCount > 0 ? parseFloat((avgProductQuality / pqCount).toFixed(2)) : null;
+      avgMaterialAccuracy = maCount > 0 ? parseFloat((avgMaterialAccuracy / maCount).toFixed(2)) : null;
+      avgCommunication = commCount > 0 ? parseFloat((avgCommunication / commCount).toFixed(2)) : null;
+      avgDeliveryExperience = deCount > 0 ? parseFloat((avgDeliveryExperience / deCount).toFixed(2)) : null;
+      avgOverallSatisfaction = osCount > 0 ? parseFloat((avgOverallSatisfaction / osCount).toFixed(2)) : null;
+    }
+
+    sendSuccess(res, "User reviews fetched successfully", {
+      reviews,
+      stats: {
+        totalReviews: count,
+        averageRating,
+        avgProductQuality,
+        avgMaterialAccuracy,
+        avgCommunication,
+        avgDeliveryExperience,
+        avgOverallSatisfaction
+      }
+    });
+  } catch (error) {
+    logger.error(`[REWARDS_CTRL] Failed to get user reviews: ${error.message}`);
+    sendError(res, "Failed to fetch user reviews", error);
+  }
+}
+
+/**
+ * Get reviews submitted by the current user
+ * GET /api/reviews/my
+ */
+export async function getMyReviews(req, res) {
+  try {
+    const userId = req.user.id;
+
+    const reviews = await prisma.review.findMany({
+      where: { reviewerId: userId },
+      include: {
+        reviewee: {
+          select: {
+            id: true,
+            name: true,
+            profileImage: true,
+            role: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    sendSuccess(res, "Submitted reviews fetched successfully", reviews);
+  } catch (error) {
+    logger.error(`[REWARDS_CTRL] Failed to get my reviews: ${error.message}`);
+    sendError(res, "Failed to fetch submitted reviews", error);
+  }
+}
+
+/**
+ * Get reviews received by the current user
+ * GET /api/reviews/received
+ */
+export async function getReceivedReviews(req, res) {
+  try {
+    req.params.id = req.user.id.toString();
+    return getUserReviews(req, res);
+  } catch (error) {
+    logger.error(`[REWARDS_CTRL] Failed to get received reviews: ${error.message}`);
+    sendError(res, "Failed to fetch received reviews", error);
   }
 }

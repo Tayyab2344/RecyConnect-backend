@@ -891,7 +891,7 @@ export const getOrderById = async (req, res) => {
           },
         },
         reservation: true,
-        review: true,
+        reviews: true,
       },
     });
 
@@ -909,7 +909,14 @@ export const getOrderById = async (req, res) => {
       );
     }
 
-    sendSuccess(res, "Order fetched successfully", order);
+    // For backward compatibility, populate `review` with the review written by the current user
+    const currentUserReview = order.reviews.find(r => r.reviewerId === userId) || null;
+    const enrichedOrder = {
+      ...order,
+      review: currentUserReview,
+    };
+
+    sendSuccess(res, "Order fetched successfully", enrichedOrder);
   } catch (error) {
     sendError(res, "Failed to fetch order", error);
   }

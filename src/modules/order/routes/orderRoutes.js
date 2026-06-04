@@ -14,7 +14,11 @@ import {
     exportOrders,
     updateOrderStatus
 } from '../controllers/orderController.js';
-import { submitOrderReview } from '../../rewards/controllers/rewardsController.js';
+import {
+    submitOrderReview,
+    editOrderReview,
+    reportOrderReview
+} from '../../rewards/controllers/rewardsController.js';
 
 const router = express.Router();
 
@@ -371,6 +375,8 @@ router.post('/:id/cancel', cancelOrder);
  */
 router.post('/:id/complete', completeOrder);
 router.post('/:id/review', submitOrderReview);
+router.put('/:id/review', editOrderReview);
+router.post('/:id/review/report', reportOrderReview);
 
 /**
  * @swagger
