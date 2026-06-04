@@ -211,7 +211,8 @@ EventBus.on('order.completed', async (payload) => {
             });
 
             // 3. Fast completion check
-            if (sellerRole === 'warehouse' || sellerRole === 'company') {
+            const role = (order.seller?.role || '').toLowerCase();
+            if (role === 'warehouse' || role === 'company') {
                 const diffMs = order.updatedAt.getTime() - order.createdAt.getTime();
                 const diffHours = diffMs / (1000 * 60 * 60);
                 if (diffHours <= 24) {

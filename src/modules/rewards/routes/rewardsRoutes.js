@@ -6,7 +6,10 @@ import {
   checkIn,
   getLeaderboard,
   getHistory,
-  getChallenges
+  getChallenges,
+  getUserReviews,
+  getMyReviews,
+  getReceivedReviews
 } from "../controllers/rewardsController.js";
 
 const router = Router();
@@ -75,5 +78,9 @@ router.get("/history", getHistory);
  *       - bearerAuth: []
  */
 router.get("/challenges", cacheResponse(60), getChallenges);
+
+router.get("/reviews/my", getMyReviews);
+router.get("/reviews/received", getReceivedReviews);
+router.get("/users/:id/reviews", getUserReviews);
 
 export default router;

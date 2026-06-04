@@ -426,8 +426,8 @@ model Order {
   // Payment for this order
   payment Payment?
 
-  // Review for this order
-  review Review?
+  // Reviews for this order
+  reviews Review[]
 
   // Legacy/Financial Tracking Fields
   cogs            Float? // Cost of Goods Sold
@@ -902,17 +902,31 @@ model Leaderboard {
 }
 
 model Review {
-  id          Int      @id @default(autoincrement())
-  orderId     Int      @unique
-  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  reviewerId  Int
-  reviewer    User     @relation("ReviewsGiven", fields: [reviewerId], references: [id], onDelete: Cascade)
-  revieweeId  Int
-  reviewee    User     @relation("ReviewsReceived", fields: [revieweeId], references: [id], onDelete: Cascade)
-  rating      Int      // 1 to 5 stars
-  feedback    String?
-  createdAt   DateTime @default(now())
+  id                  Int      @id @default(autoincrement())
+  orderId             Int
+  order               Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reviewerId          Int
+  reviewer            User     @relation("ReviewsGiven", fields: [reviewerId], references: [id], onDelete: Cascade)
+  revieweeId          Int
+  reviewee            User     @relation("ReviewsReceived", fields: [revieweeId], references: [id], onDelete: Cascade)
+  rating              Int      // 1 to 5 stars
+  feedback            String?
 
+  // Multi-category ratings
+  productQuality      Int?     // 1 to 5 stars
+  materialAccuracy    Int?     // 1 to 5 stars
+  communication       Int?     // 1 to 5 stars
+  deliveryExperience  Int?     // 1 to 5 stars
+  overallSatisfaction Int?     // 1 to 5 stars
+
+  // Anti-abuse & Reporting
+  isReported          Boolean  @default(false)
+  reportReason        String?
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([orderId, reviewerId])
   @@index([revieweeId])
   @@index([reviewerId])
 }
