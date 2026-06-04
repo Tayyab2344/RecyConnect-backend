@@ -34,6 +34,14 @@ describe('Rewards & Gamification Endpoint Tests', () => {
             currentLevel: 'Beginner Recycler',
             dailyStreak: 0,
         });
+        await prisma.reward.create({
+            data: {
+                userId: testUser.id,
+                points: 100,
+                activityType: 'SUCCESSFUL_SALE',
+                rewardType: 'POINTS'
+            }
+        });
         testEmails.push(testUser.email);
         token = generateTestToken(testUser);
     });
