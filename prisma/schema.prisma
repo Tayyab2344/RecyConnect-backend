@@ -210,6 +210,8 @@ model User {
   rewards                   Reward[]            @relation("UserRewards")
   badges                    Badge[]             @relation("UserBadges")
   leaderboard               Leaderboard?        @relation("UserLeaderboard")
+  reviewsGiven              Review[]            @relation("ReviewsGiven")
+  reviewsReceived           Review[]            @relation("ReviewsReceived")
 
   @@index([role])
   @@index([contactNo])
@@ -423,6 +425,9 @@ model Order {
 
   // Payment for this order
   payment Payment?
+
+  // Review for this order
+  review Review?
 
   // Legacy/Financial Tracking Fields
   cogs            Float? // Cost of Goods Sold
@@ -894,5 +899,21 @@ model Leaderboard {
   updatedAt   DateTime @updatedAt
 
   @@index([totalPoints])
+}
+
+model Review {
+  id          Int      @id @default(autoincrement())
+  orderId     Int      @unique
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reviewerId  Int
+  reviewer    User     @relation("ReviewsGiven", fields: [reviewerId], references: [id], onDelete: Cascade)
+  revieweeId  Int
+  reviewee    User     @relation("ReviewsReceived", fields: [revieweeId], references: [id], onDelete: Cascade)
+  rating      Int      // 1 to 5 stars
+  feedback    String?
+  createdAt   DateTime @default(now())
+
+  @@index([revieweeId])
+  @@index([reviewerId])
 }
 

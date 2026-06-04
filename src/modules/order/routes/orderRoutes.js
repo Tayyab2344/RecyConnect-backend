@@ -14,6 +14,7 @@ import {
     exportOrders,
     updateOrderStatus
 } from '../controllers/orderController.js';
+import { submitOrderReview } from '../../rewards/controllers/rewardsController.js';
 
 const router = express.Router();
 
@@ -369,6 +370,7 @@ router.post('/:id/cancel', cancelOrder);
  *         description: Order not found
  */
 router.post('/:id/complete', completeOrder);
+router.post('/:id/review', submitOrderReview);
 
 /**
  * @swagger

@@ -293,6 +293,41 @@ export async function evaluateBadges(userId, currentPoints) {
       await checkAndAward('Green Contributor');
     }
 
+    // --- Warehouse Badge Levels ---
+    const userProfile = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true }
+    });
+
+    if (userProfile && userProfile.role.toLowerCase() === 'warehouse') {
+      if (currentPoints >= 500) {
+        await checkAndAward('Bronze Warehouse');
+      }
+      if (currentPoints >= 2000) {
+        await checkAndAward('Silver Warehouse');
+      }
+      if (currentPoints >= 5000) {
+        await checkAndAward('Gold Warehouse');
+      }
+      if (currentPoints >= 10000) {
+        await checkAndAward('Platinum Warehouse');
+      }
+      if (currentPoints >= 20000) {
+        // Fetch positive review rating percentage
+        const reviews = await prisma.review.findMany({
+          where: { revieweeId: userId },
+          select: { rating: true }
+        });
+        const totalReviews = reviews.length;
+        const positiveReviews = reviews.filter(r => r.rating >= 4).length;
+        const positiveRatingPercent = totalReviews > 0 ? (positiveReviews / totalReviews) * 100 : 100.0;
+        
+        if (positiveRatingPercent >= 95.0) {
+          await checkAndAward('Green Partner Warehouse');
+        }
+      }
+    }
+
   } catch (err) {
     logger.error(`[REWARDS] Failed to evaluate badges: ${err.message}`);
   }

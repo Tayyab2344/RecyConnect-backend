@@ -156,27 +156,59 @@ EventBus.on('order.completed', async (payload) => {
         });
 
         if (order) {
-            const isBulk = order.totalAmount >= 5000 || (order.items?.[0]?.quantity || 0) >= 50;
-            
-            // 1. Award points to Seller (Successful Sale)
-            const sellerRole = (order.seller?.role || 'individual').toLowerCase();
-            let sellerActivity = 'SUCCESSFUL_SALE';
-            if (sellerRole === 'warehouse') {
-                sellerActivity = 'BULK_SALE';
-            } else if (sellerRole === 'company') {
-                sellerActivity = isBulk ? 'LARGE_TRANSACTION' : 'CORPORATE_RECYCLING';
-            }
-            await awardPoints({ userId: order.sellerId, activityType: sellerActivity });
+            // Total weight of the order
+            const totalWeight = order.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
 
-            // 2. Award points to Buyer (Purchase Recyclable)
-            const buyerRole = (order.buyer?.role || 'individual').toLowerCase();
-            let buyerActivity = 'PURCHASE';
-            if (buyerRole === 'warehouse') {
-                buyerActivity = 'BULK_PURCHASE';
-            } else if (buyerRole === 'company') {
-                buyerActivity = 'CORPORATE_RECYCLING';
+            // Helper function to calculate weight points
+            const getWeightPoints = (weight) => {
+                if (weight >= 100) return weight * 2.5;
+                if (weight >= 50) return weight * 2.0;
+                if (weight >= 10) return weight * 2.5;
+                return weight * 2.0;
+            };
+
+            const weightPoints = getWeightPoints(totalWeight);
+
+            // 1. Calculate and award points to Seller (Selling Rewards + Weight Rewards)
+            let sellerPoints = 30; // Base: 30
+            if (order.totalAmount > 20000) {
+                sellerPoints += 25; // Value bonus
+            } else if (order.totalAmount > 5000) {
+                sellerPoints += 10; // Value bonus
             }
-            await awardPoints({ userId: order.buyerId, activityType: buyerActivity });
+            sellerPoints += weightPoints; // Add weight points
+
+            await awardPoints({
+                userId: order.sellerId,
+                activityType: 'SUCCESSFUL_SALE',
+                customPoints: Math.round(sellerPoints),
+            });
+
+            // 2. Calculate and award points to Buyer (Buying Rewards + Weight Rewards)
+            let buyerPoints = 20; // Base: 20
+            // Online Payment Used: +10 pts
+            const isOnlinePayment = order.paymentMethod && order.paymentMethod.toLowerCase() !== 'cod';
+            if (isOnlinePayment) {
+                buyerPoints += 10;
+            }
+            // Repeat Purchase: +10 pts (if has completed other orders)
+            const previousOrdersCount = await prisma.order.count({
+                where: {
+                    buyerId: order.buyerId,
+                    status: 'COMPLETED',
+                    id: { not: order.id }
+                }
+            });
+            if (previousOrdersCount > 0) {
+                buyerPoints += 10;
+            }
+            buyerPoints += weightPoints; // Add weight points
+
+            await awardPoints({
+                userId: order.buyerId,
+                activityType: 'PURCHASE',
+                customPoints: Math.round(buyerPoints),
+            });
 
             // 3. Fast completion check
             if (sellerRole === 'warehouse' || sellerRole === 'company') {

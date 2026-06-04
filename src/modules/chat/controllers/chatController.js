@@ -67,6 +67,7 @@ export async function getConversations(req, res) {
           id: conv.id,
           type: conv.type,
           orderId: conv.orderId,
+          status: conv.status,
           otherParticipant: {
             ...otherParticipant,
             isOnline: await isUserOnline(otherParticipant.id),
@@ -195,6 +196,7 @@ export async function getOrCreateConversation(req, res) {
       id: conversation.id,
       type: conversation.type,
       orderId: conversation.orderId,
+      status: conversation.status,
       otherParticipant: {
         ...otherParticipant,
         isOnline: await isUserOnline(otherParticipant.id),
@@ -245,7 +247,13 @@ export async function getMessages(req, res) {
       data: { isRead: true },
     });
 
-    sendSuccess(res, 'Messages fetched', messages.reverse());
+    const isClosed = conversation.status === 'ARCHIVED';
+    const formattedMessages = messages.reverse().map(msg => ({
+      ...msg,
+      isClosed
+    }));
+
+    sendSuccess(res, 'Messages fetched', formattedMessages);
   } catch (err) {
     sendError(res, 'Failed to fetch messages', err);
   }
@@ -272,6 +280,10 @@ export async function sendMessage(req, res) {
     });
 
     if (!conversation) return sendError(res, 'Conversation not found', null, 404);
+
+    if (conversation.status === 'ARCHIVED') {
+      return sendError(res, 'This chat has been closed because the order has been completed or cancelled.', null, 400);
+    }
 
     const message = await prisma.message.create({
       data: {
@@ -363,6 +375,7 @@ export async function getOrderChats(req, res) {
         return {
           id: conv.id,
           type: conv.type,
+          status: conv.status,
           otherParticipant: {
             ...otherParticipant,
             isOnline: await isUserOnline(otherParticipant.id),

@@ -288,12 +288,12 @@ export async function assignTripToCollector(req, res) {
       where: {
         userId: collectorUserId,
         warehouseId,
-        availabilityStatus: { in: [CollectorAvailability.ONLINE, CollectorAvailability.ON_DUTY] }
+        availabilityStatus: { in: [CollectorAvailability.ONLINE, CollectorAvailability.ON_DUTY, CollectorAvailability.OFFLINE] }
       }
     });
 
     if (!collector) {
-      return sendError(res, "Collector is not online or does not belong to this warehouse", null, 404);
+      return sendError(res, "Collector does not belong to this warehouse or is unavailable", null, 404);
     }
 
     const updatedTrip = await prisma.$transaction(async (tx) => {
@@ -425,12 +425,12 @@ export async function assignOrdersToCollector(req, res) {
       where: {
         userId: collectorUserId,
         warehouseId,
-        availabilityStatus: { in: [CollectorAvailability.ONLINE, CollectorAvailability.ON_DUTY, CollectorAvailability.BUSY] }
+        availabilityStatus: { in: [CollectorAvailability.ONLINE, CollectorAvailability.ON_DUTY, CollectorAvailability.BUSY, CollectorAvailability.OFFLINE] }
       }
     });
 
     if (!collector) {
-      return sendError(res, "Collector is not available or does not belong to this warehouse", null, 404);
+      return sendError(res, "Collector does not belong to this warehouse or is unavailable", null, 404);
     }
 
     // Fetch warehouse details

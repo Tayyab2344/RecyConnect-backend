@@ -458,6 +458,12 @@ export const cancelOrder = async (req, res) => {
           });
         }
 
+        // Archive related conversations when order is cancelled
+        await tx.conversation.updateMany({
+          where: { orderId: order.id },
+          data: { status: "ARCHIVED" },
+        });
+
         return { order: updatedOrder, paymentRefunded };
       },
       { timeout: 30000 },
@@ -580,6 +586,12 @@ export const completeOrder = async (req, res) => {
             reservation: true,
             payment: true,
           },
+        });
+
+        // Archive related conversations when order is completed
+        await tx.conversation.updateMany({
+          where: { orderId: order.id },
+          data: { status: "ARCHIVED" },
         });
 
         return updatedOrder;
@@ -879,6 +891,7 @@ export const getOrderById = async (req, res) => {
           },
         },
         reservation: true,
+        review: true,
       },
     });
 
@@ -1236,10 +1249,64 @@ export const updateOrderStatus = async (req, res) => {
     }
 
     // Update order
-    const updated = await prisma.order.update({
-      where: { id: parseInt(id) },
-      data: { status },
+    const result = await prisma.$transaction(async (tx) => {
+      const updated = await tx.order.update({
+        where: { id: parseInt(id) },
+        data: { status },
+        include: {
+          items: true
+        }
+      });
+
+      if (status === 'COMPLETED') {
+        await tx.conversation.updateMany({
+          where: { orderId: order.id },
+          data: { status: "ARCHIVED" },
+        });
+      } else if (status === 'CANCELLED') {
+        await tx.conversation.updateMany({
+          where: { orderId: order.id },
+          data: { status: "ARCHIVED" },
+        });
+
+        // Restore listing quantity directly from order items
+        if (updated.items && updated.items.length > 0) {
+          for (const item of updated.items) {
+            const currentListing = await tx.listing.findUnique({
+              where: { id: item.listingId },
+            });
+            if (currentListing) {
+              const restoredQty =
+                (currentListing.estimatedWeight ||
+                  currentListing.quantity ||
+                  0) + item.quantity;
+              await tx.listing.update({
+                where: { id: item.listingId },
+                data: {
+                  estimatedWeight: restoredQty,
+                  quantity: restoredQty,
+                  // If listing was SOLD, restore to PUBLISHED
+                  status:
+                    currentListing.status === 'SOLD'
+                      ? 'PUBLISHED'
+                      : currentListing.status,
+                },
+              });
+            }
+          }
+        }
+      }
+
+      return updated;
     });
+
+    if (status === 'COMPLETED') {
+      EventBus.emit("order.completed", {
+        orderId: result.id,
+        buyerId: result.buyerId,
+        sellerId: result.sellerId,
+      });
+    }
 
     await logActivity({
       userId,
@@ -1251,7 +1318,7 @@ export const updateOrderStatus = async (req, res) => {
       req,
     });
 
-    sendSuccess(res, "Order updated successfully", updated);
+    sendSuccess(res, "Order updated successfully", result);
   } catch (error) {
     sendError(res, "Failed to update order", error);
   }
