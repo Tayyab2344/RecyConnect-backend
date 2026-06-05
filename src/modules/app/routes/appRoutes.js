@@ -2,6 +2,7 @@ import express from 'express';
 import { authenticateToken } from '../../../middlewares/authMiddleware.js';
 import { cacheResponse } from '../../../middlewares/cacheMiddleware.js';
 import { syncAppInit, getPublicRates } from '../controllers/appController.js';
+import { chatWithEcoAssist } from '../controllers/ecoAssistController.js';
 
 const router = express.Router();
 
@@ -36,4 +37,30 @@ router.get('/bootstrap', authenticateToken, cacheResponse(30), syncAppInit);
  */
 router.get('/rates', authenticateToken, cacheResponse(300), getPublicRates);
 
+/**
+ * @swagger
+ * /api/app/eco-assist/chat:
+ *   post:
+ *     summary: AI-powered RecyConnect eco companion
+ *     tags: [App]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               message:
+ *                 type: string
+ *               location:
+ *                 type: object
+ *     responses:
+ *       200:
+ *         description: Responded successfully with chat response and navigation intent
+ */
+router.post('/eco-assist/chat', authenticateToken, chatWithEcoAssist);
+
 export default router;
+
