@@ -10,11 +10,13 @@ import { jest } from '@jest/globals';
 // Import routers
 import dispatchRoutes from '../src/modules/warehouse/routes/dispatchRoutes.js';
 import orderRoutes from '../src/modules/order/routes/orderRoutes.js';
+import collectorRoutes from '../src/modules/warehouse/routes/collectorRoutes.js';
 
 const app = express();
 app.use(express.json());
 app.use('/api/dispatch', dispatchRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/collector', collectorRoutes);
 
 function generateToken(user) {
   return jwt.sign(
@@ -151,7 +153,25 @@ describe('Dispatch & Logistics System Integration Tests', () => {
     await prisma.leaderboard.deleteMany({ where: { userId: { in: testUserIds } } });
     await prisma.notification.deleteMany({ where: { userId: { in: testUserIds } } });
     await prisma.message.deleteMany({ where: { senderId: { in: testUserIds } } });
-    await prisma.conversation.deleteMany({ where: { tripId: { not: null } } });
+    await prisma.conversation.deleteMany({
+      where: {
+        OR: [
+          { participant1Id: { in: testUserIds } },
+          { participant2Id: { in: testUserIds } },
+          { tripId: { not: null } }
+        ]
+      }
+    }).catch(() => {});
+
+    // Delete collector records referencing task
+    await prisma.wasteVerification.deleteMany({ where: { task: { warehouseId: warehouseUser.id } } }).catch(() => {});
+    await prisma.collectorDelivery.deleteMany({ where: { task: { warehouseId: warehouseUser.id } } }).catch(() => {});
+    await prisma.collectorEarning.deleteMany({ where: { task: { warehouseId: warehouseUser.id } } }).catch(() => {});
+    await prisma.collectorLocation.deleteMany({ where: { collectorId: collectorUser.id } }).catch(() => {});
+    await prisma.collectorIncident.deleteMany({ where: { collectorId: collectorUser.id } }).catch(() => {});
+    await prisma.inventoryMovement.deleteMany({ where: { performedBy: collectorUser.id } }).catch(() => {});
+    await prisma.warehouseInventory.deleteMany({ where: { warehouseId: warehouseUser.id } }).catch(() => {});
+
     await prisma.collectorTask.deleteMany({ where: { warehouseId: warehouseUser.id } });
     await prisma.trip.deleteMany({ where: { warehouseId: warehouseUser.id } });
     await prisma.collectorProfile.deleteMany({ where: { userId: collectorUser.id } });
@@ -288,6 +308,92 @@ describe('Dispatch & Logistics System Integration Tests', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data.status).toBe('COMPLETED');
+    });
+  });
+
+  describe('Collector Simplified Task Verification Flow', () => {
+    let task;
+
+    it('should retrieve assigned tasks for collector', async () => {
+      const tasks = await prisma.collectorTask.findMany({
+        where: { collectorId: collectorUser.id }
+      });
+      expect(tasks.length).toBeGreaterThan(0);
+      task = tasks[0];
+    });
+
+    it('should accept the task as collector', async () => {
+      const res = await request(app)
+        .post(`/api/collector/tasks/${task.id}/accept`)
+        .set('Authorization', `Bearer ${collectorToken}`);
+
+      if (res.status !== 200) {
+        console.error("ACCEPT_TASK_FAILED_BODY:", res.text);
+      }
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.status).toBe('ACCEPTED');
+    });
+
+    it('should start route to pickup', async () => {
+      const res = await request(app)
+        .patch(`/api/collector/tasks/${task.id}/status`)
+        .set('Authorization', `Bearer ${collectorToken}`)
+        .send({ status: 'EN_ROUTE_TO_PICKUP' });
+
+      if (res.status !== 200) {
+        console.error("EN_ROUTE_FAILED_BODY:", res.text);
+      }
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.status).toBe('EN_ROUTE_TO_PICKUP');
+    });
+
+    it('should mark arrived at pickup', async () => {
+      const res = await request(app)
+        .patch(`/api/collector/tasks/${task.id}/status`)
+        .set('Authorization', `Bearer ${collectorToken}`)
+        .send({ status: 'ARRIVED_AT_SOURCE' });
+
+      if (res.status !== 200) {
+        console.error("ARRIVED_FAILED_BODY:", res.text);
+      }
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.status).toBe('ARRIVED_AT_SOURCE');
+    });
+
+    it('should verify waste and directly complete task/order', async () => {
+      const res = await request(app)
+        .post(`/api/collector/tasks/${task.id}/verify`)
+        .set('Authorization', `Bearer ${collectorToken}`)
+        .send({
+          verifiedWeight: 15.0,
+          verifiedCategory: 'Plastic',
+          verifiedMaterial: 'plastic',
+          notes: 'Verified exactly 15.0 kg of clean PET bottles',
+          status: 'VERIFIED'
+        });
+
+      if (res.status !== 200) {
+        console.error("VERIFY_WASTE_FAILED_BODY:", res.text);
+      }
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.task).toBeDefined();
+      expect(res.body.data.task.status).toBe('COMPLETED');
+
+      // Verify task and order status in DB
+      const dbTask = await prisma.collectorTask.findUnique({
+        where: { id: task.id },
+        include: { order: true, verification: true, delivery: true }
+      });
+      expect(dbTask.status).toBe('COMPLETED');
+      expect(dbTask.order.status).toBe('COMPLETED');
+      expect(dbTask.verification).not.toBeNull();
+      expect(dbTask.verification.verifiedWeight).toBe(15.0);
+      expect(dbTask.delivery).not.toBeNull();
+      expect(dbTask.delivery.status).toBe('DELIVERED');
     });
   });
 });

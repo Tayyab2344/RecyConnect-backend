@@ -88,9 +88,22 @@ describe('Order Controller', () => {
         await prisma.listing.deleteMany({
             where: { userId: { in: [seller.id, buyer.id] } }
         });
+        await prisma.message.deleteMany({
+            where: { OR: [
+                { senderId: { in: [seller.id, buyer.id] } },
+                { conversation: { participant1Id: { in: [seller.id, buyer.id] } } },
+                { conversation: { participant2Id: { in: [seller.id, buyer.id] } } }
+            ] }
+        }).catch(() => {});
+        await prisma.conversation.deleteMany({
+             where: { OR: [
+                 { participant1Id: { in: [seller.id, buyer.id] } },
+                 { participant2Id: { in: [seller.id, buyer.id] } }
+             ] }
+        }).catch(() => {});
         await prisma.notification.deleteMany({
             where: { userId: { in: [seller.id, buyer.id] } }
-        });
+        }).catch(() => {});
         await prisma.user.deleteMany({
             where: { id: { in: [seller.id, buyer.id] } }
         });
