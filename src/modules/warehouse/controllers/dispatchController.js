@@ -146,12 +146,12 @@ export async function optimizeAndClusterRoutes(req, res) {
       where: {
         id: { in: orderIds.map(id => parseId(id)) },
         deliveryMethod: "WAREHOUSE_COLLECTOR_SERVICE",
-        status: { in: ["CONFIRMED", "PENDING", "PROCESSING"] }
+        status: { in: ["CONFIRMED", "PENDING", "PROCESSING", "CREATED"] }
       },
       include: {
         buyer: { select: { id: true, name: true, address: true, latitude: true, longitude: true, contactNo: true, role: true } },
         seller: { select: { id: true, name: true, address: true, latitude: true, longitude: true, contactNo: true, role: true } },
-        items: true
+        items: { include: { listing: true } }
       }
     });
 
@@ -163,17 +163,30 @@ export async function optimizeAndClusterRoutes(req, res) {
     const routeTasks = orders.map(order => {
       // Determine source (where to pick up) and destination (where to deliver)
       const isWarehouseBuyer = order.buyerId === warehouseId;
+      const listing = order.items[0]?.listing;
       const pickupUser = isWarehouseBuyer ? order.seller : warehouseUser;
       const deliverUser = isWarehouseBuyer ? warehouseUser : order.buyer;
+
+      const sourceLatitude = isWarehouseBuyer
+          ? (listing?.latitude || pickupUser.latitude || startCoords.latitude)
+          : (pickupUser.latitude || startCoords.latitude);
+
+      const sourceLongitude = isWarehouseBuyer
+          ? (listing?.longitude || pickupUser.longitude || startCoords.longitude)
+          : (pickupUser.longitude || startCoords.longitude);
+
+      const sourceAddress = isWarehouseBuyer
+          ? (listing?.pickupAddress || pickupUser.address || "Unknown Address")
+          : (pickupUser.address || "Unknown Address");
 
       return {
         id: order.id,
         orderId: order.id,
         taskType: isWarehouseBuyer ? "SELLER_TO_WAREHOUSE" : "WAREHOUSE_TO_BUYER",
         sourceType: isWarehouseBuyer ? order.seller.role : "warehouse",
-        sourceLatitude: pickupUser.latitude || startCoords.latitude,
-        sourceLongitude: pickupUser.longitude || startCoords.longitude,
-        sourceAddress: pickupUser.address || "Unknown Address",
+        sourceLatitude,
+        sourceLongitude,
+        sourceAddress,
         sourceName: pickupUser.name || "Waste Seller",
         sourceContact: pickupUser.contactNo || "",
         destinationType: isWarehouseBuyer ? "warehouse" : order.buyer.role,
@@ -449,7 +462,7 @@ export async function assignOrdersToCollector(req, res) {
       where: {
         id: { in: orderIds.map(id => parseId(id)) },
         deliveryMethod: "WAREHOUSE_COLLECTOR_SERVICE",
-        status: { in: ["CONFIRMED", "PENDING", "PROCESSING"] },
+        status: { in: ["CONFIRMED", "PENDING", "PROCESSING", "CREATED"] },
         OR: [
           { buyerId: warehouseId },
           { sellerId: warehouseId }
@@ -469,16 +482,29 @@ export async function assignOrdersToCollector(req, res) {
     // Map orders to tasks
     const routeTasks = orders.map(order => {
       const isWarehouseBuyer = order.buyerId === warehouseId;
+      const listing = order.items[0]?.listing;
       const pickupUser = isWarehouseBuyer ? order.seller : warehouseUser;
       const deliverUser = isWarehouseBuyer ? warehouseUser : order.buyer;
+
+      const sourceLatitude = isWarehouseBuyer
+          ? (listing?.latitude || pickupUser.latitude || startCoords.latitude)
+          : (pickupUser.latitude || startCoords.latitude);
+
+      const sourceLongitude = isWarehouseBuyer
+          ? (listing?.longitude || pickupUser.longitude || startCoords.longitude)
+          : (pickupUser.longitude || startCoords.longitude);
+
+      const sourceAddress = isWarehouseBuyer
+          ? (listing?.pickupAddress || pickupUser.address || "Unknown Address")
+          : (pickupUser.address || "Unknown Address");
 
       return {
         orderId: order.id,
         taskType: isWarehouseBuyer ? "SELLER_TO_WAREHOUSE" : "WAREHOUSE_TO_BUYER",
         sourceType: isWarehouseBuyer ? order.seller.role : "warehouse",
-        sourceLatitude: pickupUser.latitude || startCoords.latitude,
-        sourceLongitude: pickupUser.longitude || startCoords.longitude,
-        sourceAddress: pickupUser.address || "Unknown Address",
+        sourceLatitude,
+        sourceLongitude,
+        sourceAddress,
         sourceName: pickupUser.name || "Waste Seller",
         sourceContact: pickupUser.contactNo || "",
         destinationType: isWarehouseBuyer ? "warehouse" : order.buyer.role,

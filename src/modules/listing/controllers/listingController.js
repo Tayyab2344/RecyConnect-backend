@@ -40,6 +40,9 @@ export const createListing = async (req, res) => {
     if (parseFloat(estimatedWeight) <= 0) {
       return sendError(res, "Estimated weight must be greater than zero", null, 400);
     }
+    if (!pickupAddress || latitude === undefined || longitude === undefined || latitude === null || longitude === null) {
+      return sendError(res, "Item location (address, latitude, and longitude) is required", null, 400);
+    }
     if (price && parseFloat(price) < 0) {
       return sendError(res, "Price cannot be negative", null, 400);
     }
@@ -98,8 +101,8 @@ export const createListing = async (req, res) => {
         pickupAddress,
         latitude: parseFloat(latitude) || null,
         longitude: parseFloat(longitude) || null,
-        city: req.user.city || null,
-        area: req.user.area || null,
+        city: req.body.city || req.user.city || null,
+        area: req.body.area || req.user.area || null,
         locationMethod: locationMethod || "manual",
         notes: notes || null,
         images: imageUrls,
@@ -201,6 +204,7 @@ export const getListings = async (req, res) => {
             id: true, userId: true, title: true, description: true,
             materialType: true, estimatedWeight: true, price: true, quantity: true,
             pickupAddress: true, images: true, city: true, area: true,
+            latitude: true, longitude: true, metadata: true,
             status: true, createdAt: true, updatedAt: true,
             user: { select: { id: true, name: true, city: true, area: true, role: true, profileImage: true, createdAt: true } },
           },
@@ -237,6 +241,7 @@ export const getListings = async (req, res) => {
           materialType: true, estimatedWeight: true, price: true, quantity: true,
           pickupAddress: true, latitude: true, longitude: true, locationMethod: true,
           notes: true, status: true, createdAt: true, updatedAt: true, images: true,
+          city: true, area: true, metadata: true,
           orderItems: {
             select: {
               quantity: true,
@@ -276,7 +281,7 @@ export const getPublicListings = async (req, res) => {
 
     const where = { status: ListingStatus.PUBLISHED };
     if (materialType) where.materialType = { equals: materialType, mode: "insensitive" };
-    if (city) where.user = { city: { equals: city, mode: "insensitive" } };
+    if (city) where.city = { equals: city, mode: "insensitive" };
     if (minPrice || maxPrice) {
       where.price = {};
       if (minPrice) where.price.gte = parseFloat(minPrice);
@@ -292,7 +297,7 @@ export const getPublicListings = async (req, res) => {
           id: true, userId: true, title: true, description: true,
           materialType: true, estimatedWeight: true, price: true, quantity: true,
           pickupAddress: true, latitude: true, longitude: true, locationMethod: true,
-          notes: true, images: true, city: true, area: true,
+          notes: true, images: true, city: true, area: true, metadata: true,
           status: true, createdAt: true, updatedAt: true,
           user: { select: { id: true, name: true, city: true, area: true, profileImage: true } },
         },
@@ -417,6 +422,9 @@ export const updateListing = async (req, res) => {
 
     if (updateData.estimatedWeight && parseFloat(updateData.estimatedWeight) <= 0) {
       return sendError(res, "Estimated weight must be greater than zero", null, 400);
+    }
+    if (updateData.pickupAddress === "" || updateData.latitude === null || updateData.longitude === null) {
+      return sendError(res, "Item location (address, latitude, and longitude) cannot be empty", null, 400);
     }
     if (updateData.price && parseFloat(updateData.price) < 0) {
       return sendError(res, "Price cannot be negative", null, 400);
