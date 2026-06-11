@@ -22,6 +22,21 @@ import prisma from "../../../lib/prisma.js";
  */
 export async function getDashboardStats(req, res) {
   try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const week = new Date();
+    week.setDate(week.getDate() - 7);
+    week.setHours(0, 0, 0, 0);
+
+    const month = new Date();
+    month.setDate(month.getDate() - 30);
+    month.setHours(0, 0, 0, 0);
+
+    const year = new Date();
+    year.setDate(year.getDate() - 365);
+    year.setHours(0, 0, 0, 0);
+
     const [
       userCount,
       itemCount,
@@ -36,7 +51,11 @@ export async function getDashboardStats(req, res) {
       processedWeight,
       openDisputes,
       suspendedUsers,
-    ] = await prisma.$transaction([
+      dayStats,
+      weekStats,
+      monthStats,
+      yearStats,
+    ] = await Promise.all([
       prisma.user.count(),
       prisma.item.count(),
       prisma.transaction.count(),
@@ -64,6 +83,10 @@ export async function getDashboardStats(req, res) {
       prisma.user.count({
         where: { verificationStatus: VerificationStatus.SUSPENDED },
       }),
+      getOrderAggregation(today),
+      getOrderAggregation(week),
+      getOrderAggregation(month),
+      getOrderAggregation(year),
     ]);
 
     sendSuccess(res, "Dashboard stats fetched", {
@@ -94,10 +117,52 @@ export async function getDashboardStats(req, res) {
         suspendedUsers,
         cancelledOrders: cancelledOrderCount,
       },
+      analytics: {
+        day: dayStats,
+        week: weekStats,
+        month: monthStats,
+        year: yearStats,
+      }
     });
   } catch (err) {
     sendError(res, "Failed to fetch dashboard stats", err);
   }
+}
+
+async function getOrderAggregation(startDate) {
+  const orders = await prisma.order.findMany({
+    where: {
+      status: "COMPLETED",
+      createdAt: { gte: startDate }
+    },
+    include: {
+      items: {
+        include: {
+          listing: true
+        }
+      }
+    }
+  });
+
+  let buyValue = 0;
+  let sellValue = 0;
+  let volume = 0;
+
+  for (const order of orders) {
+    const qty = order.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+    volume += qty;
+    buyValue += order.totalAmount || 0;
+    
+    const pricePerUnit = order.items[0]?.price || 0;
+    const estSellValue = qty * pricePerUnit * 1.3;
+    sellValue += estSellValue;
+  }
+
+  return {
+    buyValue: Math.round(buyValue),
+    sellValue: Math.round(sellValue),
+    volume: Math.round(volume)
+  };
 }
 
 /**
