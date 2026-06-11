@@ -18,6 +18,16 @@ function toFloat(value, fallback = null) {
   return Number.isNaN(parsed) ? fallback : parsed;
 }
 
+function getCoordsFallback(address) {
+  if (address && address.toLowerCase().includes("abbottabad")) {
+    return { latitude: 34.1504, longitude: 73.2078 };
+  }
+  if (address && address.toLowerCase().includes("islamabad")) {
+    return { latitude: 33.6844, longitude: 73.0479 };
+  }
+  return { latitude: 31.4015, longitude: 74.2405 };
+}
+
 /**
  * recommend collectors for a trip based on suitability score:
  * distance, current workload, reliability, and vehicle capacity.
@@ -136,9 +146,10 @@ export async function optimizeAndClusterRoutes(req, res) {
       select: { latitude: true, longitude: true, address: true }
     });
 
+    const wFallback = getCoordsFallback(warehouseUser?.address);
     const startCoords = {
-      latitude: warehouseUser?.latitude || 31.4015,
-      longitude: warehouseUser?.longitude || 74.2405
+      latitude: warehouseUser?.latitude || wFallback.latitude,
+      longitude: warehouseUser?.longitude || wFallback.longitude
     };
 
     // 2. Fetch orders
@@ -167,17 +178,23 @@ export async function optimizeAndClusterRoutes(req, res) {
       const pickupUser = isWarehouseBuyer ? order.seller : warehouseUser;
       const deliverUser = isWarehouseBuyer ? warehouseUser : order.buyer;
 
-      const sourceLatitude = isWarehouseBuyer
-          ? (listing?.latitude || pickupUser.latitude || startCoords.latitude)
-          : (pickupUser.latitude || startCoords.latitude);
-
-      const sourceLongitude = isWarehouseBuyer
-          ? (listing?.longitude || pickupUser.longitude || startCoords.longitude)
-          : (pickupUser.longitude || startCoords.longitude);
-
       const sourceAddress = isWarehouseBuyer
           ? (listing?.pickupAddress || pickupUser.address || "Unknown Address")
           : (pickupUser.address || "Unknown Address");
+
+      const sFallback = getCoordsFallback(sourceAddress);
+      const sourceLatitude = isWarehouseBuyer
+          ? (listing?.latitude || pickupUser.latitude || sFallback.latitude)
+          : (pickupUser.latitude || sFallback.latitude);
+
+      const sourceLongitude = isWarehouseBuyer
+          ? (listing?.longitude || pickupUser.longitude || sFallback.longitude)
+          : (pickupUser.longitude || sFallback.longitude);
+
+      const destAddress = isWarehouseBuyer ? (warehouseUser?.address || "Unknown Destination") : (deliverUser.address || "Unknown Destination");
+      const dFallback = getCoordsFallback(destAddress);
+      const destinationLatitude = deliverUser.latitude || dFallback.latitude;
+      const destinationLongitude = deliverUser.longitude || dFallback.longitude;
 
       return {
         id: order.id,
@@ -190,9 +207,9 @@ export async function optimizeAndClusterRoutes(req, res) {
         sourceName: pickupUser.name || "Waste Seller",
         sourceContact: pickupUser.contactNo || "",
         destinationType: isWarehouseBuyer ? "warehouse" : order.buyer.role,
-        destinationLatitude: deliverUser.latitude || startCoords.latitude,
-        destinationLongitude: deliverUser.longitude || startCoords.longitude,
-        destinationAddress: deliverUser.address || "Unknown Destination",
+        destinationLatitude,
+        destinationLongitude,
+        destinationAddress: destAddress,
         destinationName: deliverUser.name || "Waste Buyer",
         destinationContact: deliverUser.contactNo || "",
         estimatedWeight: order.items.reduce((sum, item) => sum + (item.quantity || 0), 0),
@@ -452,9 +469,10 @@ export async function assignOrdersToCollector(req, res) {
       select: { name: true, address: true, latitude: true, longitude: true, contactNo: true }
     });
 
+    const wFallback = getCoordsFallback(warehouseUser?.address);
     const startCoords = {
-      latitude: warehouseUser?.latitude || 31.4015,
-      longitude: warehouseUser?.longitude || 74.2405
+      latitude: warehouseUser?.latitude || wFallback.latitude,
+      longitude: warehouseUser?.longitude || wFallback.longitude
     };
 
     // Fetch orders to assign
@@ -486,17 +504,23 @@ export async function assignOrdersToCollector(req, res) {
       const pickupUser = isWarehouseBuyer ? order.seller : warehouseUser;
       const deliverUser = isWarehouseBuyer ? warehouseUser : order.buyer;
 
-      const sourceLatitude = isWarehouseBuyer
-          ? (listing?.latitude || pickupUser.latitude || startCoords.latitude)
-          : (pickupUser.latitude || startCoords.latitude);
-
-      const sourceLongitude = isWarehouseBuyer
-          ? (listing?.longitude || pickupUser.longitude || startCoords.longitude)
-          : (pickupUser.longitude || startCoords.longitude);
-
       const sourceAddress = isWarehouseBuyer
           ? (listing?.pickupAddress || pickupUser.address || "Unknown Address")
           : (pickupUser.address || "Unknown Address");
+
+      const sFallback = getCoordsFallback(sourceAddress);
+      const sourceLatitude = isWarehouseBuyer
+          ? (listing?.latitude || pickupUser.latitude || sFallback.latitude)
+          : (pickupUser.latitude || sFallback.latitude);
+
+      const sourceLongitude = isWarehouseBuyer
+          ? (listing?.longitude || pickupUser.longitude || sFallback.longitude)
+          : (pickupUser.longitude || sFallback.longitude);
+
+      const destAddress = isWarehouseBuyer ? (warehouseUser?.address || "Unknown Destination") : (deliverUser.address || "Unknown Destination");
+      const dFallback = getCoordsFallback(destAddress);
+      const destinationLatitude = deliverUser.latitude || dFallback.latitude;
+      const destinationLongitude = deliverUser.longitude || dFallback.longitude;
 
       return {
         orderId: order.id,
@@ -508,9 +532,9 @@ export async function assignOrdersToCollector(req, res) {
         sourceName: pickupUser.name || "Waste Seller",
         sourceContact: pickupUser.contactNo || "",
         destinationType: isWarehouseBuyer ? "warehouse" : order.buyer.role,
-        destinationLatitude: deliverUser.latitude || startCoords.latitude,
-        destinationLongitude: deliverUser.longitude || startCoords.longitude,
-        destinationAddress: deliverUser.address || "Unknown Destination",
+        destinationLatitude,
+        destinationLongitude,
+        destinationAddress: destAddress,
         destinationName: deliverUser.name || "Waste Buyer",
         destinationContact: deliverUser.contactNo || "",
         estimatedWeight: order.items.reduce((sum, item) => sum + (item.quantity || 0), 0),
