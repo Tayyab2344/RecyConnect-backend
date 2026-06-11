@@ -491,6 +491,7 @@ async function addSystemMessageToOrderChats(orderId, senderId, content) {
 }
 
 export async function acceptCollectorTask(req, res) {
+  req.body = req.body || {};
   req.body.status = CollectorTaskStatus.ACCEPTED;
   return updateCollectorTaskStatus(req, res);
 }
@@ -691,7 +692,10 @@ export async function verifyWasteForTask(req, res) {
   try {
     const taskId = parseId(req.params.id);
     const { verifiedWeight, verifiedCategory, verifiedMaterial, proofImages, notes, status } = req.body;
-    const task = await prisma.collectorTask.findFirst({ where: { id: taskId, collectorId: req.user.id } });
+    const task = await prisma.collectorTask.findFirst({
+      where: { id: taskId, collectorId: req.user.id },
+      include: { order: true }
+    });
     if (!task) return sendError(res, "Task not found", null, 404);
 
     const actualWeight = toFloat(verifiedWeight);
@@ -722,7 +726,7 @@ export async function verifyWasteForTask(req, res) {
     const priceAfter = task.pricePerUnit ? task.pricePerUnit * actualWeight : null;
     const weightDifference = actualWeight - task.estimatedWeight;
 
-    const [verification, updatedTask] = await prisma.$transaction([
+    const txnOps = [
       prisma.wasteVerification.upsert({
         where: { taskId },
         update: {
@@ -753,24 +757,191 @@ export async function verifyWasteForTask(req, res) {
           priceAfter,
           verifiedById: req.user.id,
         },
-      }),
-      prisma.collectorTask.update({
-        where: { id: taskId },
-        data: {
-          status: verificationStatus === WasteVerificationStatus.REJECTED ? CollectorTaskStatus.REJECTED : CollectorTaskStatus.VERIFIED,
-          materialCategory: verifiedCategory || task.materialCategory,
-          materialType: verifiedMaterial || task.materialType,
-          finalValue: priceAfter,
-        },
-        include: getTaskInclude(),
-      }),
-    ]);
+      })
+    ];
 
-    if (task.orderId) {
-      const msg = verificationStatus === WasteVerificationStatus.REJECTED
-        ? `Collector has rejected the waste verification for your order. Reason: ${notes || "None specified"}`
-        : `Collector has verified the waste for your order. Verified Weight: ${actualWeight} kg.`;
-      await addSystemMessageToOrderChats(task.orderId, req.user.id, msg);
+    if (verificationStatus === WasteVerificationStatus.VERIFIED) {
+      // Direct completion transitions
+      txnOps.push(
+        prisma.collectorTask.update({
+          where: { id: taskId },
+          data: {
+            status: CollectorTaskStatus.COMPLETED,
+            completedAt: new Date(),
+            materialCategory: verifiedCategory || task.materialCategory,
+            materialType: verifiedMaterial || task.materialType,
+            finalValue: priceAfter,
+          },
+          include: getTaskInclude(),
+        }),
+        prisma.collectorProfile.updateMany({
+          where: { userId: req.user.id },
+          data: {
+            availabilityStatus: CollectorAvailability.ON_DUTY,
+            completedTasks: { increment: 1 },
+            totalCollectedKg: { increment: actualWeight || 0 },
+            lastActiveAt: new Date(),
+          },
+        }),
+        prisma.collectorEarning.upsert({
+          where: { taskId },
+          update: { amount: 50 + (actualWeight * 10) + (toFloat(req.body.distance, 0) * 15), distance: toFloat(req.body.distance, 0) },
+          create: {
+            taskId,
+            collectorId: req.user.id,
+            amount: 50 + (actualWeight * 10) + (toFloat(req.body.distance, 0) * 15),
+            distance: toFloat(req.body.distance, 0),
+          },
+        }),
+        prisma.collectorDelivery.upsert({
+          where: { taskId },
+          update: {
+            status: 'DELIVERED',
+            receiverName: task.destinationName || 'Buyer',
+            receiverContact: task.destinationContact || '',
+            receiverConfirmation: 'CONFIRMED_BY_COLLECTOR',
+            receivedWeight: actualWeight,
+            packageCondition: 'Good',
+            proofImages: allProofImages,
+            notes: notes,
+            deliveredById: req.user.id,
+            deliveredAt: new Date(),
+          },
+          create: {
+            taskId,
+            status: 'DELIVERED',
+            receiverName: task.destinationName || 'Buyer',
+            receiverContact: task.destinationContact || '',
+            receiverConfirmation: 'CONFIRMED_BY_COLLECTOR',
+            receivedWeight: actualWeight,
+            packageCondition: 'Good',
+            proofImages: allProofImages,
+            notes: notes,
+            deliveredById: req.user.id,
+          },
+        })
+      );
+
+      if (task.orderId) {
+        txnOps.push(
+          prisma.order.update({
+            where: { id: task.orderId },
+            data: { status: "COMPLETED" },
+          })
+        );
+      }
+
+      // Warehouse Inventory side effects
+      const materialType = verifiedCategory || task.materialCategory;
+      const existingInventory = await prisma.warehouseInventory.findFirst({
+        where: { warehouseId: task.warehouseId, materialType },
+      });
+
+      if (existingInventory) {
+        txnOps.push(
+          prisma.warehouseInventory.update({
+            where: { id: existingInventory.id },
+            data: { quantityInStock: { increment: actualWeight } },
+          }),
+          prisma.inventoryMovement.create({
+            data: {
+              inventoryId: existingInventory.id,
+              type: "INFLOW",
+              quantity: actualWeight,
+              reference: `Task #${taskId} delivery`,
+              notes: `Collector delivery - ${materialType}`,
+              performedBy: req.user.id,
+            },
+          })
+        );
+      } else {
+        txnOps.push(
+          prisma.warehouseInventory.create({
+            data: {
+              warehouseId: task.warehouseId,
+              materialType,
+              category: task.materialType || materialType,
+              quantityInStock: actualWeight,
+              purchasePrice: task.pricePerUnit || 0,
+              sellingPrice: task.pricePerUnit ? task.pricePerUnit * 1.3 : 0,
+              supplierId: task.sourceUserId,
+              notes: `Auto-created from Task #${taskId}`,
+            },
+          })
+        );
+      }
+    } else {
+      // Rejection flow
+      txnOps.push(
+        prisma.collectorTask.update({
+          where: { id: taskId },
+          data: {
+            status: CollectorTaskStatus.REJECTED,
+            completedAt: null,
+            cancellationReason: notes,
+          },
+          include: getTaskInclude(),
+        })
+      );
+    }
+
+    const results = await prisma.$transaction(txnOps);
+    const verification = results[0];
+    const updatedTask = results[1];
+
+    if (verificationStatus === WasteVerificationStatus.VERIFIED) {
+      if (task.orderId) {
+        const msg = `Collector has verified and completed the delivery. Verified Weight: ${actualWeight} kg.`;
+        await addSystemMessageToOrderChats(task.orderId, req.user.id, msg);
+
+        // Emit the EventBus order.completed event
+        EventBus.emit("order.completed", {
+          orderId: task.orderId,
+          buyerId: task.order?.buyerId || task.sourceUserId,
+          sellerId: task.order?.sellerId || task.destinationUserId,
+        });
+
+        // Broadcast socket status update to warehouse
+        const io = getIO();
+        if (io) {
+          io.to(`warehouse:${task.warehouseId}`).emit("order:status_updated", {
+            orderId: task.orderId,
+            status: "COMPLETED"
+          });
+        }
+      }
+
+      // Fire push notifications
+      try {
+        const { createAndSendNotification } = await import("../../../services/notificationService.js");
+        await createAndSendNotification({
+          userId: task.warehouseId,
+          title: "Delivery Completed",
+          message: `Delivery for task #${task.id} (Order #${task.orderId}) has been successfully completed.`,
+          type: "DELIVERY_COMPLETE",
+          priority: "HIGH"
+        });
+
+        if (task.orderId) {
+          const counterpartId = task.warehouseId === task.order?.buyerId ? task.order?.sellerId : task.order?.buyerId;
+          if (counterpartId) {
+            await createAndSendNotification({
+              userId: counterpartId,
+              title: "Order Delivered",
+              message: `Your order #${task.orderId} has been delivered successfully.`,
+              type: "ORDER_DELIVERED",
+              priority: "HIGH"
+            });
+          }
+        }
+      } catch (notifErr) {
+        console.error("FCM notify failed inside verifyWasteForTask:", notifErr.message);
+      }
+    } else {
+      if (task.orderId) {
+        const msg = `Collector has rejected the waste verification for your order. Reason: ${notes || "None specified"}`;
+        await addSystemMessageToOrderChats(task.orderId, req.user.id, msg);
+      }
     }
 
     // Warn on significant weight discrepancy (>20%)

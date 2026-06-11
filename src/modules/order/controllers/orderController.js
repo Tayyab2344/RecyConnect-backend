@@ -760,6 +760,13 @@ export const getBuyerOrders = async (req, res) => {
           },
         },
         reservation: { select: { id: true, status: true, expiresAt: true } },
+        collectorTasks: {
+          include: {
+            collector: { select: { id: true, name: true, contactNo: true } },
+            verification: true,
+            delivery: true,
+          }
+        },
       },
       orderBy: { createdAt: "desc" },
       skip,
@@ -848,6 +855,13 @@ export const getSellerOrders = async (req, res) => {
           },
         },
         reservation: { select: { id: true, status: true, expiresAt: true } },
+        collectorTasks: {
+          include: {
+            collector: { select: { id: true, name: true, contactNo: true } },
+            verification: true,
+            delivery: true,
+          }
+        },
       },
       orderBy: { createdAt: "desc" },
       skip,
@@ -892,6 +906,13 @@ export const getOrderById = async (req, res) => {
         },
         reservation: true,
         reviews: true,
+        collectorTasks: {
+          include: {
+            collector: { select: { id: true, name: true, contactNo: true } },
+            verification: true,
+            delivery: true,
+          }
+        },
       },
     });
 
@@ -1036,6 +1057,13 @@ export const getOrders = async (req, res) => {
           },
         },
         reservation: { select: { id: true, status: true, expiresAt: true } },
+        collectorTasks: {
+          include: {
+            collector: { select: { id: true, name: true, contactNo: true } },
+            verification: true,
+            delivery: true,
+          }
+        },
       },
       orderBy: { createdAt: "desc" },
       skip,
