@@ -992,7 +992,8 @@ export async function confirmDeliveryForTask(req, res) {
     });
     if (!task) return sendError(res, "Task not found", null, 404);
 
-    // OTP verification: if task has an OTP code, validate it
+    // OTP verification: deactivated per request (collectors can confirm by matching details and taking photo proof)
+    /*
     if (task.otpCode && status === CollectorDeliveryStatus.DELIVERED) {
       if (!otpCode) {
         return sendError(res, "Delivery PIN (OTP) is required for confirmation", null, 400);
@@ -1001,6 +1002,7 @@ export async function confirmDeliveryForTask(req, res) {
         return sendError(res, "Invalid delivery PIN. Please check with the receiver.", null, 400);
       }
     }
+    */
 
     // Upload proof images from multer files to Cloudinary
     const uploadedImages = [];
