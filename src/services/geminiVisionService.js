@@ -1,26 +1,12 @@
+import { GoogleGenAI, Type } from '@google/genai';
 import { logger } from '../utils/logger.js';
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
-const GEMINI_TIMEOUT = 8000; // 8 seconds
+// Initialize the client. It automatically picks up the GEMINI_API_KEY environment variable.
+const ai = new GoogleGenAI({});
+const GEMINI_MODEL = 'gemini-2.5-flash';
 
 /**
- * Prompt for Gemini — same classification schema as Groq for consistency.
- */
-const CLASSIFICATION_PROMPT = `You are an AI recyclable material classifier for RecyConnect, a waste management platform.
-Analyze this image and classify the recyclable material shown.
-
-Respond with ONLY a valid JSON object (no markdown, no code fences), using this exact structure:
-{
-  "materialType": "one of: plastic, paper, metal, ewaste, glass, organic, textile, rubber, wood, mixed",
-  "category": "specific sub-category (e.g., PET bottles, cardboard, copper wire, circuit boards)",
-  "condition": "one of: good, fair, poor, contaminated",
-  "confidence": 0.0 to 1.0,
-  "description": "brief 1-line description of what you see",
-  "isRecyclable": true or false
-}`;
-
-/**
- * Classify an image using Google Gemini Vision API.
+ * Classify an image using Google Gemini Vision API via the official Gen AI SDK.
  * @param {string|null} imageUrl - Public URL of the image (will be fetched and converted to base64)
  * @param {string|null} imageBase64 - Base64 encoded image (without data URI prefix)
  * @returns {Promise<object|null>} Classification result or null on failure
@@ -52,52 +38,55 @@ export async function classifyWithGemini(imageUrl, imageBase64 = null) {
     // Strip data URI prefix if present
     const cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
 
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
-
-    const payload = {
+    // Call the Gemini 2.5 Flash Model using the official SDK
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
       contents: [
         {
-          parts: [
-            {
-              inlineData: {
-                mimeType: 'image/jpeg',
-                data: cleanBase64
-              }
-            },
-            {
-              text: CLASSIFICATION_PROMPT
-            }
-          ]
-        }
+          inlineData: {
+            data: cleanBase64,
+            mimeType: 'image/jpeg'
+          }
+        },
+        "Analyze this image and classify the recyclable material shown."
       ],
-      generationConfig: {
-        temperature: 0.1,
-        maxOutputTokens: 512,
-        responseMimeType: 'application/json'
+      config: {
+        systemInstruction: "You are a precise computer vision system for RecyConnect, a waste management platform. Your sole task is to classify the uploaded image of recyclable material accurately. Do not apologize, do not write prose, and only return the structured JSON data requested.",
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            materialType: { 
+              type: Type.STRING, 
+              description: "The general type of recyclable material. Must be one of: plastic, paper, metal, ewaste, glass, organic, textile, rubber, wood, mixed." 
+            },
+            category: { 
+              type: Type.STRING, 
+              description: "The specific sub-category of the item (e.g., PET bottle, cardboard box, copper wire)." 
+            },
+            condition: { 
+              type: Type.STRING, 
+              description: "The visual condition of the material. Must be one of: good, fair, poor, contaminated." 
+            },
+            confidence: { 
+              type: Type.NUMBER, 
+              description: "A confidence score between 0.00 and 1.00." 
+            },
+            description: { 
+              type: Type.STRING, 
+              description: "A short 1-line description of the object or items seen." 
+            },
+            isRecyclable: { 
+              type: Type.BOOLEAN, 
+              description: "Whether the material is recyclable." 
+            }
+          },
+          required: ["materialType", "category", "condition", "confidence", "description", "isRecyclable"],
+        },
       }
-    };
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT);
-
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal
     });
 
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      logger.error(`Gemini API error ${response.status}: ${errorBody}`);
-      return null;
-    }
-
-    const data = await response.json();
-    const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
+    const content = response.text;
     if (!content) {
       logger.warn('Gemini: Empty response content');
       return null;
@@ -112,11 +101,7 @@ export async function classifyWithGemini(imageUrl, imageBase64 = null) {
     return result;
 
   } catch (err) {
-    if (err.name === 'AbortError') {
-      logger.warn('Gemini: Request timed out after 8s');
-    } else {
-      logger.error(`Gemini classification error: ${err.message}`);
-    }
+    logger.error(`Gemini classification error: ${err.message}`);
     return null;
   }
 }
