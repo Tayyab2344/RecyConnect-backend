@@ -51,18 +51,34 @@ export async function classifyWithGemini(imageUrl, imageBase64 = null) {
         "Analyze this image and classify the recyclable material shown."
       ],
       config: {
-        systemInstruction: "You are a precise computer vision system for RecyConnect, a waste management platform. Your sole task is to classify the uploaded image of recyclable material accurately. Do not apologize, do not write prose, and only return the structured JSON data requested.",
+        systemInstruction: "You are a precise computer vision system for RecyConnect, a waste management platform. Analyze the uploaded image. We only support 4 recyclable waste categories: plastic, paper, metal, and ewaste (electronic waste). If the image shows any other item (like furniture, cushions, food, clothing, animals, humans, scenery, or any fake/unsupported picture), set isValidRecyclable to false and provide a validationMessage. Otherwise, set isValidRecyclable to true, determine the materialType, category, generate a user-friendly title and description for the listing. Do not apologize, do not write prose, and only return the structured JSON data requested.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
+            isValidRecyclable: {
+              type: Type.BOOLEAN,
+              description: "True if the item in the image is a valid recyclable waste material belonging to one of these 4 supported categories: plastic, paper, metal, ewaste. False if the image is of something else (e.g. food, furniture like a cushion or mattress, a pet, scenery, clothing, humans, random non-waste item, or a fake/unsupported picture)."
+            },
+            validationMessage: {
+              type: Type.STRING,
+              description: "If isValidRecyclable is false, provide a friendly message explaining what was detected and that RecyConnect only supports Plastic, Paper, Metal, and E-Waste (e.g., 'This item appears to be a cushion/furniture, which is not supported. Please upload plastic, paper, metal, or e-waste.'). If isValidRecyclable is true, this can be empty."
+            },
             materialType: { 
               type: Type.STRING, 
-              description: "The general type of recyclable material. Must be one of: plastic, paper, metal, ewaste, glass, organic, textile, rubber, wood, mixed." 
+              description: "The general type of recyclable material if valid. Must be one of: plastic, paper, metal, ewaste. If invalid, return 'unsupported'." 
             },
             category: { 
               type: Type.STRING, 
-              description: "The specific sub-category of the item (e.g., PET bottle, cardboard box, copper wire)." 
+              description: "The specific sub-category of the item if valid (e.g., PET bottle, cardboard box, copper wire, laptop). If invalid, return 'unsupported'." 
+            },
+            title: {
+              type: Type.STRING,
+              description: "A recommended short title for a listing if valid (e.g., 'PET Plastic Bottles', 'Old Laptop', 'Used Cardboard Boxes'). If invalid, return 'Unsupported Item'."
+            },
+            description: {
+              type: Type.STRING,
+              description: "A recommended description for the listing if valid (e.g., 'Clean PET plastic water bottles ready for recycling. Approx weight is specified.'). If invalid, return 'This item is not supported by RecyConnect.'"
             },
             condition: { 
               type: Type.STRING, 
@@ -72,16 +88,12 @@ export async function classifyWithGemini(imageUrl, imageBase64 = null) {
               type: Type.NUMBER, 
               description: "A confidence score between 0.00 and 1.00." 
             },
-            description: { 
-              type: Type.STRING, 
-              description: "A short 1-line description of the object or items seen." 
-            },
             isRecyclable: { 
               type: Type.BOOLEAN, 
               description: "Whether the material is recyclable." 
             }
           },
-          required: ["materialType", "category", "condition", "confidence", "description", "isRecyclable"],
+          required: ["isValidRecyclable", "validationMessage", "materialType", "category", "title", "description", "condition", "confidence", "isRecyclable"],
         },
       }
     });
@@ -160,27 +172,25 @@ function parseGeminiResponse(content) {
  * Validate and normalize classification result.
  */
 function validateResult(parsed) {
-  const validMaterials = [
-    'plastic', 'paper', 'metal', 'ewaste', 'e-waste',
-    'glass', 'organic', 'textile', 'rubber', 'wood', 'mixed'
-  ];
+  const validMaterials = ['plastic', 'paper', 'metal', 'ewaste', 'e-waste', 'unsupported'];
 
   if (parsed.materialType === 'e-waste') {
     parsed.materialType = 'ewaste';
   }
 
-  if (!parsed.materialType || !validMaterials.includes(parsed.materialType.toLowerCase())) {
-    return null;
-  }
+  const mat = parsed.materialType ? parsed.materialType.toLowerCase() : 'unsupported';
 
   return {
-    materialType: parsed.materialType.toLowerCase(),
-    category: parsed.category || parsed.materialType,
+    isValidRecyclable: parsed.isValidRecyclable !== false,
+    validationMessage: parsed.validationMessage || '',
+    materialType: validMaterials.includes(mat) ? mat : 'unsupported',
+    category: parsed.category || 'unsupported',
+    title: parsed.title || 'Unsupported Item',
+    description: parsed.description || 'This item is not supported by RecyConnect.',
     condition: parsed.condition || 'fair',
     confidence: typeof parsed.confidence === 'number'
       ? Math.min(1, Math.max(0, parsed.confidence))
       : 0.5,
-    description: parsed.description || '',
     isRecyclable: parsed.isRecyclable !== false,
     source: 'gemini'
   };

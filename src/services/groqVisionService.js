@@ -8,15 +8,18 @@ const GROQ_TIMEOUT = 5000; // 5 seconds
  * System prompt tailored for RecyConnect recyclable material classification.
  */
 const SYSTEM_PROMPT = `You are an AI recyclable material classifier for RecyConnect, a waste management platform in Pakistan.
-Analyze the image and classify the recyclable material shown.
+Analyze the image. We only support 4 categories of recyclable materials: plastic, paper, metal, and ewaste. If the image shows an unsupported item (like a cushion, furniture, food, animal, clothing, person, scenery, or any fake/unsupported picture), flag it as invalid.
 
 You MUST respond with ONLY a valid JSON object (no markdown, no code fences, no explanation), using this exact structure:
 {
-  "materialType": "one of: plastic, paper, metal, ewaste, glass, organic, textile, rubber, wood, mixed",
-  "category": "specific sub-category (e.g., PET bottles, cardboard, copper wire, circuit boards)",
+  "isValidRecyclable": true or false,
+  "validationMessage": "If isValidRecyclable is false, explain why (e.g. 'Cushion is not a supported recyclable material. RecyConnect only accepts plastic, paper, metal, and e-waste.'). Otherwise empty string.",
+  "materialType": "one of: plastic, paper, metal, ewaste (or 'unsupported' if invalid)",
+  "category": "specific sub-category if valid, or 'unsupported' if invalid",
+  "title": "a recommended user-friendly listing title if valid, or 'Unsupported Item' if invalid",
+  "description": "a recommended user-friendly description if valid, or 'This item is not supported' if invalid",
   "condition": "one of: good, fair, poor, contaminated",
   "confidence": 0.0 to 1.0,
-  "description": "brief 1-line description of what you see",
   "isRecyclable": true or false
 }`;
 
@@ -164,28 +167,26 @@ function parseClassificationJSON(content) {
  * Validate and normalize the classification result.
  */
 function validateClassificationResult(parsed) {
-  const validMaterials = [
-    'plastic', 'paper', 'metal', 'ewaste', 'e-waste',
-    'glass', 'organic', 'textile', 'rubber', 'wood', 'mixed'
-  ];
+  const validMaterials = ['plastic', 'paper', 'metal', 'ewaste', 'e-waste', 'unsupported'];
 
   // Normalize e-waste
   if (parsed.materialType === 'e-waste') {
     parsed.materialType = 'ewaste';
   }
 
-  if (!parsed.materialType || !validMaterials.includes(parsed.materialType.toLowerCase())) {
-    return null;
-  }
+  const mat = parsed.materialType ? parsed.materialType.toLowerCase() : 'unsupported';
 
   return {
-    materialType: parsed.materialType.toLowerCase(),
-    category: parsed.category || parsed.materialType,
+    isValidRecyclable: parsed.isValidRecyclable !== false,
+    validationMessage: parsed.validationMessage || '',
+    materialType: validMaterials.includes(mat) ? mat : 'unsupported',
+    category: parsed.category || 'unsupported',
+    title: parsed.title || 'Unsupported Item',
+    description: parsed.description || 'This item is not supported by RecyConnect.',
     condition: parsed.condition || 'fair',
     confidence: typeof parsed.confidence === 'number'
       ? Math.min(1, Math.max(0, parsed.confidence))
       : 0.5,
-    description: parsed.description || '',
     isRecyclable: parsed.isRecyclable !== false,
     source: 'groq'
   };
