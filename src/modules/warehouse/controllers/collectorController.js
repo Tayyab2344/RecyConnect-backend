@@ -58,10 +58,35 @@ function getTaskInclude() {
   return {
     collector: { select: { id: true, name: true, collectorId: true, contactNo: true, profileImage: true } },
     warehouse: { select: { id: true, name: true, businessName: true, contactNo: true, address: true } },
-    sourceUser: { select: { id: true, name: true, businessName: true, companyName: true, contactNo: true, address: true } },
-    destinationUser: { select: { id: true, name: true, businessName: true, companyName: true, contactNo: true, address: true } },
+    sourceUser: { select: { id: true, name: true, businessName: true, companyName: true, contactNo: true, address: true, city: true, area: true, latitude: true, longitude: true } },
+    destinationUser: { select: { id: true, name: true, businessName: true, companyName: true, contactNo: true, address: true, city: true, area: true, latitude: true, longitude: true } },
     verification: true,
     delivery: true,
+  };
+}
+
+function formatTaskWithSellerBuyer(task) {
+  if (!task) return null;
+  const seller = {
+    lat: task.sourceLatitude || task.sourceUser?.latitude || 34.1504,
+    lng: task.sourceLongitude || task.sourceUser?.longitude || 73.2078,
+    name: task.sourceName || task.sourceUser?.name || task.sourceUser?.businessName || "Seller",
+    area: task.sourceUser?.area || "Area",
+    street: task.sourceAddress || task.sourceUser?.address || "Street Address",
+  };
+
+  const buyer = {
+    lat: task.destinationLatitude || task.destinationUser?.latitude || 34.1504,
+    lng: task.destinationLongitude || task.destinationUser?.longitude || 73.2078,
+    name: task.destinationName || task.destinationUser?.name || task.destinationUser?.businessName || "Buyer",
+    area: task.destinationUser?.area || "Area",
+    street: task.destinationAddress || task.destinationUser?.address || "Street Address",
+  };
+
+  return {
+    ...task,
+    seller,
+    buyer,
   };
 }
 
@@ -200,7 +225,7 @@ export async function assignCollectorTask(req, res) {
       req,
     });
 
-    sendSuccess(res, "Collector task assigned successfully", task, 201);
+    sendSuccess(res, "Collector task assigned successfully", formatTaskWithSellerBuyer(task), 201);
   } catch (err) {
     sendError(res, "Failed to assign collector task", err);
   }
@@ -228,7 +253,7 @@ export async function getWarehouseCollectorTasks(req, res) {
       }),
     ]);
 
-    sendPaginated(res, tasks, totalCount, pageNum, limitNum);
+    sendPaginated(res, tasks.map(formatTaskWithSellerBuyer), totalCount, pageNum, limitNum);
   } catch (err) {
     sendError(res, "Failed to fetch collector tasks", err);
   }
@@ -391,7 +416,7 @@ export async function getCollectorDashboard(req, res) {
 
     sendSuccess(res, "Collector dashboard fetched successfully", {
       profile,
-      activeTasks,
+      activeTasks: activeTasks.map(formatTaskWithSellerBuyer),
       pendingPickups,
       completedToday,
       currentRoute: activeTasks[0]?.routeInfo || null,
@@ -434,7 +459,7 @@ export async function getCollectorTasks(req, res) {
       }),
     ]);
 
-    sendPaginated(res, tasks, totalCount, pageNum, limitNum);
+    sendPaginated(res, tasks.map(formatTaskWithSellerBuyer), totalCount, pageNum, limitNum);
   } catch (err) {
     sendError(res, "Failed to fetch collector tasks", err);
   }
@@ -446,7 +471,7 @@ export async function getCollectorTaskDetails(req, res) {
     const task = await getCollectorTaskForUser(taskId, req.user);
     if (!task) return sendError(res, "Task not found", null, 404);
 
-    sendSuccess(res, "Collector task fetched successfully", task);
+    sendSuccess(res, "Collector task fetched successfully", formatTaskWithSellerBuyer(task));
   } catch (err) {
     sendError(res, "Failed to fetch collector task", err);
   }
@@ -609,7 +634,7 @@ export async function updateCollectorTaskStatus(req, res) {
       req,
     });
 
-    sendSuccess(res, "Task status updated successfully", task);
+    sendSuccess(res, "Task status updated successfully", formatTaskWithSellerBuyer(task));
   } catch (err) {
     sendError(res, "Failed to update task status", err);
   }
@@ -960,7 +985,7 @@ export async function verifyWasteForTask(req, res) {
       req,
     });
 
-    sendSuccess(res, "Waste verification completed successfully", { verification, task: updatedTask, warning });
+    sendSuccess(res, "Waste verification completed successfully", { verification, task: formatTaskWithSellerBuyer(updatedTask), warning });
   } catch (err) {
     sendError(res, "Failed to verify waste", err);
   }
@@ -1205,7 +1230,7 @@ export async function confirmDeliveryForTask(req, res) {
       await addSystemMessageToOrderChats(task.orderId, req.user.id, msg);
     }
 
-    sendSuccess(res, "Delivery confirmation saved successfully", { delivery, task: updatedTask });
+    sendSuccess(res, "Delivery confirmation saved successfully", { delivery, task: formatTaskWithSellerBuyer(updatedTask) });
   } catch (err) {
     sendError(res, "Failed to confirm delivery", err);
   }
@@ -1481,5 +1506,239 @@ export async function getNearestCollectors(req, res) {
     });
   } catch (err) {
     sendError(res, "Failed to locate nearest collector", err);
+  }
+}
+
+export async function markTaskAsCollected(req, res) {
+  try {
+    const taskId = parseId(req.params.id);
+    const existing = await prisma.collectorTask.findFirst({ where: { id: taskId, collectorId: req.user.id } });
+    if (!existing) return sendError(res, "Task not found", null, 404);
+    if (terminalStatuses.includes(existing.status)) {
+      return sendError(res, "Completed, cancelled or rejected tasks cannot be updated", null, 400);
+    }
+
+    const task = await prisma.collectorTask.update({
+      where: { id: taskId },
+      data: {
+        status: CollectorTaskStatus.PICKED_UP,
+        pickedUpAt: new Date(),
+      },
+      include: getTaskInclude(),
+    });
+
+    if (task.orderId) {
+      await prisma.order.update({
+        where: { id: task.orderId },
+        data: { status: "SHIPPED" }
+      });
+
+      const io = getIO();
+      if (io) {
+        io.to(`warehouse:${task.warehouseId}`).emit("order:status_updated", {
+          orderId: task.orderId,
+          status: "SHIPPED"
+        });
+      }
+
+      await addSystemMessageToOrderChats(task.orderId, req.user.id, "Collector has picked up your order.");
+    }
+
+    await logActivity({
+      userId: req.user.id,
+      role: UserRole.COLLECTOR,
+      action: "COLLECTOR_TASK_STATUS_UPDATED",
+      resourceType: "collectorTask",
+      resourceId: task.id,
+      meta: { status: CollectorTaskStatus.PICKED_UP },
+      req,
+    });
+
+    sendSuccess(res, "Task marked as collected successfully", formatTaskWithSellerBuyer(task));
+  } catch (err) {
+    sendError(res, "Failed to mark task as collected", err);
+  }
+}
+
+export async function markTaskAsDelivered(req, res) {
+  try {
+    const taskId = parseId(req.params.id);
+    const task = await prisma.collectorTask.findFirst({
+      where: { id: taskId, collectorId: req.user.id },
+      include: { verification: true, order: true },
+    });
+    if (!task) return sendError(res, "Task not found", null, 404);
+
+    const deliveredWeight = task.verification?.verifiedWeight || task.estimatedWeight;
+    const notes = req.body.notes || "Delivered";
+
+    const txnOps = [
+      prisma.collectorDelivery.upsert({
+        where: { taskId },
+        update: {
+          status: CollectorDeliveryStatus.DELIVERED,
+          receiverName: task.destinationName || 'Buyer',
+          receiverContact: task.destinationContact || '',
+          receiverConfirmation: 'CONFIRMED_BY_COLLECTOR',
+          receivedWeight: deliveredWeight,
+          packageCondition: 'Good',
+          notes,
+          deliveredById: req.user.id,
+          deliveredAt: new Date(),
+        },
+        create: {
+          taskId,
+          status: CollectorDeliveryStatus.DELIVERED,
+          receiverName: task.destinationName || 'Buyer',
+          receiverContact: task.destinationContact || '',
+          receiverConfirmation: 'CONFIRMED_BY_COLLECTOR',
+          receivedWeight: deliveredWeight,
+          packageCondition: 'Good',
+          notes,
+          deliveredById: req.user.id,
+        },
+      }),
+      prisma.collectorTask.update({
+        where: { id: taskId },
+        data: {
+          status: CollectorTaskStatus.COMPLETED,
+          completedAt: new Date(),
+        },
+        include: getTaskInclude(),
+      }),
+      prisma.collectorProfile.updateMany({
+        where: { userId: req.user.id },
+        data: {
+          availabilityStatus: CollectorAvailability.ON_DUTY,
+          completedTasks: { increment: 1 },
+          totalCollectedKg: { increment: deliveredWeight || 0 },
+          lastActiveAt: new Date(),
+        },
+      }),
+    ];
+
+    const dist = toFloat(req.body.distance || 5);
+    const earningAmount = 50 + (deliveredWeight * 10) + (dist * 15);
+
+    txnOps.push(
+      prisma.collectorEarning.upsert({
+        where: { taskId },
+        update: { amount: earningAmount, distance: dist },
+        create: {
+          taskId,
+          collectorId: req.user.id,
+          amount: earningAmount,
+          distance: dist,
+        },
+      })
+    );
+
+    if (task.orderId) {
+      txnOps.push(
+        prisma.order.update({
+          where: { id: task.orderId },
+          data: { status: "COMPLETED" },
+        })
+      );
+    }
+
+    const materialType = task.verification?.verifiedCategory || task.materialCategory;
+    const existingInventory = await prisma.warehouseInventory.findFirst({
+      where: { warehouseId: task.warehouseId, materialType },
+    });
+
+    if (existingInventory) {
+      txnOps.push(
+        prisma.warehouseInventory.update({
+          where: { id: existingInventory.id },
+          data: { quantityInStock: { increment: deliveredWeight } },
+        }),
+        prisma.inventoryMovement.create({
+          data: {
+            inventoryId: existingInventory.id,
+            type: "INFLOW",
+            quantity: deliveredWeight,
+            reference: `Task #${taskId} delivery`,
+            notes: `Collector delivery - ${materialType}`,
+            performedBy: req.user.id,
+          },
+        })
+      );
+    } else {
+      txnOps.push(
+        prisma.warehouseInventory.create({
+          data: {
+            warehouseId: task.warehouseId,
+            materialType,
+            category: task.materialType || materialType,
+            quantityInStock: deliveredWeight,
+            purchasePrice: task.pricePerUnit || 0,
+            sellingPrice: task.pricePerUnit ? task.pricePerUnit * 1.3 : 0,
+            supplierId: task.sourceUserId,
+            notes: `Auto-created from Task #${taskId}`,
+          },
+        })
+      );
+    }
+
+    const results = await prisma.$transaction(txnOps);
+    const delivery = results[0];
+    const updatedTask = results[1];
+
+    await logActivity({
+      userId: req.user.id,
+      role: UserRole.COLLECTOR,
+      action: "COLLECTOR_DELIVERY_CONFIRMED",
+      resourceType: "collectorTask",
+      resourceId: taskId,
+      meta: { status: CollectorDeliveryStatus.DELIVERED, receivedWeight: deliveredWeight },
+      req,
+    });
+
+    if (task.orderId && task.order) {
+      EventBus.emit("order.completed", {
+        orderId: task.orderId,
+        buyerId: task.order.buyerId,
+        sellerId: task.order.sellerId,
+      });
+
+      const io = getIO();
+      if (io) {
+        io.to(`warehouse:${task.warehouseId}`).emit("order:status_updated", {
+          orderId: task.orderId,
+          status: "COMPLETED"
+        });
+      }
+
+      try {
+        const { createAndSendNotification } = await import("../../../services/notificationService.js");
+        await createAndSendNotification({
+          userId: task.warehouseId,
+          title: "Delivery Completed",
+          message: `Delivery for task #${task.id} (Order #${task.orderId}) has been successfully completed.`,
+          type: "DELIVERY_COMPLETE",
+          priority: "HIGH"
+        });
+
+        const counterpartId = task.warehouseId === task.order.buyerId ? task.order.sellerId : task.order.buyerId;
+        if (counterpartId) {
+          await createAndSendNotification({
+            userId: counterpartId,
+            title: "Order Delivered",
+            message: `Your order #${task.orderId} has been delivered successfully.`,
+            type: "ORDER_DELIVERED",
+            priority: "HIGH"
+          });
+        }
+      } catch (notifErr) {
+        console.error("FCM notify failed inside markTaskAsDelivered:", notifErr.message);
+      }
+
+      await addSystemMessageToOrderChats(task.orderId, req.user.id, "Collector has completed the delivery of your order.");
+    }
+
+    sendSuccess(res, "Task marked as delivered successfully", { delivery, task: formatTaskWithSellerBuyer(updatedTask) });
+  } catch (err) {
+    sendError(res, "Failed to mark task as delivered", err);
   }
 }

@@ -17,6 +17,8 @@ import {
   verifyWasteForTask,
   getOptimizedRoute,
   getNearestCollectors,
+  markTaskAsCollected,
+  markTaskAsDelivered,
 } from "../controllers/collectorController.js";
 
 const router = express.Router();
@@ -88,6 +90,9 @@ router.get("/history", (req, res, next) => {
   next();
 }, getCollectorTasks);
 router.get("/tasks/:id", getCollectorTaskDetails);
+router.get("/task/:id", getCollectorTaskDetails);
+router.post("/task/:id/collected", markTaskAsCollected);
+router.post("/task/:id/delivered", markTaskAsDelivered);
 router.post("/tasks/:id/accept", acceptCollectorTask);
 router.patch("/tasks/:id/status", updateCollectorTaskStatus);
 router.post("/tasks/:id/location", recordCollectorLocation);
