@@ -55,6 +55,17 @@ export async function sendPushNotification({ token, title, body, data = {} }) {
           sound: "default",
         },
       },
+      apns: {
+        headers: {
+          "apns-priority": "10",
+        },
+        payload: {
+          aps: {
+            sound: "default",
+            badge: 1,
+          },
+        },
+      },
     });
 
     return { success: true, messageId };
