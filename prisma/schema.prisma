@@ -41,6 +41,12 @@ enum OrderStatus {
 enum DeliveryMethod {
   SELF_TRANSPORTATION
   WAREHOUSE_COLLECTOR_SERVICE
+  INDEPENDENT_COLLECTOR_SERVICE
+}
+
+enum CollectorType {
+  WAREHOUSE
+  INDEPENDENT
 }
 
 enum TripStatus {
@@ -83,6 +89,7 @@ enum CollectorTaskType {
   SELLER_TO_BUYER
   WAREHOUSE_TO_BUYER
   BUYER_REQUESTED_PICKUP
+  SELF_DELIVERY
 }
 
 enum CollectorTaskStatus {
@@ -491,8 +498,9 @@ model CollectorProfile {
   id                 Int                   @id @default(autoincrement())
   userId             Int                   @unique
   user               User                  @relation("CollectorProfileUser", fields: [userId], references: [id])
-  warehouseId        Int
-  warehouse          User                  @relation("CollectorProfileWarehouse", fields: [warehouseId], references: [id])
+  warehouseId        Int?
+  warehouse          User?                 @relation("CollectorProfileWarehouse", fields: [warehouseId], references: [id])
+  collectorType      CollectorType         @default(WAREHOUSE)
   employeeId         String                @unique
   availabilityStatus CollectorAvailability @default(OFFLINE)
   dutyStatus         String                @default("OFF_DUTY")
@@ -540,8 +548,8 @@ model Trip {
 
 model CollectorTask {
   id                   Int                 @id @default(autoincrement())
-  warehouseId          Int
-  warehouse            User                @relation("TaskWarehouse", fields: [warehouseId], references: [id])
+  warehouseId          Int?
+  warehouse            User?               @relation("TaskWarehouse", fields: [warehouseId], references: [id])
   collectorId          Int?
   collector            User?               @relation("TaskCollector", fields: [collectorId], references: [id])
   tripId               Int?

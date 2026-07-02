@@ -5,6 +5,7 @@ import { permit } from '../../../middlewares/roleMiddleware.js';
 import {
   acceptCollectorTask,
   confirmDeliveryForTask,
+  getAvailableTasks,
   getCollectorDashboard,
   getCollectorEarnings,
   getCollectorProfile,
@@ -85,6 +86,7 @@ router.get("/dashboard", getCollectorDashboard);
 router.get("/tasks/optimized-route", getOptimizedRoute);
 router.patch("/availability", updateCollectorAvailability);
 router.get("/tasks", getCollectorTasks);
+router.get("/available-tasks", getAvailableTasks);
 router.get("/history", (req, res, next) => {
   req.query.history = "true";
   next();

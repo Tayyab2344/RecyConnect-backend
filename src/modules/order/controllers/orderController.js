@@ -39,7 +39,7 @@ const isValidTransition = (currentStatus, newStatus) => {
  */
 export const createOrder = async (req, res) => {
   try {
-    const { listingId, weight, paymentMethod, deliveryMethod } = req.body;
+    const { listingId, weight, paymentMethod, deliveryMethod, buyerLatitude, buyerLongitude } = req.body;
     const buyerId = req.user.id;
 
     if (!listingId) {
@@ -101,14 +101,32 @@ export const createOrder = async (req, res) => {
           throw new Error("You cannot create an order for your own listing");
         }
 
+        // 4b. Fetch buyer details for B2B validation and dispatch
+        const buyer = await tx.user.findUnique({
+          where: { id: buyerId },
+          select: { id: true, name: true, email: true, contactNo: true, address: true, latitude: true, longitude: true, role: true },
+        });
+        if (!buyer) throw new Error("Buyer not found");
+
+        // 4c. B2B purchasing rules enforcement
+        const sellerRole = listing.user?.role;
+        const buyerRole = buyer.role;
+        const isHousehold = (r) => r === 'individual';
+        const isOrganization = (r) => r === 'company' || r === 'organization';
+
+        if (isHousehold(buyerRole) && isOrganization(sellerRole)) {
+          throw new Error("Household accounts cannot purchase from Organizations");
+        }
+        if (isOrganization(buyerRole) && isHousehold(sellerRole)) {
+          throw new Error("Organization accounts cannot purchase from Households");
+        }
+
         // 5. Calculate total amount
         const pricePerKg = listing.price > 0 ? listing.price : 20.0; // fallback price
         const totalAmount = pricePerKg * requestedWeight;
 
         // 6. Create order with status CREATED
         const handshakeOtp = Math.floor(1000 + Math.random() * 9000).toString();
-        const sellerRole = listing.user?.role;
-        const buyerRole = req.user?.role;
         const resolvedDeliveryMethod = deliveryMethod || 
           ((sellerRole === "warehouse" || buyerRole === "warehouse") 
             ? "WAREHOUSE_COLLECTOR_SERVICE" 
@@ -159,7 +177,60 @@ export const createOrder = async (req, res) => {
           },
         });
 
-        // 8. Auto-create BUYER_SELLER conversation and initial SYSTEM message
+        // 8. Auto-create CollectorTask (Dispatch Record)
+        const isSelfDelivery = resolvedDeliveryMethod === "SELF_TRANSPORTATION";
+        const isWarehouseCollector = resolvedDeliveryMethod === "WAREHOUSE_COLLECTOR_SERVICE";
+        const isIndependentCollector = resolvedDeliveryMethod === "INDEPENDENT_COLLECTOR_SERVICE";
+
+        let taskType = "SELLER_TO_BUYER";
+        if (isSelfDelivery) taskType = "SELF_DELIVERY";
+        else if (sellerRole === "warehouse") taskType = "WAREHOUSE_TO_BUYER";
+        else if (buyerRole === "warehouse") taskType = "SELLER_TO_WAREHOUSE";
+
+        // Use listing coords for source (seller), buyer coords for destination
+        const srcLat = listing.latitude || listing.user?.latitude;
+        const srcLng = listing.longitude || listing.user?.longitude;
+        const srcAddr = listing.pickupAddress || listing.user?.address || "";
+        const dstLat = buyerLatitude ? parseFloat(buyerLatitude) : buyer.latitude;
+        const dstLng = buyerLongitude ? parseFloat(buyerLongitude) : buyer.longitude;
+        const dstAddr = buyer.address || "";
+
+        // Delivery fee: Rs 0 for self delivery, Rs 120 for collector services
+        const deliveryFee = isSelfDelivery ? 0 : 120;
+
+        await tx.collectorTask.create({
+          data: {
+            warehouseId: isWarehouseCollector ? (sellerRole === "warehouse" ? sellerId : (buyerRole === "warehouse" ? buyerId : null)) : null,
+            orderId: order.id,
+            taskType,
+            status: isSelfDelivery ? "ASSIGNED" : "ASSIGNED", // waiting for collector to accept
+            priority: "NORMAL",
+            sourceType: sellerRole === "warehouse" ? "WAREHOUSE" : "HOUSEHOLD",
+            sourceUserId: sellerId,
+            sourceName: listing.user?.name || "",
+            sourceAddress: srcAddr,
+            sourceContact: listing.user?.contactNo || "",
+            sourceLatitude: srcLat || null,
+            sourceLongitude: srcLng || null,
+            destinationType: buyerRole === "warehouse" ? "WAREHOUSE" : "HOUSEHOLD",
+            destinationUserId: buyerId,
+            destinationName: buyer.name || "",
+            destinationAddress: dstAddr,
+            destinationContact: buyer.contactNo || "",
+            destinationLatitude: dstLat || null,
+            destinationLongitude: dstLng || null,
+            materialCategory: listing.category || listing.materialType || "",
+            materialType: listing.materialType || null,
+            estimatedWeight: requestedWeight,
+            listedPrice: pricePerKg,
+            pricePerUnit: pricePerKg,
+            deliveryFee,
+            estimatedValue: totalAmount,
+            images: listing.images || [],
+          },
+        });
+
+        // 9. Auto-create BUYER_SELLER conversation and initial SYSTEM message
         const conversation = await tx.conversation.create({
           data: {
             participant1Id: buyerId,

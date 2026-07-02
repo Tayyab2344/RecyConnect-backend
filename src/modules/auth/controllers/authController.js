@@ -763,7 +763,69 @@ export async function changePassword(req, res) {
 export async function registerCollector(req, res) {
   try {
     if (!validateRequest(req, res)) return;
-    const { collectorId, password, name, contactNo, address } = req.body;
+    const { collectorId, password, name, contactNo, address, isIndependent, email, latitude, longitude, city, area } = req.body;
+
+    // Independent collector self-registration flow
+    if (isIndependent) {
+      if (!password || !name || !contactNo) {
+        return sendError(res, "Name, password and contact number are required for independent registration", null, 400);
+      }
+
+      // Check if email already exists
+      if (email) {
+        const existingEmail = await prisma.user.findUnique({ where: { email } });
+        if (existingEmail) return sendError(res, "Email already in use", null, 400);
+      }
+
+      const hashed = await bcrypt.hash(
+        password,
+        parseInt(process.env.BCRYPT_SALT_ROUNDS || "10")
+      );
+
+      // Auto-generate unique collector ID
+      const indId = `IND-${Date.now().toString(36).toUpperCase()}`;
+
+      const newUser = await prisma.user.create({
+        data: {
+          name,
+          email: email || null,
+          password: hashed,
+          role: "collector",
+          contactNo,
+          address: address || null,
+          collectorId: indId,
+          latitude: latitude ? parseFloat(latitude) : null,
+          longitude: longitude ? parseFloat(longitude) : null,
+          city: city || null,
+          area: area || null,
+          emailVerified: !!email,
+          verificationStatus: "APPROVED",
+          kycStage: "COMPLETED",
+        },
+      });
+
+      // Create collector profile (independent, no warehouse)
+      await prisma.collectorProfile.create({
+        data: {
+          userId: newUser.id,
+          employeeId: indId,
+          collectorType: "INDEPENDENT",
+          warehouseId: null,
+        },
+      });
+
+      await prisma.activityLog.create({
+        data: {
+          userId: newUser.id,
+          actorRole: UserRole.COLLECTOR,
+          action: "INDEPENDENT_COLLECTOR_REGISTERED",
+        },
+      });
+
+      return sendSuccess(res, "Independent collector registered successfully. You can login with your Collector ID and password.", { collectorId: indId });
+    }
+
+    // Existing warehouse-collector registration flow
     const user = await prisma.user.findUnique({ where: { collectorId } });
 
     if (!user) {
@@ -797,6 +859,7 @@ export async function registerCollector(req, res) {
     sendError(res, "Collector registration failed", err);
   }
 }
+
 
 export async function me(req, res) {
   try {

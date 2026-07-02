@@ -515,10 +515,119 @@ async function addSystemMessageToOrderChats(orderId, senderId, content) {
   }
 }
 
+/**
+ * Get available (unassigned) tasks for independent collectors to browse and claim.
+ * GET /api/collector/available-tasks
+ */
+export async function getAvailableTasks(req, res) {
+  try {
+    const { page = 1, limit = 20, materialType, city } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = parseInt(limit);
+
+    const where = {
+      collectorId: null,
+      status: "ASSIGNED",
+      taskType: { not: "SELF_DELIVERY" },
+    };
+
+    if (materialType) {
+      where.materialCategory = { equals: materialType, mode: "insensitive" };
+    }
+
+    const [tasks, totalCount] = await Promise.all([
+      prisma.collectorTask.findMany({
+        where,
+        include: getTaskInclude(),
+        orderBy: { createdAt: "desc" },
+        skip,
+        take,
+      }),
+      prisma.collectorTask.count({ where }),
+    ]);
+
+    sendPaginated(res, tasks.map(formatTaskWithSellerBuyer), totalCount, parseInt(page), take);
+  } catch (err) {
+    sendError(res, "Failed to fetch available tasks", err);
+  }
+}
+
+/**
+ * Accept / Claim a collector task.
+ * For warehouse collectors: the task is already assigned to them (collectorId matches).
+ * For independent collectors: claims an unassigned task (collectorId is null).
+ */
 export async function acceptCollectorTask(req, res) {
-  req.body = req.body || {};
-  req.body.status = CollectorTaskStatus.ACCEPTED;
-  return updateCollectorTaskStatus(req, res);
+  try {
+    const taskId = parseId(req.params.id);
+    const userId = req.user.id;
+
+    const result = await prisma.$transaction(async (tx) => {
+      const task = await tx.collectorTask.findUnique({ where: { id: taskId } });
+      if (!task) throw new Error("Task not found");
+      if (terminalStatuses.includes(task.status)) {
+        throw new Error("This task is already completed or cancelled");
+      }
+
+      // Warehouse collector: task must be already assigned to them
+      // Independent collector: task must be unassigned (collectorId null)
+      if (task.collectorId && task.collectorId !== userId) {
+        throw new Error("This task is assigned to another collector");
+      }
+
+      if (!task.collectorId) {
+        // Independent collector claiming an unassigned task
+        if (task.taskType === "SELF_DELIVERY") {
+          throw new Error("Self-delivery tasks cannot be claimed by collectors");
+        }
+      }
+
+      const updated = await tx.collectorTask.update({
+        where: { id: taskId },
+        data: {
+          collectorId: userId,
+          status: CollectorTaskStatus.ACCEPTED,
+          acceptedAt: new Date(),
+        },
+        include: getTaskInclude(),
+      });
+
+      // Update collector profile
+      await tx.collectorProfile.updateMany({
+        where: { userId },
+        data: { availabilityStatus: CollectorAvailability.BUSY, lastActiveAt: new Date() },
+      });
+
+      // Update parent order status to PROCESSING
+      if (updated.orderId) {
+        await tx.order.update({
+          where: { id: updated.orderId },
+          data: { status: "PROCESSING" },
+        });
+      }
+
+      return updated;
+    });
+
+    // System message to order chats
+    if (result.orderId) {
+      await addSystemMessageToOrderChats(result.orderId, req.user.id, "Collector has accepted the task for your order.");
+    }
+
+    await logActivity({
+      userId: req.user.id,
+      role: UserRole.COLLECTOR,
+      action: "COLLECTOR_TASK_ACCEPTED",
+      resourceType: "collectorTask",
+      resourceId: result.id,
+      meta: { status: "ACCEPTED" },
+      req,
+    });
+
+    sendSuccess(res, "Task accepted successfully", formatTaskWithSellerBuyer(result));
+  } catch (err) {
+    sendError(res, err.message || "Failed to accept task", null, 400);
+  }
 }
 
 export async function updateCollectorTaskStatus(req, res) {
