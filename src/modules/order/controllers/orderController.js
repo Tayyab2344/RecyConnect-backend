@@ -195,8 +195,15 @@ export const createOrder = async (req, res) => {
         const dstLng = buyerLongitude ? parseFloat(buyerLongitude) : buyer.longitude;
         const dstAddr = buyer.address || "";
 
-        // Delivery fee: Rs 0 for self delivery, Rs 120 for collector services
-        const deliveryFee = isSelfDelivery ? 0 : 120;
+        // Delivery fee: Rs 0 for self delivery or warehouse orders, 10% of order total amount otherwise
+        let deliveryFee = 0;
+        if (!isSelfDelivery) {
+          if (sellerRole === "warehouse" || buyerRole === "warehouse") {
+            deliveryFee = 0;
+          } else {
+            deliveryFee = Math.round(totalAmount * 0.10); // 10% fee
+          }
+        }
 
         await tx.collectorTask.create({
           data: {
