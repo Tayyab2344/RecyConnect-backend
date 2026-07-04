@@ -598,11 +598,16 @@ export async function acceptCollectorTask(req, res) {
         data: { availabilityStatus: CollectorAvailability.BUSY, lastActiveAt: new Date() },
       });
 
-      // Update parent order status to PROCESSING
+      // Update parent order status to COLLECTOR_ACCEPTED
       if (updated.orderId) {
         await tx.order.update({
           where: { id: updated.orderId },
-          data: { status: "PROCESSING" },
+          data: { status: "COLLECTOR_ACCEPTED" },
+        });
+
+        await tx.dispatch.updateMany({
+          where: { orderId: updated.orderId },
+          data: { dispatchStatus: "COLLECTOR_ACCEPTED" },
         });
       }
 
@@ -675,13 +680,28 @@ export async function updateCollectorTaskStatus(req, res) {
     // Direct side-effects on parent Order status
     if (task.orderId) {
       let newOrderStatus = null;
-      if (status === CollectorTaskStatus.ACCEPTED) newOrderStatus = "PROCESSING";
-      if (status === CollectorTaskStatus.PICKED_UP) newOrderStatus = "SHIPPED";
+      const statusUpper = status.toUpperCase();
+      if (statusUpper === "ACCEPTED") newOrderStatus = "COLLECTOR_ACCEPTED";
+      else if (statusUpper === "EN_ROUTE_TO_PICKUP") newOrderStatus = "TRAVELLING_TO_SELLER";
+      else if (statusUpper === "ARRIVED_AT_SOURCE") newOrderStatus = "ARRIVED_AT_PICKUP";
+      else if (statusUpper === "VERIFIED") newOrderStatus = "MATERIAL_VERIFIED";
+      else if (statusUpper === "PICKED_UP") newOrderStatus = "PICKED_UP";
+      else if (statusUpper === "IN_TRANSIT") newOrderStatus = "IN_TRANSIT";
+      else if (statusUpper === "ARRIVED_AT_DESTINATION") newOrderStatus = "ARRIVED_AT_BUYER";
+      else if (statusUpper === "DELIVERED") newOrderStatus = "DELIVERED";
+      else if (statusUpper === "COMPLETED") newOrderStatus = "COMPLETED";
+      else if (statusUpper === "CANCELLED") newOrderStatus = "CANCELLED";
+      else if (statusUpper === "REJECTED") newOrderStatus = "COLLECTOR_DECLINED";
 
       if (newOrderStatus) {
         await prisma.order.update({
           where: { id: task.orderId },
           data: { status: newOrderStatus }
+        });
+
+        await prisma.dispatch.updateMany({
+          where: { orderId: task.orderId },
+          data: { dispatchStatus: newOrderStatus }
         });
 
         // Broadcast order status update
@@ -691,8 +711,13 @@ export async function updateCollectorTaskStatus(req, res) {
             orderId: task.orderId,
             status: newOrderStatus
           });
+          io.to(`user:${task.order.buyerId}`).emit("order:status_updated", {
+            orderId: task.orderId,
+            status: newOrderStatus
+          });
         }
       }
+    }
 
       // Add system message to order chats based on status transition
       let systemMsg = null;
@@ -1678,6 +1703,22 @@ export async function markTaskAsDelivered(req, res) {
     });
     if (!task) return sendError(res, "Task not found", null, 404);
 
+    let isTwoLegDelivery = false;
+    let buyerUser = null;
+    if (task.orderId && task.taskType === "SELLER_TO_WAREHOUSE") {
+      const orderData = await prisma.order.findUnique({
+        where: { id: task.orderId },
+        include: {
+          seller: true,
+          buyer: true,
+        }
+      });
+      if (orderData && orderData.seller.role !== "warehouse" && orderData.buyer.role !== "warehouse") {
+        isTwoLegDelivery = true;
+        buyerUser = orderData.buyer;
+      }
+    }
+
     const deliveredWeight = task.verification?.verifiedWeight || task.estimatedWeight;
     const notes = req.body.notes || "Delivered";
 
@@ -1686,7 +1727,7 @@ export async function markTaskAsDelivered(req, res) {
         where: { taskId },
         update: {
           status: CollectorDeliveryStatus.DELIVERED,
-          receiverName: task.destinationName || 'Buyer',
+          receiverName: task.destinationName || 'Warehouse',
           receiverContact: task.destinationContact || '',
           receiverConfirmation: 'CONFIRMED_BY_COLLECTOR',
           receivedWeight: deliveredWeight,
@@ -1698,7 +1739,7 @@ export async function markTaskAsDelivered(req, res) {
         create: {
           taskId,
           status: CollectorDeliveryStatus.DELIVERED,
-          receiverName: task.destinationName || 'Buyer',
+          receiverName: task.destinationName || 'Warehouse',
           receiverContact: task.destinationContact || '',
           receiverConfirmation: 'CONFIRMED_BY_COLLECTOR',
           receivedWeight: deliveredWeight,
@@ -1743,12 +1784,78 @@ export async function markTaskAsDelivered(req, res) {
     );
 
     if (task.orderId) {
-      txnOps.push(
-        prisma.order.update({
-          where: { id: task.orderId },
-          data: { status: "COMPLETED" },
-        })
-      );
+      if (isTwoLegDelivery && buyerUser) {
+        txnOps.push(
+          prisma.order.update({
+            where: { id: task.orderId },
+            data: { status: "PROCESSING" },
+          })
+        );
+
+        txnOps.push(
+          prisma.collectorTask.create({
+            data: {
+              warehouseId: task.warehouseId,
+              collectorId: req.user.id, // same collector
+              orderId: task.orderId,
+              taskType: "WAREHOUSE_TO_BUYER",
+              status: "ASSIGNED",
+              priority: "NORMAL",
+              sourceType: "WAREHOUSE",
+              sourceUserId: task.warehouseId,
+              sourceName: task.destinationName,
+              sourceAddress: task.destinationAddress,
+              sourceContact: task.destinationContact,
+              sourceLatitude: task.destinationLatitude,
+              sourceLongitude: task.destinationLongitude,
+              destinationType: "HOUSEHOLD",
+              destinationUserId: buyerUser.id,
+              destinationName: buyerUser.name || "Buyer",
+              destinationAddress: buyerUser.address || "",
+              destinationContact: buyerUser.contactNo || "",
+              destinationLatitude: buyerUser.latitude || null,
+              destinationLongitude: buyerUser.longitude || null,
+              materialCategory: task.materialCategory,
+              materialType: task.materialType,
+              estimatedWeight: deliveredWeight,
+              listedPrice: task.pricePerUnit || 0,
+              pricePerUnit: task.pricePerUnit || 0,
+              deliveryFee: 0,
+              estimatedValue: task.estimatedValue,
+              images: task.images || [],
+              otpCode: crypto.randomInt(1000, 9999).toString(),
+            }
+          })
+        );
+      } else {
+        txnOps.push(
+          prisma.collectorProfile.updateMany({
+            where: { userId: req.user.id },
+            data: { activeOrdersCount: { decrement: 1 } }
+          })
+        );
+
+        txnOps.push(
+          prisma.order.update({
+            where: { id: task.orderId },
+            data: { status: "COMPLETED" },
+          })
+        );
+
+        txnOps.push(
+          prisma.dispatch.updateMany({
+            where: { orderId: task.orderId },
+            data: { dispatchStatus: "COMPLETED", deliveredAt: new Date() }
+          })
+        );
+
+        txnOps.push(
+          prisma.user.update({
+            where: { id: task.warehouseId },
+            data: { currentActiveDispatches: { decrement: 1 } }
+          })
+        );
+      }
     }
 
     const materialType = task.verification?.verifiedCategory || task.materialCategory;
@@ -1805,29 +1912,39 @@ export async function markTaskAsDelivered(req, res) {
     });
 
     if (task.orderId && task.order) {
-      EventBus.emit("order.completed", {
-        orderId: task.orderId,
-        buyerId: task.order.buyerId,
-        sellerId: task.order.sellerId,
-      });
-
-      const io = getIO();
-      if (io) {
-        io.to(`warehouse:${task.warehouseId}`).emit("order:status_updated", {
+      if (isTwoLegDelivery) {
+        const io = getIO();
+        if (io) {
+          io.to(`warehouse:${task.warehouseId}`).emit("order:status_updated", {
+            orderId: task.orderId,
+            status: "PROCESSING"
+          });
+        }
+        await addSystemMessageToOrderChats(task.orderId, req.user.id, "Collector has delivered the order to the warehouse. Starting delivery leg to buyer.");
+      } else {
+        EventBus.emit("order.completed", {
           orderId: task.orderId,
-          status: "COMPLETED"
+          buyerId: task.order.buyerId,
+          sellerId: task.order.sellerId,
         });
-      }
 
-      try {
-        const { createAndSendNotification } = await import("../../../services/notificationService.js");
-        await createAndSendNotification({
-          userId: task.warehouseId,
-          title: "Delivery Completed",
-          message: `Delivery for task #${task.id} (Order #${task.orderId}) has been successfully completed.`,
-          type: "DELIVERY_COMPLETE",
-          priority: "HIGH"
-        });
+        const io = getIO();
+        if (io) {
+          io.to(`warehouse:${task.warehouseId}`).emit("order:status_updated", {
+            orderId: task.orderId,
+            status: "COMPLETED"
+          });
+        }
+
+        try {
+          const { createAndSendNotification } = await import("../../../services/notificationService.js");
+          await createAndSendNotification({
+            userId: task.warehouseId,
+            title: "Delivery Completed",
+            message: `Delivery for task #${task.id} (Order #${task.orderId}) has been successfully completed.`,
+            type: "DELIVERY_COMPLETE",
+            priority: "HIGH"
+          });
 
         const counterpartId = task.warehouseId === task.order.buyerId ? task.order.sellerId : task.order.buyerId;
         if (counterpartId) {

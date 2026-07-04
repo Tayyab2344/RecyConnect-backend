@@ -28,20 +28,41 @@ enum ReservationStatus {
 }
 
 enum OrderStatus {
-  CREATED
-  CONFIRMED
   PENDING
+  PAYMENT_PENDING
+  CONFIRMED
+  WAITING_FOR_DISPATCH
+  WAREHOUSE_ASSIGNED
+  COLLECTOR_ASSIGNED
+  COLLECTOR_ACCEPTED
+  TRAVELLING_TO_SELLER
+  ARRIVED_AT_PICKUP
+  MATERIAL_VERIFIED
+  PICKED_UP
+  IN_TRANSIT
+  ARRIVED_AT_BUYER
+  BUYER_VERIFICATION
+  DELIVERED
+  COMPLETED
+  CANCELLED
+  WAREHOUSE_REJECTED
+  COLLECTOR_DECLINED
+  BUYER_CANCELLED
+  SELLER_CANCELLED
+  DELIVERY_FAILED
+  REFUND_INITIATED
+  CREATED
   PROCESSING
   SHIPPED
-  DELIVERED
-  CANCELLED
-  COMPLETED
 }
 
 enum DeliveryMethod {
   SELF_TRANSPORTATION
   WAREHOUSE_COLLECTOR_SERVICE
   INDEPENDENT_COLLECTOR_SERVICE
+  SELF_DELIVERY
+  BUYER_PICKUP
+  RECYCONNECT_PICKUP
 }
 
 enum CollectorType {
@@ -162,6 +183,13 @@ model User {
   taxNumber         String? // Tax registration number
   warehouseCapacity Float? // Total warehouse capacity in kg
   operatingHours    Json? // Business operating hours
+  deliveryRadius           Float?              @default(10.0) // Service delivery radius in km
+  acceptsDispatchOrders    Boolean             @default(true)
+  dispatchStatus           String              @default("ACTIVE")
+  currentActiveDispatches  Int                 @default(0)
+  averageDispatchRating    Float?
+  dispatchesWarehouse      Dispatch[]          @relation("DispatchWarehouse")
+  dispatchesCollector      Dispatch[]          @relation("DispatchCollector")
 
   otps              Otp[]
   documents         UserDocument[]
@@ -431,6 +459,7 @@ model Order {
 
   // Payment for this order
   payment Payment?
+  dispatch Dispatch?
 
   // Reviews for this order
   reviews Review[]
@@ -518,6 +547,9 @@ model CollectorProfile {
   reliabilityScore   Float                 @default(100)
   rating             Float?
   suspendedAt        DateTime?
+  onlineStatus       Boolean               @default(false)
+  activeOrdersCount  Int                   @default(0)
+  vehicleType        String?               @default("MOTORCYCLE")
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
 
@@ -936,5 +968,26 @@ model Review {
   @@unique([orderId, reviewerId])
   @@index([revieweeId])
   @@index([reviewerId])
+}
+
+model Dispatch {
+  id                Int       @id @default(autoincrement())
+  orderId           Int       @unique
+  order             Order     @relation(fields: [orderId], references: [id])
+  warehouseId       Int?
+  warehouse         User?     @relation("DispatchWarehouse", fields: [warehouseId], references: [id])
+  collectorId       Int?
+  collector         User?     @relation("DispatchCollector", fields: [collectorId], references: [id])
+  pickupLocation    String
+  deliveryLocation  String
+  estimatedDistance Float?
+  estimatedDuration Float?
+  deliveryFee       Float     @default(0.0)
+  dispatchStatus    String    @default("PENDING_ACCEPTANCE") // PENDING_ACCEPTANCE, ACCEPTED, REJECTED, ASSIGNED, COMPLETED, CANCELLED
+  assignedAt        DateTime?
+  pickedUpAt        DateTime?
+  deliveredAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 }
 

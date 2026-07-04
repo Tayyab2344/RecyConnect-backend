@@ -669,3 +669,629 @@ export async function assignOrdersToCollector(req, res) {
     sendError(res, "Failed to assign orders to collector", err);
   }
 }
+
+// ── NEW LOGISTICS AND LOGISTICAL DISPATCH METHODS ─────────────────────────────
+
+async function findBestWarehouseForLogistics({ sellerLat, sellerLng, buyerLat, buyerLng, excludeIds }) {
+  const warehouses = await prisma.user.findMany({
+    where: {
+      role: "warehouse",
+      deletedAt: null,
+      acceptsDispatchOrders: true,
+      dispatchStatus: "ACTIVE",
+      id: { notIn: excludeIds || [] }
+    },
+    include: {
+      managedCollectorProfiles: {
+        where: {
+          availabilityStatus: { in: ["ONLINE", "ON_DUTY"] }
+        }
+      }
+    }
+  });
+
+  const scored = warehouses.map(w => {
+    if (!w.latitude || !w.longitude) return null;
+
+    const distToSeller = getHaversineDistance(
+      { latitude: sellerLat, longitude: sellerLng },
+      { latitude: w.latitude, longitude: w.longitude }
+    );
+
+    const radius = w.deliveryRadius || 10.0;
+    if (distToSeller > radius) return null; // Outside service radius
+
+    const availableCollectors = w.managedCollectorProfiles.length;
+    const workload = w.currentActiveDispatches || 0;
+    const rating = w.averageDispatchRating || 4.5;
+
+    // Lower score is better (Priority sorting)
+    const score = distToSeller + (workload * 1.5) - (availableCollectors > 0 ? 10 : 0) - (rating * 2.0);
+
+    return { id: w.id, score };
+  }).filter(Boolean);
+
+  if (scored.length === 0) return null;
+
+  scored.sort((a, b) => a.score - b.score);
+  return scored[0].id;
+}
+
+export async function getNearbyWarehouses(req, res) {
+  try {
+    const lat = toFloat(req.query.latitude);
+    const lng = toFloat(req.query.longitude);
+
+    if (lat === null || lng === null) {
+      return sendError(res, "latitude and longitude are required", null, 400);
+    }
+
+    const warehouses = await prisma.user.findMany({
+      where: {
+        role: "warehouse",
+        deletedAt: null,
+        acceptsDispatchOrders: true
+      },
+      include: {
+        managedCollectorProfiles: {
+          where: {
+            availabilityStatus: { in: ["ONLINE", "ON_DUTY"] }
+          }
+        }
+      }
+    });
+
+    const results = warehouses.map(w => {
+      const wLat = w.latitude;
+      const wLng = w.longitude;
+      if (!wLat || !wLng) return null;
+
+      const distance = getHaversineDistance(
+        { latitude: lat, longitude: lng },
+        { latitude: wLat, longitude: wLng }
+      );
+
+      const radius = w.deliveryRadius || 10.0;
+      if (distance > radius) return null; // Outside service radius
+
+      const availableCollectors = w.managedCollectorProfiles.length;
+      const estimatedFee = Math.round(distance * 10); // Rs 10 per km
+      const estimatedTimeMinutes = Math.round(15 + distance * 3);
+
+      return {
+        id: w.id,
+        name: w.businessName || w.name || "RecyConnect Warehouse",
+        distance: toFloat(distance.toFixed(2)),
+        estimatedFee,
+        estimatedArrivalTime: `${estimatedTimeMinutes} mins`,
+        rating: w.averageDispatchRating || 4.8,
+        collectorAvailability: availableCollectors > 0 ? "AVAILABLE" : "UNAVAILABLE",
+        availableCollectorsCount: availableCollectors
+      };
+    }).filter(Boolean);
+
+    // Sort by distance ascending
+    results.sort((a, b) => a.distance - b.distance);
+
+    sendSuccess(res, "Nearby warehouses fetched successfully", results);
+  } catch (err) {
+    sendError(res, "Failed to fetch nearby warehouses", err);
+  }
+}
+
+export async function requestDispatch(req, res) {
+  try {
+    const { orderId, warehouseId } = req.body;
+    const order = await prisma.order.findUnique({
+      where: { id: parseId(orderId) },
+      include: {
+        items: {
+          include: {
+            listing: true
+          }
+        },
+        buyer: true,
+        seller: true
+      }
+    });
+
+    if (!order) {
+      return sendError(res, "Order not found", null, 404);
+    }
+
+    // Get coordinates
+    const sellerLat = order.items[0]?.listing?.latitude || order.seller.latitude;
+    const sellerLng = order.items[0]?.listing?.longitude || order.seller.longitude;
+    const buyerLat = order.buyer.latitude;
+    const buyerLng = order.buyer.longitude;
+
+    if (!sellerLat || !sellerLng || !buyerLat || !buyerLng) {
+      return sendError(res, "Coordinates missing for seller or buyer. Cannot dispatch.", null, 400);
+    }
+
+    let selectedWarehouseId = warehouseId ? parseId(warehouseId) : null;
+    const rejectedWarehouseIds = [];
+
+    if (!selectedWarehouseId) {
+      // Automatic Assignment
+      selectedWarehouseId = await findBestWarehouseForLogistics({
+        sellerLat,
+        sellerLng,
+        buyerLat,
+        buyerLng,
+        excludeIds: rejectedWarehouseIds
+      });
+    }
+
+    if (!selectedWarehouseId) {
+      return sendError(res, "No available warehouse logistics provider found.", null, 404);
+    }
+
+    // Create or update Dispatch record
+    const dispatch = await prisma.dispatch.upsert({
+      where: { orderId: order.id },
+      update: {
+        warehouseId: selectedWarehouseId,
+        dispatchStatus: "PENDING_ACCEPTANCE",
+        pickupLocation: order.items[0]?.listing?.pickupAddress || order.seller.address || "",
+        deliveryLocation: order.buyer.address || "",
+        estimatedDistance: getHaversineDistance({ latitude: sellerLat, longitude: sellerLng }, { latitude: buyerLat, longitude: buyerLng }),
+        estimatedDuration: getHaversineDistance({ latitude: sellerLat, longitude: sellerLng }, { latitude: buyerLat, longitude: buyerLng }) * 2.0
+      },
+      create: {
+        orderId: order.id,
+        warehouseId: selectedWarehouseId,
+        dispatchStatus: "PENDING_ACCEPTANCE",
+        pickupLocation: order.items[0]?.listing?.pickupAddress || order.seller.address || "",
+        deliveryLocation: order.buyer.address || "",
+        estimatedDistance: getHaversineDistance({ latitude: sellerLat, longitude: sellerLng }, { latitude: buyerLat, longitude: buyerLng }),
+        estimatedDuration: getHaversineDistance({ latitude: sellerLat, longitude: sellerLng }, { latitude: buyerLat, longitude: buyerLng }) * 2.0,
+        deliveryFee: Math.round(getHaversineDistance({ latitude: sellerLat, longitude: sellerLng }, { latitude: buyerLat, longitude: buyerLng }) * 10)
+      }
+    });
+
+    // Update Order Status to WAITING_FOR_DISPATCH
+    await prisma.order.update({
+      where: { id: order.id },
+      data: { status: "WAITING_FOR_DISPATCH" }
+    });
+
+    // Notify warehouse via WebSocket
+    const io = getIO();
+    if (io) {
+      io.to(`warehouse:${selectedWarehouseId}`).emit("dispatch:new_request", {
+        dispatchId: dispatch.id,
+        orderId: order.id
+      });
+    }
+
+    sendSuccess(res, "Dispatch requested successfully", dispatch, 201);
+  } catch (err) {
+    sendError(res, "Failed to request dispatch", err);
+  }
+}
+
+export async function getPendingDispatches(req, res) {
+  try {
+    const warehouseId = req.user.id;
+    const dispatches = await prisma.dispatch.findMany({
+      where: {
+        warehouseId,
+        dispatchStatus: "PENDING_ACCEPTANCE"
+      },
+      include: {
+        order: {
+          include: {
+            items: {
+              include: {
+                listing: true
+              }
+            },
+            buyer: { select: { id: true, name: true, contactNo: true } },
+            seller: { select: { id: true, name: true, contactNo: true } }
+          }
+        }
+      }
+    });
+
+    sendSuccess(res, "Pending dispatches fetched", dispatches);
+  } catch (err) {
+    sendError(res, "Failed to fetch pending dispatches", err);
+  }
+}
+
+export async function respondToDispatch(req, res) {
+  try {
+    const dispatchId = parseId(req.params.id);
+    const { action } = req.body; // 'ACCEPT' or 'REJECT'
+    const warehouseId = req.user.id;
+
+    const dispatch = await prisma.dispatch.findFirst({
+      where: { id: dispatchId, warehouseId },
+      include: {
+        order: {
+          include: {
+            items: {
+              include: {
+                listing: true
+              }
+            },
+            buyer: true,
+            seller: true
+          }
+        }
+      }
+    });
+
+    if (!dispatch) {
+      return sendError(res, "Dispatch request not found", null, 404);
+    }
+
+    if (action === "ACCEPT") {
+      const updated = await prisma.$transaction([
+        prisma.dispatch.update({
+          where: { id: dispatchId },
+          data: {
+            dispatchStatus: "ACCEPTED",
+            assignedAt: new Date()
+          }
+        }),
+        prisma.order.update({
+          where: { id: dispatch.orderId },
+          data: { status: "WAREHOUSE_ASSIGNED" }
+        }),
+        prisma.user.update({
+          where: { id: warehouseId },
+          data: { currentActiveDispatches: { increment: 1 } }
+        })
+      ]);
+
+      const io = getIO();
+      if (io) {
+        io.to(`user:${dispatch.order.buyerId}`).emit("order:status_updated", {
+          orderId: dispatch.orderId,
+          status: "WAREHOUSE_ASSIGNED"
+        });
+      }
+
+      return sendSuccess(res, "Dispatch request accepted", updated[0]);
+    } else if (action === "REJECT") {
+      const rejectedList = dispatch.metadata && typeof dispatch.metadata === "object" && Array.isArray(dispatch.metadata.rejectedWarehouseIds)
+        ? [...dispatch.metadata.rejectedWarehouseIds, warehouseId]
+        : [warehouseId];
+
+      const sellerLat = dispatch.order.items[0]?.listing?.latitude || dispatch.order.seller.latitude;
+      const sellerLng = dispatch.order.items[0]?.listing?.longitude || dispatch.order.seller.longitude;
+      const buyerLat = dispatch.order.buyer.latitude;
+      const buyerLng = dispatch.order.buyer.longitude;
+
+      // Find next best warehouse
+      const nextWarehouseId = await findBestWarehouseForLogistics({
+        sellerLat,
+        sellerLng,
+        buyerLat,
+        buyerLng,
+        excludeIds: rejectedList
+      });
+
+      if (nextWarehouseId) {
+        const updated = await prisma.dispatch.update({
+          where: { id: dispatchId },
+          data: {
+            warehouseId: nextWarehouseId,
+            dispatchStatus: "PENDING_ACCEPTANCE",
+            metadata: {
+              ...((dispatch.metadata as object) || {}),
+              rejectedWarehouseIds: rejectedList
+            }
+          }
+        });
+
+        await prisma.order.update({
+          where: { id: dispatch.orderId },
+          data: { status: "WAITING_FOR_DISPATCH" }
+        });
+
+        const io = getIO();
+        if (io) {
+          io.to(`warehouse:${nextWarehouseId}`).emit("dispatch:new_request", {
+            dispatchId: dispatch.id,
+            orderId: dispatch.orderId
+          });
+        }
+
+        return sendSuccess(res, "Dispatch request rejected. Routed to next nearest warehouse.", updated);
+      } else {
+        const updated = await prisma.$transaction([
+          prisma.dispatch.update({
+            where: { id: dispatchId },
+            data: {
+              dispatchStatus: "REJECTED",
+              metadata: {
+                ...((dispatch.metadata as object) || {}),
+                rejectedWarehouseIds: rejectedList
+              }
+            }
+          }),
+          prisma.order.update({
+            where: { id: dispatch.orderId },
+            data: { status: "WAREHOUSE_REJECTED" }
+          })
+        ]);
+
+        return sendSuccess(res, "Dispatch request rejected. No other logistics providers found.", updated[0]);
+      }
+    } else {
+      return sendError(res, "Invalid action, must be ACCEPT or REJECT", null, 400);
+    }
+  } catch (err) {
+    sendError(res, "Failed to respond to dispatch request", err);
+  }
+}
+
+export async function assignCollectorToDispatch(req, res) {
+  try {
+    const dispatchId = parseId(req.params.id);
+    const { collectorId } = req.body;
+    const warehouseId = req.user.id;
+
+    const dispatch = await prisma.dispatch.findFirst({
+      where: { id: dispatchId, warehouseId },
+      include: {
+        order: {
+          include: {
+            items: {
+              include: {
+                listing: true
+              }
+            },
+            buyer: true,
+            seller: true
+          }
+        }
+      }
+    });
+
+    if (!dispatch) {
+      return sendError(res, "Dispatch not found", null, 404);
+    }
+
+    let selectedCollectorId = collectorId ? parseId(collectorId) : null;
+
+    if (!selectedCollectorId) {
+      // Find nearest online collector with lowest workload
+      const collectors = await prisma.collectorProfile.findMany({
+        where: {
+          warehouseId,
+          availabilityStatus: { in: ["ONLINE", "ON_DUTY"] }
+        },
+        orderBy: [
+          { activeOrdersCount: "asc" },
+          { rating: "desc" }
+        ]
+      });
+
+      if (collectors.length === 0) {
+        return sendError(res, "No online/available collectors found for auto-assignment.", null, 404);
+      }
+
+      selectedCollectorId = collectors[0].userId;
+    }
+
+    const updated = await prisma.$transaction([
+      prisma.dispatch.update({
+        where: { id: dispatchId },
+        data: {
+          collectorId: selectedCollectorId,
+          dispatchStatus: "ASSIGNED"
+        }
+      }),
+      prisma.order.update({
+        where: { id: dispatch.orderId },
+        data: { status: "COLLECTOR_ASSIGNED" }
+      }),
+      prisma.collectorProfile.update({
+        where: { userId: selectedCollectorId },
+        data: { activeOrdersCount: { increment: 1 } }
+      })
+    ]);
+
+    const sellerLat = dispatch.order.items[0]?.listing?.latitude || dispatch.order.seller.latitude;
+    const sellerLng = dispatch.order.items[0]?.listing?.longitude || dispatch.order.seller.longitude;
+    const buyerLat = dispatch.order.buyer.latitude;
+    const buyerLng = dispatch.order.buyer.longitude;
+
+    await prisma.collectorTask.create({
+      data: {
+        warehouseId,
+        collectorId: selectedCollectorId,
+        orderId: dispatch.orderId,
+        taskType: "SELLER_TO_BUYER",
+        status: "ASSIGNED",
+        priority: "NORMAL",
+        sourceType: "HOUSEHOLD",
+        sourceUserId: dispatch.order.sellerId,
+        sourceName: dispatch.order.seller.name || "",
+        sourceAddress: dispatch.order.items[0]?.listing?.pickupAddress || dispatch.order.seller.address || "",
+        sourceContact: dispatch.order.seller.contactNo || "",
+        sourceLatitude: sellerLat || null,
+        sourceLongitude: sellerLng || null,
+        destinationType: "HOUSEHOLD",
+        destinationUserId: dispatch.order.buyerId,
+        destinationName: dispatch.order.buyer.name || "",
+        destinationAddress: dispatch.order.buyer.address || "",
+        destinationContact: dispatch.order.buyer.contactNo || "",
+        destinationLatitude: buyerLat || null,
+        destinationLongitude: buyerLng || null,
+        materialCategory: dispatch.order.items[0]?.listing?.category || "",
+        materialType: dispatch.order.items[0]?.listing?.materialType || null,
+        estimatedWeight: dispatch.order.items[0]?.listing?.estimatedWeight || 1.0,
+        listedPrice: dispatch.order.items[0]?.listing?.price || 0,
+        pricePerUnit: dispatch.order.items[0]?.listing?.price || 0,
+        deliveryFee: dispatch.deliveryFee,
+        estimatedValue: dispatch.order.totalAmount,
+        images: dispatch.order.items[0]?.listing?.images || [],
+        otpCode: crypto.randomInt(1000, 9999).toString()
+      }
+    });
+
+    const io = getIO();
+    if (io) {
+      io.to(`user:${selectedCollectorId}`).emit("task:new_assignment", {
+        orderId: dispatch.orderId
+      });
+      io.to(`user:${dispatch.order.buyerId}`).emit("order:status_updated", {
+        orderId: dispatch.orderId,
+        status: "COLLECTOR_ASSIGNED"
+      });
+    }
+
+    sendSuccess(res, "Collector assigned successfully", updated[0]);
+  } catch (err) {
+    sendError(res, "Failed to assign collector", err);
+  }
+}
+
+export async function collectorRespondToDispatch(req, res) {
+  try {
+    const dispatchId = parseId(req.params.id);
+    const { action } = req.body; // 'ACCEPT' or 'DECLINE'
+    const collectorId = req.user.id;
+
+    const dispatch = await prisma.dispatch.findFirst({
+      where: { id: dispatchId, collectorId },
+      include: {
+        order: {
+          include: {
+            buyer: true,
+            seller: true
+          }
+        }
+      }
+    });
+
+    if (!dispatch) {
+      return sendError(res, "Dispatch assignment not found", null, 404);
+    }
+
+    const task = await prisma.collectorTask.findFirst({
+      where: { orderId: dispatch.orderId, collectorId, status: "ASSIGNED" }
+    });
+
+    if (action === "ACCEPT") {
+      await prisma.$transaction([
+        prisma.dispatch.update({
+          where: { id: dispatchId },
+          data: { dispatchStatus: "ACCEPTED" }
+        }),
+        prisma.order.update({
+          where: { id: dispatch.orderId },
+          data: { status: "COLLECTOR_ACCEPTED" }
+        }),
+        prisma.collectorProfile.update({
+          where: { userId: collectorId },
+          data: { availabilityStatus: "ON_DUTY" }
+        })
+      ]);
+
+      if (task) {
+        await prisma.collectorTask.update({
+          where: { id: task.id },
+          data: { status: "ACCEPTED", acceptedAt: new Date() }
+        });
+      }
+
+      const io = getIO();
+      if (io) {
+        io.to(`warehouse:${dispatch.warehouseId}`).emit("dispatch:collector_accepted", {
+          dispatchId,
+          collectorId
+        });
+        io.to(`user:${dispatch.order.buyerId}`).emit("order:status_updated", {
+          orderId: dispatch.orderId,
+          status: "COLLECTOR_ACCEPTED"
+        });
+      }
+
+      return sendSuccess(res, "Collector accepted assignment");
+    } else if (action === "DECLINE") {
+      await prisma.$transaction([
+        prisma.dispatch.update({
+          where: { id: dispatchId },
+          data: {
+            collectorId: null,
+            dispatchStatus: "ACCEPTED"
+          }
+        }),
+        prisma.order.update({
+          where: { id: dispatch.orderId },
+          data: { status: "COLLECTOR_DECLINED" }
+        }),
+        prisma.collectorProfile.update({
+          where: { userId: collectorId },
+          data: { activeOrdersCount: { decrement: 1 } }
+        })
+      ]);
+
+      if (task) {
+        await prisma.collectorTask.update({
+          where: { id: task.id },
+          data: { status: "CANCELLED", cancellationReason: "Collector declined assignment" }
+        });
+      }
+
+      const io = getIO();
+      if (io) {
+        io.to(`warehouse:${dispatch.warehouseId}`).emit("dispatch:collector_declined", {
+          dispatchId,
+          collectorId
+        });
+      }
+
+      return sendSuccess(res, "Collector declined assignment. Re-routing to warehouse assignment list.");
+    } else {
+      return sendError(res, "Invalid action, must be ACCEPT or DECLINE", null, 400);
+    }
+  } catch (err) {
+    sendError(res, "Failed to respond to assignment", err);
+  }
+}
+
+export async function getWarehouseDispatches(req, res) {
+  try {
+    const warehouseId = req.user.id;
+    const { status } = req.query;
+
+    const dispatches = await prisma.dispatch.findMany({
+      where: {
+        warehouseId,
+        ...(status && { dispatchStatus: status })
+      },
+      include: {
+        order: {
+          include: {
+            items: {
+              include: {
+                listing: true
+              }
+            },
+            buyer: { select: { id: true, name: true, contactNo: true } },
+            seller: { select: { id: true, name: true, contactNo: true } }
+          }
+        },
+        collector: {
+          select: {
+            id: true,
+            name: true,
+            contactNo: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    sendSuccess(res, "Warehouse dispatches fetched successfully", dispatches);
+  } catch (err) {
+    sendError(res, "Failed to fetch warehouse dispatches", err);
+  }
+}

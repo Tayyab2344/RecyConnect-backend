@@ -1,3 +1,4 @@
+import { getHaversineDistance } from '../../../utils/algorithms/kdTree.js';
 import {
   OrderStatus,
   ReservationStatus,
@@ -195,47 +196,53 @@ export const createOrder = async (req, res) => {
         const dstLng = buyerLongitude ? parseFloat(buyerLongitude) : buyer.longitude;
         const dstAddr = buyer.address || "";
 
-        // Delivery fee: Rs 0 for self delivery or warehouse orders, 10% of order total amount otherwise
-        let deliveryFee = 0;
-        if (!isSelfDelivery) {
-          if (sellerRole === "warehouse" || buyerRole === "warehouse") {
-            deliveryFee = 0;
-          } else {
-            deliveryFee = Math.round(totalAmount * 0.10); // 10% fee
-          }
-        }
+        // 8. Create Dispatch (Logistics) request if RecyConnect Pickup or Collector service is selected
+        const isRecyConnectPickup = resolvedDeliveryMethod === "RECYCONNECT_PICKUP" || 
+                                    resolvedDeliveryMethod === "INDEPENDENT_COLLECTOR_SERVICE" || 
+                                    resolvedDeliveryMethod === "WAREHOUSE_COLLECTOR_SERVICE";
 
-        await tx.collectorTask.create({
-          data: {
-            warehouseId: isWarehouseCollector ? (sellerRole === "warehouse" ? sellerId : (buyerRole === "warehouse" ? buyerId : null)) : null,
-            orderId: order.id,
-            taskType,
-            status: isSelfDelivery ? "ASSIGNED" : "ASSIGNED", // waiting for collector to accept
-            priority: "NORMAL",
-            sourceType: sellerRole === "warehouse" ? "WAREHOUSE" : "HOUSEHOLD",
-            sourceUserId: sellerId,
-            sourceName: listing.user?.name || "",
-            sourceAddress: srcAddr,
-            sourceContact: listing.user?.contactNo || "",
-            sourceLatitude: srcLat || null,
-            sourceLongitude: srcLng || null,
-            destinationType: buyerRole === "warehouse" ? "WAREHOUSE" : "HOUSEHOLD",
-            destinationUserId: buyerId,
-            destinationName: buyer.name || "",
-            destinationAddress: dstAddr,
-            destinationContact: buyer.contactNo || "",
-            destinationLatitude: dstLat || null,
-            destinationLongitude: dstLng || null,
-            materialCategory: listing.category || listing.materialType || "",
-            materialType: listing.materialType || null,
-            estimatedWeight: requestedWeight,
-            listedPrice: pricePerKg,
-            pricePerUnit: pricePerKg,
-            deliveryFee,
-            estimatedValue: totalAmount,
-            images: listing.images || [],
-          },
-        });
+        if (isRecyConnectPickup) {
+          const { chosenWarehouseId } = req.body;
+          let selectedWarehouseId = chosenWarehouseId ? parseInt(chosenWarehouseId, 10) : null;
+
+          if (!selectedWarehouseId) {
+            selectedWarehouseId = await findBestWarehouseForLogisticsHelper(tx, {
+              sellerLat: srcLat,
+              sellerLng: srcLng,
+              buyerLat: dstLat,
+              buyerLng: dstLng,
+              excludeIds: []
+            });
+          }
+
+          if (!selectedWarehouseId) {
+            throw new Error("No available warehouse logistics provider within delivery range.");
+          }
+
+          const dist = getHaversineDistance(
+            { latitude: srcLat || 33.6844, longitude: srcLng || 73.0479 },
+            { latitude: dstLat || 33.6844, longitude: dstLng || 73.0479 }
+          );
+
+          await tx.dispatch.create({
+            data: {
+              orderId: order.id,
+              warehouseId: selectedWarehouseId,
+              dispatchStatus: "PENDING_ACCEPTANCE",
+              pickupLocation: srcAddr,
+              deliveryLocation: dstAddr,
+              estimatedDistance: dist,
+              estimatedDuration: dist * 2.0,
+              deliveryFee: Math.round(dist * 10)
+            }
+          });
+
+          // Set order status to WAITING_FOR_DISPATCH
+          order = await tx.order.update({
+            where: { id: order.id },
+            data: { status: "WAITING_FOR_DISPATCH" }
+          });
+        }
 
         // 9. Auto-create BUYER_SELLER conversation and initial SYSTEM message
         const conversation = await tx.conversation.create({
@@ -1436,3 +1443,47 @@ export const updateOrderStatus = async (req, res) => {
     sendError(res, "Failed to update order", error);
   }
 };
+
+async function findBestWarehouseForLogisticsHelper(tx, { sellerLat, sellerLng, buyerLat, buyerLng, excludeIds }) {
+  const warehouses = await tx.user.findMany({
+    where: {
+      role: "warehouse",
+      deletedAt: null,
+      acceptsDispatchOrders: true,
+      dispatchStatus: "ACTIVE",
+      id: { notIn: excludeIds || [] }
+    },
+    include: {
+      managedCollectorProfiles: {
+        where: {
+          availabilityStatus: { in: ["ONLINE", "ON_DUTY"] }
+        }
+      }
+    }
+  });
+
+  const scored = warehouses.map(w => {
+    if (!w.latitude || !w.longitude) return null;
+
+    const distToSeller = getHaversineDistance(
+      { latitude: sellerLat, longitude: sellerLng },
+      { latitude: w.latitude, longitude: w.longitude }
+    );
+
+    const radius = w.deliveryRadius || 10.0;
+    if (distToSeller > radius) return null;
+
+    const availableCollectors = w.managedCollectorProfiles.length;
+    const workload = w.currentActiveDispatches || 0;
+    const rating = w.averageDispatchRating || 4.5;
+
+    const score = distToSeller + (workload * 1.5) - (availableCollectors > 0 ? 10 : 0) - (rating * 2.0);
+
+    return { id: w.id, score };
+  }).filter(Boolean);
+
+  if (scored.length === 0) return null;
+
+  scored.sort((a, b) => a.score - b.score);
+  return scored[0].id;
+}
