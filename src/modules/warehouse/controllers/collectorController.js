@@ -717,7 +717,6 @@ export async function updateCollectorTaskStatus(req, res) {
           });
         }
       }
-    }
 
       // Add system message to order chats based on status transition
       let systemMsg = null;
@@ -1962,6 +1961,7 @@ export async function markTaskAsDelivered(req, res) {
 
       await addSystemMessageToOrderChats(task.orderId, req.user.id, "Collector has completed the delivery of your order.");
     }
+  }
 
     sendSuccess(res, "Task marked as delivered successfully", { delivery, task: formatTaskWithSellerBuyer(updatedTask) });
   } catch (err) {

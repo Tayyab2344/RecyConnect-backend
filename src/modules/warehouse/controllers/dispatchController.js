@@ -981,7 +981,7 @@ export async function respondToDispatch(req, res) {
             warehouseId: nextWarehouseId,
             dispatchStatus: "PENDING_ACCEPTANCE",
             metadata: {
-              ...((dispatch.metadata as object) || {}),
+              ...(dispatch.metadata || {}),
               rejectedWarehouseIds: rejectedList
             }
           }
@@ -1008,7 +1008,7 @@ export async function respondToDispatch(req, res) {
             data: {
               dispatchStatus: "REJECTED",
               metadata: {
-                ...((dispatch.metadata as object) || {}),
+                ...(dispatch.metadata || {}),
                 rejectedWarehouseIds: rejectedList
               }
             }
