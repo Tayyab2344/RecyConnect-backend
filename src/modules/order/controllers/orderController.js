@@ -267,14 +267,15 @@ export const createOrder = async (req, res) => {
 
         if (isRecyConnectPickup) {
           const { chosenWarehouseId } = req.body;
-          let selectedWarehouseId = chosenWarehouseId ? parseInt(chosenWarehouseId, 10) : null;
+          let selectedWarehouseId = null;
 
-          if (!selectedWarehouseId) {
-            if (buyerRole === "warehouse") {
-              selectedWarehouseId = buyerId;
-            } else if (sellerRole === "warehouse") {
-              selectedWarehouseId = sellerId;
-            } else {
+          if (buyerRole === "warehouse") {
+            selectedWarehouseId = buyerId;
+          } else if (sellerRole === "warehouse") {
+            selectedWarehouseId = sellerId;
+          } else {
+            selectedWarehouseId = chosenWarehouseId ? parseInt(chosenWarehouseId, 10) : null;
+            if (!selectedWarehouseId) {
               selectedWarehouseId = await findBestWarehouseForLogisticsHelper(tx, {
                 sellerLat: srcLat,
                 sellerLng: srcLng,
@@ -1065,14 +1066,54 @@ export const getOrders = async (req, res) => {
     } = req.query;
 
     // Build filter conditions based on role
-    const where = {
-      ...(role === "buyer"
+    let roleFilter = {};
+    if (req.user.role === "warehouse") {
+      const leg1Statuses = ["WAITING_FOR_DISPATCH", "WAREHOUSE_ASSIGNED", "PENDING", "CONFIRMED", "CREATED"];
+      if (role === "buyer") {
+        roleFilter = {
+          OR: [
+            { buyerId: userId },
+            {
+              dispatch: { warehouseId: userId },
+              buyer: { role: { not: "warehouse" } },
+              seller: { role: { not: "warehouse" } },
+              status: { in: leg1Statuses }
+            }
+          ]
+        };
+      } else if (role === "seller") {
+        roleFilter = {
+          OR: [
+            { sellerId: userId },
+            {
+              dispatch: { warehouseId: userId },
+              buyer: { role: { not: "warehouse" } },
+              seller: { role: { not: "warehouse" } },
+              status: { notIn: leg1Statuses }
+            }
+          ]
+        };
+      } else {
+        roleFilter = {
+          OR: [
+            { buyerId: userId },
+            { sellerId: userId },
+            { dispatch: { warehouseId: userId } }
+          ]
+        };
+      }
+    } else {
+      roleFilter = role === "buyer"
         ? { buyerId: userId }
         : role === "seller"
           ? { sellerId: userId }
           : {
               OR: [{ buyerId: userId }, { sellerId: userId }],
-            }),
+            };
+    }
+
+    const where = {
+      ...roleFilter,
     };
 
     if (status) {
