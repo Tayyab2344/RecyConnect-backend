@@ -394,6 +394,21 @@ export async function assignTripToCollector(req, res) {
         data: { availabilityStatus: CollectorAvailability.BUSY }
       });
 
+      // 5. Update order and dispatch statuses for all tasks on this trip
+      for (const task of trip.tasks) {
+        await tx.order.update({
+          where: { id: task.orderId },
+          data: { status: "COLLECTOR_ASSIGNED" }
+        });
+        await tx.dispatch.updateMany({
+          where: { orderId: task.orderId },
+          data: {
+            collectorId: collectorUserId,
+            dispatchStatus: "ASSIGNED"
+          }
+        });
+      }
+
       return { ...t, conversations: [conversation] };
     });
 
@@ -685,6 +700,21 @@ export async function assignOrdersToCollector(req, res) {
         where: { id: collector.id },
         data: { availabilityStatus: CollectorAvailability.BUSY }
       });
+
+      // 6. Update order and dispatch statuses
+      for (const task of tspResult.sequence) {
+        await tx.order.update({
+          where: { id: task.orderId },
+          data: { status: "COLLECTOR_ASSIGNED" }
+        });
+        await tx.dispatch.updateMany({
+          where: { orderId: task.orderId },
+          data: {
+            collectorId: collectorUserId,
+            dispatchStatus: "ASSIGNED"
+          }
+        });
+      }
 
       return { ...createdTrip, tasks: createdTasks, conversations: [warehouseConv] };
     });

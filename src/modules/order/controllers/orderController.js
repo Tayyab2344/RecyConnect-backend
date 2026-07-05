@@ -206,10 +206,9 @@ export const createOrder = async (req, res) => {
 
         // 6. Create order with status CREATED
         const handshakeOtp = Math.floor(1000 + Math.random() * 9000).toString();
-        const resolvedDeliveryMethod = deliveryMethod || 
-          ((sellerRole === "warehouse" || buyerRole === "warehouse") 
-            ? "WAREHOUSE_COLLECTOR_SERVICE" 
-            : "SELF_TRANSPORTATION");
+        const resolvedDeliveryMethod = (sellerRole === "warehouse" || buyerRole === "warehouse")
+          ? "WAREHOUSE_COLLECTOR_SERVICE"
+          : (deliveryMethod || "SELF_TRANSPORTATION");
 
         let order = await tx.order.create({
           data: {
