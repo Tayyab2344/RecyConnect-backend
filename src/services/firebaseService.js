@@ -17,11 +17,16 @@ function initializeFirebaseAdmin() {
     return admin;
   }
 
-  const serviceAccountPath =
-    process.env.FIREBASE_SERVICE_ACCOUNT_PATH || defaultServiceAccountPath;
-
   try {
-    const serviceAccount = require(serviceAccountPath);
+    let serviceAccount;
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    } else {
+      const serviceAccountPath =
+        process.env.FIREBASE_SERVICE_ACCOUNT_PATH || defaultServiceAccountPath;
+      serviceAccount = require(serviceAccountPath);
+    }
+
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
     });

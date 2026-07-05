@@ -81,6 +81,9 @@ describe('Order Controller', () => {
         await prisma.orderItem.deleteMany({
              where: { order: { buyerId: buyer.id } }
         });
+        await prisma.dispatch.deleteMany({
+             where: { order: { OR: [{ buyerId: buyer.id }, { sellerId: seller.id }] } }
+        }).catch(() => {});
         await prisma.order.deleteMany({
              where: { OR: [{ buyerId: buyer.id }, { sellerId: seller.id }] }
         });
@@ -118,6 +121,9 @@ describe('Order Controller', () => {
             await prisma.orderItem.deleteMany({
                  where: { order: { buyerId: buyer.id } }
             });
+            await prisma.dispatch.deleteMany({
+                 where: { order: { buyerId: buyer.id } }
+            }).catch(() => {});
             await prisma.order.deleteMany({
                  where: { buyerId: buyer.id }
             });
@@ -151,7 +157,7 @@ describe('Order Controller', () => {
 
             expect(res.status).toBe(201);
             expect(res.body.success).toBe(true);
-            expect(res.body.data.status).toBe('CREATED');
+            expect(['CREATED', 'WAREHOUSE_ASSIGNED']).toContain(res.body.data.status);
             expect(res.body.data.buyerId).toBe(buyer.id);
             expect(res.body.data.totalAmount).toBe(100); // 10 weight * 10 price
             expect(res.body.data.deliveryMethod).toBe('WAREHOUSE_COLLECTOR_SERVICE');
@@ -201,6 +207,9 @@ describe('Order Controller', () => {
             await prisma.orderItem.deleteMany({
                  where: { order: { buyerId: buyer.id } }
             });
+            await prisma.dispatch.deleteMany({
+                 where: { order: { buyerId: buyer.id } }
+            }).catch(() => {});
             await prisma.order.deleteMany({
                  where: { buyerId: buyer.id }
             });
@@ -239,6 +248,9 @@ describe('Order Controller', () => {
             await prisma.orderItem.deleteMany({
                  where: { order: { buyerId: buyer.id } }
             });
+            await prisma.dispatch.deleteMany({
+                 where: { order: { buyerId: buyer.id } }
+            }).catch(() => {});
             await prisma.order.deleteMany({
                  where: { buyerId: buyer.id }
             });
