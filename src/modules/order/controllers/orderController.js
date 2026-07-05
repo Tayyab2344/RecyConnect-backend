@@ -660,7 +660,7 @@ export const completeOrder = async (req, res) => {
 
         // 4.5. If Self Transportation, verify handshake OTP
         if (order.deliveryMethod === "SELF_TRANSPORTATION" && order.handshakeOtp) {
-          const { handshakeOtp } = req.body;
+          const { handshakeOtp } = req.body || {};
           if (!handshakeOtp) {
             throw new Error("Handshake OTP is required for self transportation verification");
           }
