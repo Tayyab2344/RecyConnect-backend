@@ -175,8 +175,24 @@ describe('Dispatch & Logistics System Integration Tests', () => {
     await prisma.collectorTask.deleteMany({ where: { warehouseId: warehouseUser.id } });
     await prisma.trip.deleteMany({ where: { warehouseId: warehouseUser.id } });
     await prisma.collectorProfile.deleteMany({ where: { userId: collectorUser.id } });
-    await prisma.orderItem.deleteMany({ where: { orderId: { in: [order1.id, order2.id] } } });
-    await prisma.order.deleteMany({ where: { id: { in: [order1.id, order2.id] } } });
+    await prisma.orderItem.deleteMany({
+      where: {
+        OR: [
+          { orderId: { in: [order1.id, order2.id] } },
+          { order: { buyerId: warehouseUser.id } },
+          { order: { sellerId: warehouseUser.id } }
+        ]
+      }
+    });
+    await prisma.order.deleteMany({
+      where: {
+        OR: [
+          { id: { in: [order1.id, order2.id] } },
+          { buyerId: warehouseUser.id },
+          { sellerId: warehouseUser.id }
+        ]
+      }
+    });
     await prisma.listing.delete({ where: { id: listing.id } });
     await prisma.user.deleteMany({ where: { id: { in: testUserIds } } });
   });
@@ -394,6 +410,44 @@ describe('Dispatch & Logistics System Integration Tests', () => {
       expect(dbTask.verification.verifiedWeight).toBe(15.0);
       expect(dbTask.delivery).not.toBeNull();
       expect(dbTask.delivery.status).toBe('DELIVERED');
+    });
+  });
+
+  describe('Direct Collector Assignment to Warehouse Orders', () => {
+    it('should assign a collector to a WAREHOUSE_ASSIGNED order', async () => {
+      // Create a WAREHOUSE_ASSIGNED order in the database
+      const warehouseOrder = await prisma.order.create({
+        data: {
+          buyerId: warehouseUser.id,
+          sellerId: individualUser.id,
+          status: 'WAREHOUSE_ASSIGNED',
+          totalAmount: 200.0,
+          deliveryMethod: 'WAREHOUSE_COLLECTOR_SERVICE',
+          handshakeOtp: '5678',
+          items: {
+            create: {
+              listingId: listing.id,
+              quantity: 10.0,
+              price: 20.0
+            }
+          }
+        }
+      });
+
+      const res = await request(app)
+        .post('/api/dispatch/assign-orders')
+        .set('Authorization', `Bearer ${warehouseToken}`)
+        .send({
+          collectorId: collectorUser.id,
+          orderIds: [warehouseOrder.id]
+        });
+
+      if (res.status !== 201) {
+        console.error("ASSIGN_ORDERS_FAILED_BODY:", res.text);
+      }
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.status).toBe('ASSIGNED');
     });
   });
 });

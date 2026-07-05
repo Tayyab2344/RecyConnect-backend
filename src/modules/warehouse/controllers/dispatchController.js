@@ -511,7 +511,7 @@ export async function assignOrdersToCollector(req, res) {
       where: {
         id: { in: orderIds.map(id => parseId(id)) },
         deliveryMethod: "WAREHOUSE_COLLECTOR_SERVICE",
-        status: { in: ["CONFIRMED", "PENDING", "PROCESSING", "CREATED"] },
+        status: { in: ["CONFIRMED", "PENDING", "PROCESSING", "CREATED", "WAREHOUSE_ASSIGNED", "WAITING_FOR_DISPATCH"] },
         OR: [
           { buyerId: warehouseId },
           { sellerId: warehouseId },
@@ -532,7 +532,7 @@ export async function assignOrdersToCollector(req, res) {
     // Map orders to tasks
     const routeTasks = orders.map(order => {
       const isSameRoleTrade = order.seller.role !== "warehouse" && order.buyer.role !== "warehouse";
-      const isLeg1Active = isSameRoleTrade && ["WAITING_FOR_DISPATCH", "PENDING", "CONFIRMED", "CREATED"].includes(order.status);
+      const isLeg1Active = isSameRoleTrade && ["WAITING_FOR_DISPATCH", "WAREHOUSE_ASSIGNED", "PENDING", "CONFIRMED", "CREATED"].includes(order.status);
       const isWarehouseBuyer = order.buyerId === warehouseId;
       const listing = order.items[0]?.listing;
 

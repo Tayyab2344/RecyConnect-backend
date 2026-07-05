@@ -20,8 +20,24 @@ import { invalidateCache } from '../../../lib/redis.js';
 
 // Valid state transitions for orders
 const VALID_TRANSITIONS = {
-  [OrderStatus.CREATED]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
-  [OrderStatus.CONFIRMED]: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
+  [OrderStatus.CREATED]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED, OrderStatus.WAREHOUSE_ASSIGNED, OrderStatus.WAITING_FOR_DISPATCH],
+  [OrderStatus.CONFIRMED]: [OrderStatus.COMPLETED, OrderStatus.CANCELLED, OrderStatus.COLLECTED, OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.DELIVERED],
+  [OrderStatus.PENDING]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED, OrderStatus.COLLECTED],
+  [OrderStatus.PROCESSING]: [OrderStatus.SHIPPED, OrderStatus.DELIVERED, OrderStatus.COMPLETED, OrderStatus.CANCELLED],
+  [OrderStatus.SHIPPED]: [OrderStatus.DELIVERED, OrderStatus.COMPLETED, OrderStatus.CANCELLED],
+  [OrderStatus.DELIVERED]: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
+  [OrderStatus.COLLECTED]: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
+  [OrderStatus.WAITING_FOR_DISPATCH]: [OrderStatus.WAREHOUSE_ASSIGNED, OrderStatus.CANCELLED],
+  [OrderStatus.WAREHOUSE_ASSIGNED]: [OrderStatus.COLLECTOR_ASSIGNED, OrderStatus.CANCELLED],
+  [OrderStatus.COLLECTOR_ASSIGNED]: [OrderStatus.COLLECTOR_ACCEPTED, OrderStatus.CANCELLED],
+  [OrderStatus.COLLECTOR_ACCEPTED]: [OrderStatus.TRAVELLING_TO_SELLER, OrderStatus.CANCELLED],
+  [OrderStatus.TRAVELLING_TO_SELLER]: [OrderStatus.ARRIVED_AT_PICKUP, OrderStatus.CANCELLED],
+  [OrderStatus.ARRIVED_AT_PICKUP]: [OrderStatus.MATERIAL_VERIFIED, OrderStatus.CANCELLED],
+  [OrderStatus.MATERIAL_VERIFIED]: [OrderStatus.PICKED_UP, OrderStatus.CANCELLED],
+  [OrderStatus.PICKED_UP]: [OrderStatus.IN_TRANSIT, OrderStatus.CANCELLED],
+  [OrderStatus.IN_TRANSIT]: [OrderStatus.ARRIVED_AT_BUYER, OrderStatus.CANCELLED],
+  [OrderStatus.ARRIVED_AT_BUYER]: [OrderStatus.BUYER_VERIFICATION, OrderStatus.CANCELLED],
+  [OrderStatus.BUYER_VERIFICATION]: [OrderStatus.DELIVERED, OrderStatus.COMPLETED, OrderStatus.CANCELLED],
   [OrderStatus.COMPLETED]: [], // Terminal state
   [OrderStatus.CANCELLED]: [], // Terminal state
 };
@@ -74,6 +90,13 @@ const orderInclude = {
  * Validate state transition
  */
 const isValidTransition = (currentStatus, newStatus) => {
+  // Always allow cancel/complete from any non-terminal state
+  if (currentStatus === OrderStatus.COMPLETED || currentStatus === OrderStatus.CANCELLED) {
+    return false;
+  }
+  if (newStatus === OrderStatus.CANCELLED || newStatus === OrderStatus.COMPLETED) {
+    return true;
+  }
   const allowedTransitions = VALID_TRANSITIONS[currentStatus] || [];
   return allowedTransitions.includes(newStatus);
 };
@@ -1064,7 +1087,7 @@ export const getOrders = async (req, res) => {
         }
       };
       if (!status) {
-        where.status = { in: ["CONFIRMED", "PROCESSING", "PENDING", "CREATED"] };
+        where.status = { in: ["CONFIRMED", "PROCESSING", "PENDING", "CREATED", "WAREHOUSE_ASSIGNED", "WAITING_FOR_DISPATCH"] };
       }
     }
 
