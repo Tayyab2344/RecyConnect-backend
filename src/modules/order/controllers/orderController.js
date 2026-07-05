@@ -26,6 +26,50 @@ const VALID_TRANSITIONS = {
   [OrderStatus.CANCELLED]: [], // Terminal state
 };
 
+const orderInclude = {
+  buyer: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      contactNo: true,
+      address: true,
+      latitude: true,
+      longitude: true,
+      businessName: true,
+      companyName: true,
+    },
+  },
+  seller: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      contactNo: true,
+      address: true,
+      latitude: true,
+      longitude: true,
+      businessName: true,
+      companyName: true,
+    },
+  },
+  items: {
+    include: {
+      listing: true,
+    },
+  },
+  reservation: true,
+  reviews: true,
+  collectorTasks: {
+    include: {
+      collector: { select: { id: true, name: true, contactNo: true } },
+      verification: true,
+      delivery: true,
+    },
+  },
+};
+
+
 /**
  * Validate state transition
  */
@@ -107,9 +151,20 @@ export const createOrder = async (req, res) => {
           where: { id: buyerId },
           select: { id: true, name: true, email: true, contactNo: true, address: true, latitude: true, longitude: true, role: true },
         });
-        if (!buyer) throw new Error("Buyer not found");
+                if (!buyer) throw new Error("Buyer not found");
 
-        // 4c. B2B purchasing rules enforcement
+        // 4c. Update buyer's profile coordinates if passed
+        if (buyerLatitude && buyerLongitude) {
+          await tx.user.update({
+            where: { id: buyerId },
+            data: {
+              latitude: parseFloat(buyerLatitude),
+              longitude: parseFloat(buyerLongitude),
+            },
+          });
+        }
+
+        // 4d. B2B purchasing rules enforcement
         const sellerRole = listing.user?.role;
         const buyerRole = buyer.role;
         const isHousehold = (r) => r === 'individual';
@@ -150,23 +205,7 @@ export const createOrder = async (req, res) => {
               },
             },
           },
-          include: {
-            buyer: {
-              select: { id: true, name: true, email: true, contactNo: true, businessName: true, companyName: true },
-            },
-            seller: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                contactNo: true,
-                address: true,
-                businessName: true,
-                companyName: true,
-              },
-            },
-            items: { include: { listing: true } },
-          },
+          include: orderInclude,
         });
 
         // 7. Deduct stock atomically and mark listing as SOLD if fully ordered
@@ -208,13 +247,19 @@ export const createOrder = async (req, res) => {
           let selectedWarehouseId = chosenWarehouseId ? parseInt(chosenWarehouseId, 10) : null;
 
           if (!selectedWarehouseId) {
-            selectedWarehouseId = await findBestWarehouseForLogisticsHelper(tx, {
-              sellerLat: srcLat,
-              sellerLng: srcLng,
-              buyerLat: dstLat,
-              buyerLng: dstLng,
-              excludeIds: []
-            });
+            if (buyerRole === "warehouse") {
+              selectedWarehouseId = buyerId;
+            } else if (sellerRole === "warehouse") {
+              selectedWarehouseId = sellerId;
+            } else {
+              selectedWarehouseId = await findBestWarehouseForLogisticsHelper(tx, {
+                sellerLat: srcLat,
+                sellerLng: srcLng,
+                buyerLat: dstLat,
+                buyerLng: dstLng,
+                excludeIds: []
+              });
+            }
           }
 
           if (!selectedWarehouseId) {
@@ -242,7 +287,8 @@ export const createOrder = async (req, res) => {
           // Set order status to WAITING_FOR_DISPATCH
           order = await tx.order.update({
             where: { id: order.id },
-            data: { status: "WAITING_FOR_DISPATCH" }
+            data: { status: "WAITING_FOR_DISPATCH" },
+            include: orderInclude,
           });
         }
 
@@ -336,22 +382,7 @@ export const confirmOrder = async (req, res) => {
         const updatedOrder = await tx.order.update({
           where: { id: order.id },
           data: { status: OrderStatus.CONFIRMED },
-          include: {
-            buyer: {
-              select: { id: true, name: true, email: true, contactNo: true },
-            },
-            seller: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                contactNo: true,
-                address: true,
-              },
-            },
-            items: { include: { listing: true } },
-            reservation: true,
-          },
+          include: orderInclude,
         });
 
         // 6. Lock reservation permanently (COMPLETED status)
@@ -486,23 +517,7 @@ export const cancelOrder = async (req, res) => {
         const updatedOrder = await tx.order.update({
           where: { id: order.id },
           data: { status: OrderStatus.CANCELLED },
-          include: {
-            buyer: {
-              select: { id: true, name: true, email: true, contactNo: true },
-            },
-            seller: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                contactNo: true,
-                address: true,
-              },
-            },
-            items: { include: { listing: true } },
-            reservation: true,
-            payment: true,
-          },
+          include: orderInclude,
         });
 
         // 7. Restore listing quantity directly from order items
@@ -656,23 +671,7 @@ export const completeOrder = async (req, res) => {
         const updatedOrder = await tx.order.update({
           where: { id: order.id },
           data: { status: OrderStatus.COMPLETED },
-          include: {
-            buyer: {
-              select: { id: true, name: true, email: true, contactNo: true },
-            },
-            seller: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                contactNo: true,
-                address: true,
-              },
-            },
-            items: { include: { listing: true } },
-            reservation: true,
-            payment: true,
-          },
+          include: orderInclude,
         });
 
         // Archive related conversations when order is completed
@@ -819,7 +818,7 @@ export const getBuyerOrders = async (req, res) => {
         buyerId: true,
         sellerId: true,
         buyer: {
-          select: { id: true, name: true, email: true, contactNo: true, businessName: true, companyName: true },
+          select: { id: true, name: true, email: true, contactNo: true, address: true, latitude: true, longitude: true, businessName: true, companyName: true },
         },
         seller: {
           select: {
@@ -828,6 +827,8 @@ export const getBuyerOrders = async (req, res) => {
             email: true,
             contactNo: true,
             address: true,
+            latitude: true,
+            longitude: true,
             businessName: true,
             companyName: true,
           },
@@ -916,7 +917,7 @@ export const getSellerOrders = async (req, res) => {
         buyerId: true,
         sellerId: true,
         buyer: {
-          select: { id: true, name: true, email: true, contactNo: true, businessName: true, companyName: true },
+          select: { id: true, name: true, email: true, contactNo: true, address: true, latitude: true, longitude: true, businessName: true, companyName: true },
         },
         seller: {
           select: {
@@ -925,6 +926,8 @@ export const getSellerOrders = async (req, res) => {
             email: true,
             contactNo: true,
             address: true,
+            latitude: true,
+            longitude: true,
             businessName: true,
             companyName: true,
           },
@@ -977,34 +980,7 @@ export const getOrderById = async (req, res) => {
 
     const order = await prisma.order.findUnique({
       where: { id: parseInt(id) },
-      include: {
-        buyer: {
-          select: { id: true, name: true, email: true, contactNo: true },
-        },
-        seller: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            contactNo: true,
-            address: true,
-          },
-        },
-        items: {
-          include: {
-            listing: true,
-          },
-        },
-        reservation: true,
-        reviews: true,
-        collectorTasks: {
-          include: {
-            collector: { select: { id: true, name: true, contactNo: true } },
-            verification: true,
-            delivery: true,
-          }
-        },
-      },
+      include: orderInclude,
     });
 
     if (!order) {
@@ -1381,9 +1357,7 @@ export const updateOrderStatus = async (req, res) => {
       const updated = await tx.order.update({
         where: { id: parseInt(id) },
         data: { status },
-        include: {
-          items: true
-        }
+        include: orderInclude,
       });
 
       if (status === 'COMPLETED') {
