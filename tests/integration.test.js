@@ -97,7 +97,7 @@ describe('Integration Tests - Full Flow', () => {
                 name: 'Integration Test Buyer',
                 email: `integrationbuyer${Date.now()}@test.com`,
                 password: hashedPassword,
-                role: 'warehouse',
+                role: 'individual',
                 emailVerified: true
             }
         });
@@ -127,6 +127,10 @@ describe('Integration Tests - Full Flow', () => {
         }).catch(()=>{});
         
         await prisma.orderItem.deleteMany({
+             where: { order: { buyerId: buyer.id } }
+        }).catch(()=>{});
+        
+        await prisma.dispatch.deleteMany({
              where: { order: { buyerId: buyer.id } }
         }).catch(()=>{});
         

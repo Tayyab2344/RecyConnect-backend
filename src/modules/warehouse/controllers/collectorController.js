@@ -62,6 +62,7 @@ function getTaskInclude() {
     destinationUser: { select: { id: true, name: true, businessName: true, companyName: true, contactNo: true, address: true, city: true, area: true, latitude: true, longitude: true } },
     verification: true,
     delivery: true,
+    order: { select: { id: true, buyerId: true, sellerId: true } },
   };
 }
 
@@ -562,57 +563,60 @@ export async function acceptCollectorTask(req, res) {
     const taskId = parseId(req.params.id);
     const userId = req.user.id;
 
-    const result = await prisma.$transaction(async (tx) => {
-      const task = await tx.collectorTask.findUnique({ where: { id: taskId } });
-      if (!task) throw new Error("Task not found");
-      if (terminalStatuses.includes(task.status)) {
-        throw new Error("This task is already completed or cancelled");
-      }
-
-      // Warehouse collector: task must be already assigned to them
-      // Independent collector: task must be unassigned (collectorId null)
-      if (task.collectorId && task.collectorId !== userId) {
-        throw new Error("This task is assigned to another collector");
-      }
-
-      if (!task.collectorId) {
-        // Independent collector claiming an unassigned task
-        if (task.taskType === "SELF_DELIVERY") {
-          throw new Error("Self-delivery tasks cannot be claimed by collectors");
+    const result = await prisma.$transaction(
+      async (tx) => {
+        const task = await tx.collectorTask.findUnique({ where: { id: taskId } });
+        if (!task) throw new Error("Task not found");
+        if (terminalStatuses.includes(task.status)) {
+          throw new Error("This task is already completed or cancelled");
         }
-      }
 
-      const updated = await tx.collectorTask.update({
-        where: { id: taskId },
-        data: {
-          collectorId: userId,
-          status: CollectorTaskStatus.ACCEPTED,
-          acceptedAt: new Date(),
-        },
-        include: getTaskInclude(),
-      });
+        // Warehouse collector: task must be already assigned to them
+        // Independent collector: task must be unassigned (collectorId null)
+        if (task.collectorId && task.collectorId !== userId) {
+          throw new Error("This task is assigned to another collector");
+        }
 
-      // Update collector profile
-      await tx.collectorProfile.updateMany({
-        where: { userId },
-        data: { availabilityStatus: CollectorAvailability.BUSY, lastActiveAt: new Date() },
-      });
+        if (!task.collectorId) {
+          // Independent collector claiming an unassigned task
+          if (task.taskType === "SELF_DELIVERY") {
+            throw new Error("Self-delivery tasks cannot be claimed by collectors");
+          }
+        }
 
-      // Update parent order status to COLLECTOR_ACCEPTED
-      if (updated.orderId) {
-        await tx.order.update({
-          where: { id: updated.orderId },
-          data: { status: "COLLECTOR_ACCEPTED" },
+        const updated = await tx.collectorTask.update({
+          where: { id: taskId },
+          data: {
+            collectorId: userId,
+            status: CollectorTaskStatus.ACCEPTED,
+            acceptedAt: new Date(),
+          },
+          include: getTaskInclude(),
         });
 
-        await tx.dispatch.updateMany({
-          where: { orderId: updated.orderId },
-          data: { dispatchStatus: "COLLECTOR_ACCEPTED" },
+        // Update collector profile
+        await tx.collectorProfile.updateMany({
+          where: { userId },
+          data: { availabilityStatus: CollectorAvailability.BUSY, lastActiveAt: new Date() },
         });
-      }
 
-      return updated;
-    });
+        // Update parent order status to COLLECTOR_ACCEPTED
+        if (updated.orderId) {
+          await tx.order.update({
+            where: { id: updated.orderId },
+            data: { status: "COLLECTOR_ACCEPTED" },
+          });
+
+          await tx.dispatch.updateMany({
+            where: { orderId: updated.orderId },
+            data: { dispatchStatus: "COLLECTOR_ACCEPTED" },
+          });
+        }
+
+        return updated;
+      },
+      { timeout: 30000 }
+    );
 
     // System message to order chats
     if (result.orderId) {
