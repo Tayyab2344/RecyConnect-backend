@@ -158,6 +158,10 @@ describe('Integration Tests - Full Flow', () => {
                  { participant2Id: { in: [seller.id, buyer.id] } }
              ] }
         }).catch(() => {});
+
+        await prisma.notification.deleteMany({
+            where: { userId: { in: [seller.id, buyer.id] } }
+        }).catch(() => {});
         
         await prisma.user.deleteMany({
             where: { id: { in: [seller.id, buyer.id] } }
@@ -167,7 +171,7 @@ describe('Integration Tests - Full Flow', () => {
     });
 
     describe('Complete Happy Path', () => {
-        let orderId, paymentId;
+        let orderId, paymentId, handshakeOtp;
 
         it('Step 1: Buyer creates order directly against listing', async () => {
             const res = await request(app)
@@ -179,6 +183,7 @@ describe('Integration Tests - Full Flow', () => {
             expect(res.body.success).toBe(true);
             expect(res.body.data.status).toBe('CREATED');
             orderId = res.body.data.id;
+            handshakeOtp = res.body.data.handshakeOtp;
         });
 
         it('Step 2: Seller confirms order', async () => {
@@ -226,7 +231,8 @@ describe('Integration Tests - Full Flow', () => {
         it('Step 6: Seller completes order', async () => {
             const res = await request(app)
                 .post(`/api/orders/${orderId}/complete`)
-                .set('Authorization', `Bearer ${sellerToken}`);
+                .set('Authorization', `Bearer ${sellerToken}`)
+                .send({ handshakeOtp });
 
             expect(res.status).toBe(200);
             expect(res.body.success).toBe(true);

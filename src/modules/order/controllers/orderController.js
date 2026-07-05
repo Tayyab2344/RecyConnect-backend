@@ -658,17 +658,6 @@ export const completeOrder = async (req, res) => {
           throw new Error("Invalid state transition");
         }
 
-        // 4.5. If Self Transportation, verify handshake OTP
-        if (order.deliveryMethod === "SELF_TRANSPORTATION" && order.handshakeOtp) {
-          const { handshakeOtp } = req.body || {};
-          if (!handshakeOtp) {
-            throw new Error("Handshake OTP is required for self transportation verification");
-          }
-          if (handshakeOtp.toString() !== order.handshakeOtp.toString()) {
-            throw new Error("Invalid Handshake OTP code. Verification failed.");
-          }
-        }
-
         // 5. Validate payment is CAPTURED
         if (!order.payment) {
           throw new Error("Cannot complete order. No payment found.");
@@ -678,6 +667,17 @@ export const completeOrder = async (req, res) => {
           throw new Error(
             `Cannot complete order. Payment must be CAPTURED. Current payment status: ${order.payment.status}`,
           );
+        }
+
+        // 4.5. If Self Transportation, verify handshake OTP
+        if (order.deliveryMethod === "SELF_TRANSPORTATION" && order.handshakeOtp) {
+          const { handshakeOtp } = req.body || {};
+          if (!handshakeOtp) {
+            throw new Error("Handshake OTP is required for self transportation verification");
+          }
+          if (handshakeOtp.toString() !== order.handshakeOtp.toString()) {
+            throw new Error("Invalid Handshake OTP code. Verification failed.");
+          }
         }
 
         // 6. Update order status to COMPLETED
