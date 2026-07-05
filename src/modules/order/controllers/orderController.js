@@ -271,11 +271,17 @@ export const createOrder = async (req, res) => {
             { latitude: dstLat || 33.6844, longitude: dstLng || 73.0479 }
           );
 
+          // If the warehouse is buyer or seller, auto-accept dispatch
+          const isWarehouseUser = buyerRole === "warehouse" || sellerRole === "warehouse";
+          const statusVal = isWarehouseUser ? "ACCEPTED" : "PENDING_ACCEPTANCE";
+          const assignedAtVal = isWarehouseUser ? new Date() : null;
+
           await tx.dispatch.create({
             data: {
               orderId: order.id,
               warehouseId: selectedWarehouseId,
-              dispatchStatus: "PENDING_ACCEPTANCE",
+              dispatchStatus: statusVal,
+              assignedAt: assignedAtVal,
               pickupLocation: srcAddr,
               deliveryLocation: dstAddr,
               estimatedDistance: dist,
@@ -284,12 +290,19 @@ export const createOrder = async (req, res) => {
             }
           });
 
-          // Set order status to WAITING_FOR_DISPATCH
+          // Set order status: WAREHOUSE_ASSIGNED if auto-accepted, else WAITING_FOR_DISPATCH
           order = await tx.order.update({
             where: { id: order.id },
-            data: { status: "WAITING_FOR_DISPATCH" },
+            data: { status: isWarehouseUser ? "WAREHOUSE_ASSIGNED" : "WAITING_FOR_DISPATCH" },
             include: orderInclude,
           });
+
+          if (isWarehouseUser) {
+            await tx.user.update({
+              where: { id: selectedWarehouseId },
+              data: { currentActiveDispatches: { increment: 1 } }
+            });
+          }
         }
 
         // 9. Auto-create BUYER_SELLER conversation and initial SYSTEM message
