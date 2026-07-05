@@ -133,7 +133,7 @@ export const createOrder = async (req, res) => {
             ? "WAREHOUSE_COLLECTOR_SERVICE" 
             : "SELF_TRANSPORTATION");
 
-        const order = await tx.order.create({
+        let order = await tx.order.create({
           data: {
             buyerId,
             sellerId,
@@ -152,7 +152,7 @@ export const createOrder = async (req, res) => {
           },
           include: {
             buyer: {
-              select: { id: true, name: true, email: true, contactNo: true },
+              select: { id: true, name: true, email: true, contactNo: true, businessName: true, companyName: true },
             },
             seller: {
               select: {
@@ -161,6 +161,8 @@ export const createOrder = async (req, res) => {
                 email: true,
                 contactNo: true,
                 address: true,
+                businessName: true,
+                companyName: true,
               },
             },
             items: { include: { listing: true } },
@@ -817,7 +819,7 @@ export const getBuyerOrders = async (req, res) => {
         buyerId: true,
         sellerId: true,
         buyer: {
-          select: { id: true, name: true, email: true, contactNo: true },
+          select: { id: true, name: true, email: true, contactNo: true, businessName: true, companyName: true },
         },
         seller: {
           select: {
@@ -826,6 +828,8 @@ export const getBuyerOrders = async (req, res) => {
             email: true,
             contactNo: true,
             address: true,
+            businessName: true,
+            companyName: true,
           },
         },
         items: {
@@ -912,7 +916,7 @@ export const getSellerOrders = async (req, res) => {
         buyerId: true,
         sellerId: true,
         buyer: {
-          select: { id: true, name: true, email: true, contactNo: true },
+          select: { id: true, name: true, email: true, contactNo: true, businessName: true, companyName: true },
         },
         seller: {
           select: {
@@ -921,6 +925,8 @@ export const getSellerOrders = async (req, res) => {
             email: true,
             contactNo: true,
             address: true,
+            businessName: true,
+            companyName: true,
           },
         },
         items: {
@@ -1111,7 +1117,7 @@ export const getOrders = async (req, res) => {
         buyerId: true,
         sellerId: true,
         buyer: {
-          select: { id: true, name: true, email: true, contactNo: true, address: true, latitude: true, longitude: true },
+          select: { id: true, name: true, email: true, contactNo: true, address: true, latitude: true, longitude: true, businessName: true, companyName: true },
         },
         seller: {
           select: {
@@ -1122,6 +1128,8 @@ export const getOrders = async (req, res) => {
             address: true,
             latitude: true,
             longitude: true,
+            businessName: true,
+            companyName: true,
           },
         },
         items: {
@@ -1463,11 +1471,22 @@ async function findBestWarehouseForLogisticsHelper(tx, { sellerLat, sellerLng, b
   });
 
   const scored = warehouses.map(w => {
-    if (!w.latitude || !w.longitude) return null;
+    let lat = w.latitude;
+    let lng = w.longitude;
+
+    // Safety fallback for coordinates if they are null
+    if (!lat || !lng) {
+      if (w.address && w.address.toLowerCase().includes("abbottabad")) {
+        lat = 34.1487;
+        lng = 73.2123;
+      } else {
+        return null;
+      }
+    }
 
     const distToSeller = getHaversineDistance(
       { latitude: sellerLat, longitude: sellerLng },
-      { latitude: w.latitude, longitude: w.longitude }
+      { latitude: lat, longitude: lng }
     );
 
     const radius = w.deliveryRadius || 10.0;

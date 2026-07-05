@@ -172,26 +172,57 @@ export async function optimizeAndClusterRoutes(req, res) {
 
     // 3. Map orders into routing task nodes
     const routeTasks = orders.map(order => {
-      // Determine source (where to pick up) and destination (where to deliver)
+      const isSameRoleTrade = order.seller.role !== "warehouse" && order.buyer.role !== "warehouse";
+      const isLeg1Active = isSameRoleTrade && ["WAITING_FOR_DISPATCH", "PENDING", "CONFIRMED", "CREATED"].includes(order.status);
       const isWarehouseBuyer = order.buyerId === warehouseId;
       const listing = order.items[0]?.listing;
-      const pickupUser = isWarehouseBuyer ? order.seller : warehouseUser;
-      const deliverUser = isWarehouseBuyer ? warehouseUser : order.buyer;
 
-      const sourceAddress = isWarehouseBuyer
+      let taskType;
+      let pickupUser;
+      let deliverUser;
+
+      if (isWarehouseBuyer) {
+        taskType = "SELLER_TO_WAREHOUSE";
+        pickupUser = order.seller;
+        deliverUser = warehouseUser;
+      } else if (order.sellerId === warehouseId) {
+        taskType = "WAREHOUSE_TO_BUYER";
+        pickupUser = warehouseUser;
+        deliverUser = order.buyer;
+      } else if (isSameRoleTrade) {
+        if (isLeg1Active) {
+          taskType = "SELLER_TO_WAREHOUSE";
+          pickupUser = order.seller;
+          deliverUser = warehouseUser;
+        } else {
+          taskType = "WAREHOUSE_TO_BUYER";
+          pickupUser = warehouseUser;
+          deliverUser = order.buyer;
+        }
+      } else {
+        taskType = "SELLER_TO_BUYER";
+        pickupUser = order.seller;
+        deliverUser = order.buyer;
+      }
+
+      const isSourceSeller = (pickupUser.id === order.sellerId);
+      const sourceAddress = isSourceSeller
           ? (listing?.pickupAddress || pickupUser.address || "Unknown Address")
           : (pickupUser.address || "Unknown Address");
 
       const sFallback = getCoordsFallback(sourceAddress);
-      const sourceLatitude = isWarehouseBuyer
+      const sourceLatitude = isSourceSeller
           ? (listing?.latitude || pickupUser.latitude || sFallback.latitude)
           : (pickupUser.latitude || sFallback.latitude);
 
-      const sourceLongitude = isWarehouseBuyer
+      const sourceLongitude = isSourceSeller
           ? (listing?.longitude || pickupUser.longitude || sFallback.longitude)
           : (pickupUser.longitude || sFallback.longitude);
 
-      const destAddress = isWarehouseBuyer ? (warehouseUser?.address || "Unknown Destination") : (deliverUser.address || "Unknown Destination");
+      const destAddress = (deliverUser.id === warehouseId)
+          ? (warehouseUser?.address || "Unknown Destination")
+          : (deliverUser.address || "Unknown Destination");
+
       const dFallback = getCoordsFallback(destAddress);
       const destinationLatitude = deliverUser.latitude || dFallback.latitude;
       const destinationLongitude = deliverUser.longitude || dFallback.longitude;
@@ -199,14 +230,14 @@ export async function optimizeAndClusterRoutes(req, res) {
       return {
         id: order.id,
         orderId: order.id,
-        taskType: isWarehouseBuyer ? "SELLER_TO_WAREHOUSE" : "WAREHOUSE_TO_BUYER",
-        sourceType: isWarehouseBuyer ? order.seller.role : "warehouse",
+        taskType,
+        sourceType: isSourceSeller ? order.seller.role : "warehouse",
         sourceLatitude,
         sourceLongitude,
         sourceAddress,
         sourceName: pickupUser.name || "Waste Seller",
         sourceContact: pickupUser.contactNo || "",
-        destinationType: isWarehouseBuyer ? "warehouse" : order.buyer.role,
+        destinationType: (deliverUser.id === warehouseId) ? "warehouse" : order.buyer.role,
         destinationLatitude,
         destinationLongitude,
         destinationAddress: destAddress,
@@ -483,7 +514,8 @@ export async function assignOrdersToCollector(req, res) {
         status: { in: ["CONFIRMED", "PENDING", "PROCESSING", "CREATED"] },
         OR: [
           { buyerId: warehouseId },
-          { sellerId: warehouseId }
+          { sellerId: warehouseId },
+          { dispatch: { warehouseId } }
         ]
       },
       include: {
@@ -499,39 +531,71 @@ export async function assignOrdersToCollector(req, res) {
 
     // Map orders to tasks
     const routeTasks = orders.map(order => {
+      const isSameRoleTrade = order.seller.role !== "warehouse" && order.buyer.role !== "warehouse";
+      const isLeg1Active = isSameRoleTrade && ["WAITING_FOR_DISPATCH", "PENDING", "CONFIRMED", "CREATED"].includes(order.status);
       const isWarehouseBuyer = order.buyerId === warehouseId;
       const listing = order.items[0]?.listing;
-      const pickupUser = isWarehouseBuyer ? order.seller : warehouseUser;
-      const deliverUser = isWarehouseBuyer ? warehouseUser : order.buyer;
 
-      const sourceAddress = isWarehouseBuyer
+      let taskType;
+      let pickupUser;
+      let deliverUser;
+
+      if (isWarehouseBuyer) {
+        taskType = "SELLER_TO_WAREHOUSE";
+        pickupUser = order.seller;
+        deliverUser = warehouseUser;
+      } else if (order.sellerId === warehouseId) {
+        taskType = "WAREHOUSE_TO_BUYER";
+        pickupUser = warehouseUser;
+        deliverUser = order.buyer;
+      } else if (isSameRoleTrade) {
+        if (isLeg1Active) {
+          taskType = "SELLER_TO_WAREHOUSE";
+          pickupUser = order.seller;
+          deliverUser = warehouseUser;
+        } else {
+          taskType = "WAREHOUSE_TO_BUYER";
+          pickupUser = warehouseUser;
+          deliverUser = order.buyer;
+        }
+      } else {
+        taskType = "SELLER_TO_BUYER";
+        pickupUser = order.seller;
+        deliverUser = order.buyer;
+      }
+
+      const isSourceSeller = (pickupUser.id === order.sellerId);
+      const sourceAddress = isSourceSeller
           ? (listing?.pickupAddress || pickupUser.address || "Unknown Address")
           : (pickupUser.address || "Unknown Address");
 
       const sFallback = getCoordsFallback(sourceAddress);
-      const sourceLatitude = isWarehouseBuyer
+      const sourceLatitude = isSourceSeller
           ? (listing?.latitude || pickupUser.latitude || sFallback.latitude)
           : (pickupUser.latitude || sFallback.latitude);
 
-      const sourceLongitude = isWarehouseBuyer
+      const sourceLongitude = isSourceSeller
           ? (listing?.longitude || pickupUser.longitude || sFallback.longitude)
           : (pickupUser.longitude || sFallback.longitude);
 
-      const destAddress = isWarehouseBuyer ? (warehouseUser?.address || "Unknown Destination") : (deliverUser.address || "Unknown Destination");
+      const destAddress = (deliverUser.id === warehouseId)
+          ? (warehouseUser?.address || "Unknown Destination")
+          : (deliverUser.address || "Unknown Destination");
+
       const dFallback = getCoordsFallback(destAddress);
       const destinationLatitude = deliverUser.latitude || dFallback.latitude;
       const destinationLongitude = deliverUser.longitude || dFallback.longitude;
 
       return {
         orderId: order.id,
-        taskType: isWarehouseBuyer ? "SELLER_TO_WAREHOUSE" : "WAREHOUSE_TO_BUYER",
-        sourceType: isWarehouseBuyer ? order.seller.role : "warehouse",
+        taskType,
+        sourceType: isSourceSeller ? order.seller.role : "warehouse",
         sourceLatitude,
         sourceLongitude,
         sourceAddress,
         sourceName: pickupUser.name || "Waste Seller",
         sourceContact: pickupUser.contactNo || "",
-        destinationType: isWarehouseBuyer ? "warehouse" : order.buyer.role,
+        destinationType: (deliverUser.id === warehouseId) ? "warehouse" : order.buyer.role,
         destinationLatitude,
         destinationLongitude,
         destinationAddress: destAddress,
@@ -1096,33 +1160,80 @@ export async function assignCollectorToDispatch(req, res) {
       })
     ]);
 
-    const sellerLat = dispatch.order.items[0]?.listing?.latitude || dispatch.order.seller.latitude;
-    const sellerLng = dispatch.order.items[0]?.listing?.longitude || dispatch.order.seller.longitude;
-    const buyerLat = dispatch.order.buyer.latitude;
-    const buyerLng = dispatch.order.buyer.longitude;
+    const warehouseUser = await prisma.user.findUnique({
+      where: { id: warehouseId }
+    });
+
+    const isWarehouseBuyer = dispatch.order.buyerId === warehouseId;
+    const isWarehouseSeller = dispatch.order.sellerId === warehouseId;
+    const isSameRoleTrade = dispatch.order.seller.role !== "warehouse" && dispatch.order.buyer.role !== "warehouse";
+
+    let taskType = "SELLER_TO_BUYER";
+    let sourceType = "HOUSEHOLD";
+    let sourceUserId = dispatch.order.sellerId;
+    let sourceName = dispatch.order.seller.name || "";
+    let sourceAddress = dispatch.order.items[0]?.listing?.pickupAddress || dispatch.order.seller.address || "";
+    let sourceContact = dispatch.order.seller.contactNo || "";
+    let sourceLat = dispatch.order.items[0]?.listing?.latitude || dispatch.order.seller.latitude;
+    let sourceLng = dispatch.order.items[0]?.listing?.longitude || dispatch.order.seller.longitude;
+
+    let destinationType = "HOUSEHOLD";
+    let destinationUserId = dispatch.order.buyerId;
+    let destinationName = dispatch.order.buyer.name || "";
+    let destinationAddress = dispatch.order.buyer.address || "";
+    let destinationContact = dispatch.order.buyer.contactNo || "";
+    let destLat = dispatch.order.buyer.latitude;
+    let destLng = dispatch.order.buyer.longitude;
+
+    if (isWarehouseBuyer) {
+      taskType = "SELLER_TO_WAREHOUSE";
+      destinationType = "WAREHOUSE";
+      destinationUserId = warehouseId;
+      destinationName = warehouseUser?.businessName || "Warehouse";
+      destinationAddress = warehouseUser?.address || "";
+      destLat = warehouseUser?.latitude;
+      destLng = warehouseUser?.longitude;
+    } else if (isWarehouseSeller) {
+      taskType = "WAREHOUSE_TO_BUYER";
+      sourceType = "WAREHOUSE";
+      sourceUserId = warehouseId;
+      sourceName = warehouseUser?.businessName || "Warehouse";
+      sourceAddress = warehouseUser?.address || "";
+      sourceContact = warehouseUser?.contactNo || "";
+      sourceLat = warehouseUser?.latitude;
+      sourceLng = warehouseUser?.longitude;
+    } else if (isSameRoleTrade) {
+      taskType = "SELLER_TO_WAREHOUSE";
+      destinationType = "WAREHOUSE";
+      destinationUserId = warehouseId;
+      destinationName = warehouseUser?.businessName || "Warehouse";
+      destinationAddress = warehouseUser?.address || "";
+      destLat = warehouseUser?.latitude;
+      destLng = warehouseUser?.longitude;
+    }
 
     await prisma.collectorTask.create({
       data: {
         warehouseId,
         collectorId: selectedCollectorId,
         orderId: dispatch.orderId,
-        taskType: "SELLER_TO_BUYER",
+        taskType,
         status: "ASSIGNED",
         priority: "NORMAL",
-        sourceType: "HOUSEHOLD",
-        sourceUserId: dispatch.order.sellerId,
-        sourceName: dispatch.order.seller.name || "",
-        sourceAddress: dispatch.order.items[0]?.listing?.pickupAddress || dispatch.order.seller.address || "",
-        sourceContact: dispatch.order.seller.contactNo || "",
-        sourceLatitude: sellerLat || null,
-        sourceLongitude: sellerLng || null,
-        destinationType: "HOUSEHOLD",
-        destinationUserId: dispatch.order.buyerId,
-        destinationName: dispatch.order.buyer.name || "",
-        destinationAddress: dispatch.order.buyer.address || "",
-        destinationContact: dispatch.order.buyer.contactNo || "",
-        destinationLatitude: buyerLat || null,
-        destinationLongitude: buyerLng || null,
+        sourceType,
+        sourceUserId,
+        sourceName,
+        sourceAddress,
+        sourceContact,
+        sourceLatitude: sourceLat || null,
+        sourceLongitude: sourceLng || null,
+        destinationType,
+        destinationUserId,
+        destinationName,
+        destinationAddress,
+        destinationContact,
+        destinationLatitude: destLat || null,
+        destinationLongitude: destLng || null,
         materialCategory: dispatch.order.items[0]?.listing?.category || "",
         materialType: dispatch.order.items[0]?.listing?.materialType || null,
         estimatedWeight: dispatch.order.items[0]?.listing?.estimatedWeight || 1.0,
