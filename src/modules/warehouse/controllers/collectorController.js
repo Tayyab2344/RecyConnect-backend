@@ -1655,11 +1655,65 @@ export async function markTaskAsCollected(req, res) {
       return sendError(res, "Completed, cancelled or rejected tasks cannot be updated", null, 400);
     }
 
+    const { verifiedWeight, verifiedCategory, verifiedMaterial, notes } = req.body;
+    const actualWeight = verifiedWeight ? parseFloat(verifiedWeight) : existing.estimatedWeight;
+    const materialType = verifiedCategory || existing.materialCategory;
+    const weightDifference = actualWeight - existing.estimatedWeight;
+    const priceAfter = existing.pricePerUnit ? existing.pricePerUnit * actualWeight : null;
+
+    // Upload proof images from multer files to Cloudinary
+    const uploadedImages = [];
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        try {
+          const result = await uploadToCloudinary(file, `recyconnect/verification/${taskId}`);
+          uploadedImages.push(result.secure_url);
+        } catch (uploadErr) {
+          console.error("Verification image upload failed:", uploadErr.message);
+        }
+      }
+    }
+    const allProofImages = [...uploadedImages];
+
+    // Create or update WasteVerification
+    await prisma.wasteVerification.upsert({
+      where: { taskId },
+      update: {
+        verifiedWeight: actualWeight,
+        verifiedCategory: materialType,
+        verifiedMaterial: verifiedMaterial || existing.materialType,
+        proofImages: allProofImages,
+        notes: notes || "Collected",
+        weightDifference,
+        priceBefore: existing.estimatedValue,
+        priceAfter,
+        verifiedById: req.user.id,
+        verifiedAt: new Date(),
+      },
+      create: {
+        taskId,
+        listedWeight: existing.estimatedWeight,
+        verifiedWeight: actualWeight,
+        listedCategory: existing.materialCategory,
+        verifiedCategory: materialType,
+        verifiedMaterial: verifiedMaterial || existing.materialType,
+        proofImages: allProofImages,
+        notes: notes || "Collected",
+        weightDifference,
+        priceBefore: existing.estimatedValue,
+        priceAfter,
+        verifiedById: req.user.id,
+      }
+    });
+
     const task = await prisma.collectorTask.update({
       where: { id: taskId },
       data: {
         status: CollectorTaskStatus.PICKED_UP,
         pickedUpAt: new Date(),
+        materialCategory: materialType,
+        materialType: verifiedMaterial || existing.materialType,
+        finalValue: priceAfter,
       },
       include: getTaskInclude(),
     });
@@ -1722,32 +1776,56 @@ export async function markTaskAsDelivered(req, res) {
       }
     }
 
-    const deliveredWeight = task.verification?.verifiedWeight || task.estimatedWeight;
-    const notes = req.body.notes || "Delivered";
+    const {
+      receivedWeight,
+      packageCondition,
+      receiverName,
+      receiverContact,
+      notes,
+    } = req.body;
+
+    const deliveredWeight = receivedWeight ? parseFloat(receivedWeight) : (task.verification?.verifiedWeight || task.estimatedWeight);
+    const deliveryNotes = notes || "Delivered";
+
+    // Upload proof images from multer files to Cloudinary
+    const uploadedImages = [];
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        try {
+          const result = await uploadToCloudinary(file, `recyconnect/delivery/${taskId}`);
+          uploadedImages.push(result.secure_url);
+        } catch (uploadErr) {
+          console.error("Delivery image upload failed:", uploadErr.message);
+        }
+      }
+    }
+    const allProofImages = [...uploadedImages];
 
     const txnOps = [
       prisma.collectorDelivery.upsert({
         where: { taskId },
         update: {
           status: CollectorDeliveryStatus.DELIVERED,
-          receiverName: task.destinationName || 'Warehouse',
-          receiverContact: task.destinationContact || '',
+          receiverName: receiverName || task.destinationName || 'Warehouse',
+          receiverContact: receiverContact || task.destinationContact || '',
           receiverConfirmation: 'CONFIRMED_BY_COLLECTOR',
           receivedWeight: deliveredWeight,
-          packageCondition: 'Good',
-          notes,
+          packageCondition: packageCondition || 'Good',
+          proofImages: allProofImages,
+          notes: deliveryNotes,
           deliveredById: req.user.id,
           deliveredAt: new Date(),
         },
         create: {
           taskId,
           status: CollectorDeliveryStatus.DELIVERED,
-          receiverName: task.destinationName || 'Warehouse',
-          receiverContact: task.destinationContact || '',
+          receiverName: receiverName || task.destinationName || 'Warehouse',
+          receiverContact: receiverContact || task.destinationContact || '',
           receiverConfirmation: 'CONFIRMED_BY_COLLECTOR',
           receivedWeight: deliveredWeight,
-          packageCondition: 'Good',
-          notes,
+          packageCondition: packageCondition || 'Good',
+          proofImages: allProofImages,
+          notes: deliveryNotes,
           deliveredById: req.user.id,
         },
       }),

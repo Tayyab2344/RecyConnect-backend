@@ -176,6 +176,12 @@ export async function register(req, res) {
       profileImage: profileImageUrl,
       documents: documentsData,
       cnic: req.body.cnic, // Store CNIC in metadata
+      latitude: req.body.latitude ? parseFloat(req.body.latitude) : undefined,
+      longitude: req.body.longitude ? parseFloat(req.body.longitude) : undefined,
+      locationMethod: req.body.locationMethod || undefined,
+      locationPermission: req.body.locationPermission === 'true' || req.body.locationPermission === true || undefined,
+      city: req.body.city || undefined,
+      area: req.body.area || undefined,
       // Don't store verificationStatus/kycStage - they will be set to VERIFIED after OTP
     };
 
@@ -285,6 +291,12 @@ export async function verifyOtpController(req, res) {
             create: regData.documents || []
           },
           cnic: regData.cnic,
+          latitude: regData.latitude !== undefined ? regData.latitude : null,
+          longitude: regData.longitude !== undefined ? regData.longitude : null,
+          locationMethod: regData.locationMethod || null,
+          locationPermission: regData.locationPermission !== undefined ? regData.locationPermission : false,
+          city: regData.city || null,
+          area: regData.area || null,
         }
       });
 

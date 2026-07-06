@@ -93,8 +93,8 @@ router.get("/history", (req, res, next) => {
 }, getCollectorTasks);
 router.get("/tasks/:id", getCollectorTaskDetails);
 router.get("/task/:id", getCollectorTaskDetails);
-router.post("/task/:id/collected", markTaskAsCollected);
-router.post("/task/:id/delivered", markTaskAsDelivered);
+router.post("/task/:id/collected", upload.array("proofImages", 5), markTaskAsCollected);
+router.post("/task/:id/delivered", upload.array("proofImages", 5), markTaskAsDelivered);
 router.post("/tasks/:id/accept", acceptCollectorTask);
 router.patch("/tasks/:id/status", updateCollectorTaskStatus);
 router.post("/tasks/:id/location", recordCollectorLocation);
