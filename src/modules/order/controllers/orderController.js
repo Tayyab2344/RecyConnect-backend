@@ -174,7 +174,7 @@ export const createOrder = async (req, res) => {
           where: { id: buyerId },
           select: { id: true, name: true, email: true, contactNo: true, address: true, latitude: true, longitude: true, role: true },
         });
-                if (!buyer) throw new Error("Buyer not found");
+        if (!buyer) throw new Error("Buyer not found");
 
         // 4c. Update buyer's profile coordinates if passed
         if (buyerLatitude && buyerLongitude) {
@@ -260,9 +260,9 @@ export const createOrder = async (req, res) => {
         const dstAddr = buyer.address || "";
 
         // 8. Create Dispatch (Logistics) request if RecyConnect Pickup or Collector service is selected
-        const isRecyConnectPickup = resolvedDeliveryMethod === "RECYCONNECT_PICKUP" || 
-                                    resolvedDeliveryMethod === "INDEPENDENT_COLLECTOR_SERVICE" || 
-                                    resolvedDeliveryMethod === "WAREHOUSE_COLLECTOR_SERVICE";
+        const isRecyConnectPickup = resolvedDeliveryMethod === "RECYCONNECT_PICKUP" ||
+          resolvedDeliveryMethod === "INDEPENDENT_COLLECTOR_SERVICE" ||
+          resolvedDeliveryMethod === "WAREHOUSE_COLLECTOR_SERVICE";
 
         if (isRecyConnectPickup) {
           const { chosenWarehouseId } = req.body;
@@ -444,8 +444,8 @@ export const confirmOrder = async (req, res) => {
     });
 
     // Invalidate order/report caches
-    invalidateCache("cache:*/orders*").catch(() => {});
-    invalidateCache("cache:*/reports*").catch(() => {});
+    invalidateCache("cache:*/orders*").catch(() => { });
+    invalidateCache("cache:*/reports*").catch(() => { });
 
     sendSuccess(res, "Order confirmed successfully", result);
   } catch (error) {
@@ -622,9 +622,9 @@ export const cancelOrder = async (req, res) => {
       : "Order cancelled successfully. Reservation released and stock restored.";
 
     // Invalidate order/report/listing caches
-    invalidateCache("cache:*/orders*").catch(() => {});
-    invalidateCache("cache:*/reports*").catch(() => {});
-    invalidateCache("cache:*/listings*").catch(() => {});
+    invalidateCache("cache:*/orders*").catch(() => { });
+    invalidateCache("cache:*/reports*").catch(() => { });
+    invalidateCache("cache:*/listings*").catch(() => { });
 
     sendSuccess(res, message, result.order);
   } catch (error) {
@@ -731,8 +731,8 @@ export const completeOrder = async (req, res) => {
     });
 
     // Invalidate order/report caches
-    invalidateCache("cache:*/orders*").catch(() => {});
-    invalidateCache("cache:*/reports*").catch(() => {});
+    invalidateCache("cache:*/orders*").catch(() => { });
+    invalidateCache("cache:*/reports*").catch(() => { });
 
     // Emit order completion event for points and side effects
     EventBus.emit("order.completed", {
@@ -801,12 +801,12 @@ async function enrichOrdersWithChatInfo(orders, currentUserId) {
           conversationId: conversation ? conversation.id : null,
           lastMessage: lastMessage
             ? {
-                id: lastMessage.id,
-                content: lastMessage.content,
-                createdAt: lastMessage.createdAt,
-                messageType: lastMessage.messageType,
-                senderId: lastMessage.senderId,
-              }
+              id: lastMessage.id,
+              content: lastMessage.content,
+              createdAt: lastMessage.createdAt,
+              messageType: lastMessage.messageType,
+              senderId: lastMessage.senderId,
+            }
             : null,
           unreadCount,
         },
@@ -1107,8 +1107,8 @@ export const getOrders = async (req, res) => {
         : role === "seller"
           ? { sellerId: userId }
           : {
-              OR: [{ buyerId: userId }, { sellerId: userId }],
-            };
+            OR: [{ buyerId: userId }, { sellerId: userId }],
+          };
     }
 
     const where = {
@@ -1322,8 +1322,8 @@ export const exportOrders = async (req, res) => {
         : role === "seller"
           ? { sellerId: userId }
           : {
-              OR: [{ buyerId: userId }, { sellerId: userId }],
-            }),
+            OR: [{ buyerId: userId }, { sellerId: userId }],
+          }),
       ...(status && { status }),
       ...buildDateFilter(startDate, endDate),
     };

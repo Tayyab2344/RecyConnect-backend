@@ -78,7 +78,7 @@ export async function getCollectorRecommendations(req, res) {
         if (info && typeof info === "object" && info.payloadCapacityKg) {
           vehicleCapacity = parseFloat(info.payloadCapacityKg);
         }
-      } catch (e) {}
+      } catch (e) { }
 
       const vehicleMatch = totalWeight <= vehicleCapacity ? 100 : 0;
       if (vehicleMatch === 0) continue; // Skip incompatible vehicles
@@ -207,21 +207,21 @@ export async function optimizeAndClusterRoutes(req, res) {
 
       const isSourceSeller = (pickupUser.id === order.sellerId);
       const sourceAddress = isSourceSeller
-          ? (listing?.pickupAddress || pickupUser.address || "Unknown Address")
-          : (pickupUser.address || "Unknown Address");
+        ? (listing?.pickupAddress || pickupUser.address || "Unknown Address")
+        : (pickupUser.address || "Unknown Address");
 
       const sFallback = getCoordsFallback(sourceAddress);
       const sourceLatitude = isSourceSeller
-          ? (listing?.latitude || pickupUser.latitude || sFallback.latitude)
-          : (pickupUser.latitude || sFallback.latitude);
+        ? (listing?.latitude || pickupUser.latitude || sFallback.latitude)
+        : (pickupUser.latitude || sFallback.latitude);
 
       const sourceLongitude = isSourceSeller
-          ? (listing?.longitude || pickupUser.longitude || sFallback.longitude)
-          : (pickupUser.longitude || sFallback.longitude);
+        ? (listing?.longitude || pickupUser.longitude || sFallback.longitude)
+        : (pickupUser.longitude || sFallback.longitude);
 
       const destAddress = (deliverUser.id === warehouseId)
-          ? (warehouseUser?.address || "Unknown Destination")
-          : (deliverUser.address || "Unknown Destination");
+        ? (warehouseUser?.address || "Unknown Destination")
+        : (deliverUser.address || "Unknown Destination");
 
       const dFallback = getCoordsFallback(destAddress);
       const destinationLatitude = deliverUser.latitude || dFallback.latitude;
@@ -456,7 +456,7 @@ export async function getWarehouseTrips(req, res) {
     const where = { warehouseId };
     if (status) where.status = status;
     if (collectorId) where.collectorId = parseId(collectorId);
-    
+
     if (startDate || endDate) {
       where.createdAt = {};
       if (startDate) where.createdAt.gte = new Date(startDate);
@@ -475,7 +475,7 @@ export async function getWarehouseTrips(req, res) {
         orderBy: { createdAt: "desc" },
         skip: (pageNum - 1) * limitNum,
         take: limitNum
-      } )
+      })
     ]);
 
     sendPaginated(res, trips, totalCount, pageNum, limitNum);
@@ -581,21 +581,21 @@ export async function assignOrdersToCollector(req, res) {
 
       const isSourceSeller = (pickupUser.id === order.sellerId);
       const sourceAddress = isSourceSeller
-          ? (listing?.pickupAddress || pickupUser.address || "Unknown Address")
-          : (pickupUser.address || "Unknown Address");
+        ? (listing?.pickupAddress || pickupUser.address || "Unknown Address")
+        : (pickupUser.address || "Unknown Address");
 
       const sFallback = getCoordsFallback(sourceAddress);
       const sourceLatitude = isSourceSeller
-          ? (listing?.latitude || pickupUser.latitude || sFallback.latitude)
-          : (pickupUser.latitude || sFallback.latitude);
+        ? (listing?.latitude || pickupUser.latitude || sFallback.latitude)
+        : (pickupUser.latitude || sFallback.latitude);
 
       const sourceLongitude = isSourceSeller
-          ? (listing?.longitude || pickupUser.longitude || sFallback.longitude)
-          : (pickupUser.longitude || sFallback.longitude);
+        ? (listing?.longitude || pickupUser.longitude || sFallback.longitude)
+        : (pickupUser.longitude || sFallback.longitude);
 
       const destAddress = (deliverUser.id === warehouseId)
-          ? (warehouseUser?.address || "Unknown Destination")
-          : (deliverUser.address || "Unknown Destination");
+        ? (warehouseUser?.address || "Unknown Destination")
+        : (deliverUser.address || "Unknown Destination");
 
       const dFallback = getCoordsFallback(destAddress);
       const destinationLatitude = deliverUser.latitude || dFallback.latitude;
@@ -643,7 +643,7 @@ export async function assignOrdersToCollector(req, res) {
       for (let index = 0; index < tspResult.sequence.length; index++) {
         const task = tspResult.sequence[index];
         const otpCode = crypto.randomInt(1000, 9999).toString();
-        
+
         const createdTask = await tx.collectorTask.create({
           data: {
             tripId: createdTrip.id,
