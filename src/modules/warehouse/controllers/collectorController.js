@@ -307,7 +307,12 @@ export async function resetCollectorPassword(req, res) {
 
     await prisma.user.update({
       where: { id: collectorId },
-      data: { password: hashedPassword },
+      data: {
+        password: hashedPassword,
+        permissions: {
+          tempPassword: rawPassword
+        }
+      },
     });
 
     await logActivity({

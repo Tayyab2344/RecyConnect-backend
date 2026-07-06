@@ -64,6 +64,9 @@ export async function addCollector(req, res) {
         assignedWarehouseId: warehouseId,
         verificationStatus: VerificationStatus.VERIFIED, // Auto-verified since added by Warehouse
         emailVerified: true, // No email needed
+        permissions: {
+          tempPassword: rawPassword
+        },
         documents: {
           create: documentsData
         },
@@ -116,7 +119,8 @@ export async function getCollectors(req, res) {
         profileImage: true,
         createdAt: true,
         verificationStatus: true,
-        collectorProfile: true
+        collectorProfile: true,
+        permissions: true
       },
       orderBy: {
         createdAt: 'desc'
