@@ -76,7 +76,7 @@ describe('Rewards & Gamification Endpoint Tests', () => {
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
         expect(res.body.data.dailyStreak).toBe(1);
-        expect(res.body.data.ecoPoints).toBe(105); // 100 + 5
+        expect(res.body.data.ecoPoints).toBe(100); // Daily check-in does not award points
         expect(res.body.data.pointsEarned).toBe(5);
     });
 
@@ -98,8 +98,8 @@ describe('Rewards & Gamification Endpoint Tests', () => {
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
         expect(res.body.data.length).toBeGreaterThanOrEqual(1);
-        expect(res.body.data[0].activityType).toBe('DAILY_STREAK');
-        expect(res.body.data[0].points).toBe(5);
+        expect(res.body.data[0].activityType).toBe('SUCCESSFUL_SALE');
+        expect(res.body.data[0].points).toBe(100);
     });
 
     it('should fetch the user challenges status list', async () => {
@@ -127,6 +127,6 @@ describe('Rewards & Gamification Endpoint Tests', () => {
         // Find our test user in the leaderboard
         const found = res.body.data.find(u => u.userId === testUser.id);
         expect(found).toBeDefined();
-        expect(found.ecoPoints).toBe(105);
+        expect(found.ecoPoints).toBe(100);
     });
 });

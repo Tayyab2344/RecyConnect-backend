@@ -99,49 +99,15 @@ export async function awardPoints({ userId, activityType, customPoints = null })
       return null;
     }
 
-    // 2. Determine points based on activityType and user role
-    let points = 0;
-    const role = (user.role || 'individual').toLowerCase();
-
-    if (customPoints !== null) {
-      points = customPoints;
-    } else {
-      if (role === 'individual') {
-        switch (activityType) {
-          case 'LISTING_UPLOAD': points = 10; break;
-          case 'AI_CLASSIFICATION': points = 15; break;
-          case 'SUCCESSFUL_SALE': points = 50; break;
-          case 'PURCHASE': points = 20; break;
-          case 'DAILY_STREAK': points = 5; break;
-          case 'REFERRAL': points = 100; break;
-          case 'RATING': points = 25; break;
-          default: points = 10;
-        }
-      } else if (role === 'warehouse') {
-        switch (activityType) {
-          case 'BULK_PURCHASE': points = 100; break;
-          case 'BULK_SALE': points = 120; break;
-          case 'HIGH_TRANSACTION_VOLUME': points = 80; break;
-          case 'FAST_ORDER_COMPLETION': points = 40; break;
-          case 'CUSTOMER_RATING': points = 50; break;
-          case 'WEEKLY_ACTIVITY': points = 70; break;
-          default: points = 50;
-        }
-      } else if (role === 'company') {
-        switch (activityType) {
-          case 'CORPORATE_RECYCLING': points = 200; break;
-          case 'LARGE_TRANSACTION': points = 150; break;
-          case 'MONTHLY_SUSTAINABILITY': points = 300; break;
-          case 'CONTINUOUS_MONTHLY': points = 100; break;
-          default: points = 100;
-        }
-      } else {
-        // Fallback for admin or collector
-        points = 10;
-      }
+    // 2. Determine points based on activityType
+    const allowedActivities = ['SUCCESSFUL_SALE', 'PURCHASE', 'BULK_SALE', 'BULK_PURCHASE'];
+    if (!allowedActivities.includes(activityType)) {
+      logger.info(`[REWARDS] Points skipped. User only earns points for buying or selling. Activity: ${activityType}`);
+      return null;
     }
 
-    if (points <= 0) return null;
+    // Sell or buy gets exactly 10 points
+    const points = 10;
 
     const newPoints = user.ecoPoints + points;
     const computedLevel = getLevelForPoints(newPoints);

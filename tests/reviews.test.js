@@ -98,13 +98,13 @@ describe('Order Reviews & Trust Score Integration Tests', () => {
         expect(res.body.success).toBe(true);
         expect(res.body.data.rating).toBe(5);
 
-        // Check buyer received +5 points for submitting rating
+        // Check buyer received 0 points for submitting rating (only selling/buying awards points)
         const updatedBuyer = await prisma.user.findUnique({ where: { id: buyer.id } });
-        expect(updatedBuyer.ecoPoints).toBe(5);
+        expect(updatedBuyer.ecoPoints).toBe(0);
 
-        // Check seller received +10 points for positive review received
+        // Check seller received 0 points for review received
         const updatedSeller = await prisma.user.findUnique({ where: { id: seller.id } });
-        expect(updatedSeller.ecoPoints).toBe(10);
+        expect(updatedSeller.ecoPoints).toBe(0);
     });
 
     it('should block duplicate review submission for same order', async () => {

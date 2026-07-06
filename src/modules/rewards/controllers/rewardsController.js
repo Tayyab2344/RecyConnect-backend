@@ -511,22 +511,7 @@ export async function submitOrderReview(req, res) {
       return review;
     });
 
-    // 3. Award Eco Points on review submission (only if reviewer is buyer)
-    if (isBuyer) {
-      await awardPoints({
-        userId: reviewerId,
-        activityType: 'RATING',
-        customPoints: 5
-      });
-
-      if (rating >= 4) {
-        await awardPoints({
-          userId: revieweeId,
-          activityType: 'SUCCESSFUL_SALE',
-          customPoints: 10
-        });
-      }
-    }
+    // No points awarded during review submissions under the new rules
 
     sendSuccess(res, "Review submitted successfully", result, 201);
   } catch (error) {
