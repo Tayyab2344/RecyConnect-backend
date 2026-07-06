@@ -75,49 +75,98 @@ export async function getTransactions(req, res) {
             limit = 10
         } = req.query;
 
-        // Build where clause based on role
-        const where = {};
-        if (role === UserRole.ADMIN) {
-            // Admin sees all
-        } else if (role === UserRole.INDIVIDUAL) {
-            where.buyerId = userId;
-        } else {
-            // Warehouse/Company/Seller
-            where.sellerId = userId;
+        // Build where clause for Transactions
+        const txWhere = {};
+        if (role !== UserRole.ADMIN) {
+            txWhere.OR = [{ buyerId: userId }, { sellerId: userId }];
         }
+        if (status) txWhere.status = status;
+        Object.assign(txWhere, buildDateFilter(startDate, endDate));
 
-        // Apply filters
-        if (status) where.status = status;
-        Object.assign(where, buildDateFilter(startDate, endDate));
+        // Build where clause for Orders (exclude drafts/cancelled)
+        const orderWhere = {};
+        if (role !== UserRole.ADMIN) {
+            orderWhere.OR = [{ buyerId: userId }, { sellerId: userId }];
+        }
+        orderWhere.status = { notIn: ['CANCELLED', 'BUYER_CANCELLED', 'WAREHOUSE_REJECTED'] };
+        if (status) {
+            if (status === 'COMPLETED') {
+                orderWhere.status = 'COMPLETED';
+            } else if (status === 'PENDING') {
+                orderWhere.status = { notIn: ['COMPLETED', 'CANCELLED', 'BUYER_CANCELLED', 'WAREHOUSE_REJECTED'] };
+            }
+        }
+        Object.assign(orderWhere, buildDateFilter(startDate, endDate));
 
-        // Get total count and paginated data in parallel
-        const { skip, take, page: pageNum, limit: limitNum } = getPaginationParams(page, limit);
-
-        const [totalCount, transactions] = await Promise.all([
-            prisma.transaction.count({ where }),
+        // Fetch in parallel
+        const [dbTransactions, dbOrders] = await Promise.all([
             prisma.transaction.findMany({
-                where,
-                select: {
-                    id: true,
-                    buyerId: true,
-                    sellerId: true,
-                    itemId: true,
-                    quantity: true,
-                    totalAmount: true,
-                    status: true,
-                    createdAt: true,
-                    updatedAt: true,
-                    item: { select: { title: true, images: true, category: true } },
-                    buyer: { select: { id: true, name: true } },
-                    seller: { select: { id: true, name: true, businessName: true } }
-                },
-                orderBy: { createdAt: 'desc' },
-                skip,
-                take
+                where: txWhere,
+                include: {
+                    item: { select: { title: true, category: true } },
+                    buyer: { select: { name: true } },
+                    seller: { select: { name: true, businessName: true } }
+                }
+            }),
+            prisma.order.findMany({
+                where: orderWhere,
+                include: {
+                    items: {
+                        include: {
+                            listing: { select: { title: true, materialType: true } }
+                        }
+                    },
+                    buyer: { select: { name: true } },
+                    seller: { select: { name: true, businessName: true } }
+                }
             })
         ]);
 
-        sendPaginated(res, transactions, totalCount, pageNum, limitNum);
+        const formattedTx = dbTransactions.map(tx => {
+            const isCredit = tx.sellerId === userId;
+            const itemCategory = tx.item?.category || 'Recyclables';
+            const counterParty = isCredit
+                ? (tx.buyer?.name || 'Buyer')
+                : (tx.seller?.businessName || tx.seller?.name || 'Seller');
+
+            return {
+                id: `TXN-${tx.id}`,
+                description: isCredit ? `Sold ${itemCategory} to ${counterParty}` : `Purchased ${itemCategory} from ${counterParty}`,
+                amount: tx.totalAmount,
+                type: isCredit ? 'CREDIT' : 'DEBIT',
+                status: tx.status === 'COMPLETED' ? 'Completed' : 'Pending',
+                createdAt: tx.createdAt,
+                updatedAt: tx.updatedAt
+            };
+        });
+
+        const formattedOrders = dbOrders.map(order => {
+            const isCredit = order.sellerId === userId;
+            const listingTitle = order.items?.[0]?.listing?.title || order.items?.[0]?.listing?.materialType || 'Material';
+            const counterParty = isCredit
+                ? (order.buyer?.name || 'Buyer')
+                : (order.seller?.businessName || order.seller?.name || 'Seller');
+
+            return {
+                id: `ORD-${order.id}`,
+                description: isCredit ? `Sold ${listingTitle} to ${counterParty}` : `Purchased ${listingTitle} from ${counterParty}`,
+                amount: order.totalAmount,
+                type: isCredit ? 'CREDIT' : 'DEBIT',
+                status: order.status === 'COMPLETED' ? 'Completed' : 'Pending',
+                createdAt: order.createdAt,
+                updatedAt: order.updatedAt
+            };
+        });
+
+        // Merge, sort, and slice for manual pagination
+        const merged = [...formattedTx, ...formattedOrders];
+        merged.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        const totalCount = merged.length;
+        const { skip, take, page: pageNum, limit: limitNum } = getPaginationParams(page, limit);
+        const paginated = merged.slice(skip, skip + take);
+
+        sendPaginated(res, paginated, totalCount, pageNum, limitNum);
     } catch (err) {
         console.error('GET_TRANSACTIONS_ERROR:', err);
         sendError(res, 'Failed to fetch transactions', err);
