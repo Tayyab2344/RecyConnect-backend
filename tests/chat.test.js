@@ -59,6 +59,7 @@ describe('Chat Controller', () => {
         if (order) {
             await prisma.order.delete({ where: { id: order.id } });
         }
+        await prisma.notification.deleteMany({ where: { userId: { in: [user1.id, user2.id] } } });
         await prisma.user.deleteMany({ where: { id: { in: [user1.id, user2.id] } } });
         // prisma disconnect handled by setup.js
     });

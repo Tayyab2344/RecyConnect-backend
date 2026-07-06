@@ -14,6 +14,7 @@ import { getIO, isUserOnline } from '../gateway/socketGateway.js';
 import { uploadToCloudinary } from '../../../utils/uploadHelper.js';
 import pusher from '../../../lib/pusher.js';
 import { logger } from '../../../utils/logger.js';
+import { createAndSendNotification } from '../../../services/notificationService.js';
 
 const PARTICIPANT_SELECT = {
   id: true, name: true, profileImage: true, role: true, businessName: true,
@@ -306,11 +307,31 @@ export async function sendMessage(req, res) {
 
     // Broadcast via WebSocket
     const io = getIO();
+    const recipientId = conversation.participant1Id === userId
+      ? conversation.participant2Id : conversation.participant1Id;
     if (io) {
-      const recipientId = conversation.participant1Id === userId
-        ? conversation.participant2Id : conversation.participant1Id;
       io.to(`user:${recipientId}`).emit("message:received", message);
     }
+
+    // Trigger FCM Push Notification
+    const senderName = message.sender?.name || 'Someone';
+    let bodyText = content || '';
+    if (messageType === 'IMAGE') {
+      bodyText = '📷 Sent an image';
+    } else if (messageType === 'VOICE_NOTE') {
+      bodyText = '🎵 Sent a voice note';
+    }
+
+    createAndSendNotification({
+      userId: recipientId,
+      title: senderName,
+      message: bodyText,
+      type: 'CHAT_MESSAGE',
+      priority: 'HIGH',
+      actionUrl: `/order/${conversation.orderId}`
+    }).catch(err => {
+      console.error('Failed to send FCM push notification for chat message:', err);
+    });
 
     sendSuccess(res, 'Message sent', message, 201);
   } catch (err) {
