@@ -1,9 +1,9 @@
 import 'dotenv/config';
 import request from 'supertest';
-import prisma from '../src/lib/prisma.js';
+import prisma from '../../src/lib/prisma.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import app from '../src/index.js';
+import app from '../../src/index.js';
 
 function generateToken(user) {
   return jwt.sign(

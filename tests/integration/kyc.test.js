@@ -1,7 +1,7 @@
 import request from 'supertest';
 import { jest } from '@jest/globals';
-import { createTestApp, generateTestToken, createTestUser, prisma } from './helpers.js';
-import { UserRole, VerificationStatus, KycStage } from '../src/constants/enums.js';
+import { createTestApp, generateTestToken, createTestUser, prisma } from '../helpers.js';
+import { UserRole, VerificationStatus, KycStage } from '../../src/constants/enums.js';
 
 // Mock Cloudinary Package (CommonJS)
 jest.mock('cloudinary', () => ({
@@ -27,7 +27,7 @@ jest.mock('cloudinary', () => ({
 
 // Mock OCR Service (ESM) - Use unstable_mockModule for ESM mocking
 // Must be defined before the module is imported
-jest.unstable_mockModule('../src/services/ocrService.js', () => ({
+jest.unstable_mockModule('../../src/services/ocrService.js', () => ({
     __esModule: true,
     extractTextFromUrl: jest.fn(),
     extractCNIC: jest.fn(),
@@ -51,10 +51,10 @@ describe('KYC Controller', () => {
 
     beforeAll(async () => {
         // Import mocked module
-        ocrService = await import('../src/services/ocrService.js');
+        ocrService = await import('../../src/services/ocrService.js');
 
         // Dynamic router import (depends on ocrService)
-        const kycRouter = (await import('../src/modules/kyc/routes/kycRoutes.js')).default;
+        const kycRouter = (await import('../../src/modules/kyc/routes/kycRoutes.js')).default;
 
         app = createTestApp(kycRouter, '/api/kyc');
 

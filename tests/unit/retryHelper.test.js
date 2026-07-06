@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals';
-import { withExponentialBackoff } from '../src/utils/retryHelper.js';
+import { withExponentialBackoff } from '../../src/utils/retryHelper.js';
 
 describe('Retry Helper: Exponential Backoff', () => {
     afterEach(() => {

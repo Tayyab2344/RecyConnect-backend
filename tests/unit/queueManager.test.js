@@ -11,13 +11,13 @@ describe('Offline Queue Manager', () => {
             rpop: jest.fn().mockResolvedValue(JSON.stringify({ actionType: 'SEND_EMAIL', payload: { to: 'test@example.com' } }))
         };
         
-        jest.unstable_mockModule('../src/lib/redis.js', () => ({
+        jest.unstable_mockModule('../../src/lib/redis.js', () => ({
             default: mockRedis,
             isRedisConnected: jest.fn().mockReturnValue(true)
         }));
 
         redisMock = mockRedis;
-        queueMgr = await import('../src/lib/queueManager.js');
+        queueMgr = await import('../../src/lib/queueManager.js');
     });
 
     afterEach(() => {

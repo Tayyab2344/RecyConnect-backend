@@ -11,9 +11,9 @@
     "postinstall": "prisma generate",
     "prisma": "prisma",
     "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand",
-    "test:unit": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand tests/auth.test.js tests/user.test.js tests/algorithms.test.js tests/ecoAssist.test.js tests/retryHelper.test.js tests/queueManager.test.js",
-    "test:integration": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand tests/integration.test.js tests/payment.test.js tests/erp.test.js tests/chat.test.js tests/dispatch.test.js tests/order.test.js tests/rewards.test.js tests/listing.test.js tests/reservation.test.js tests/transaction.test.js",
-    "test:system": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand tests/e2e.test.js",
+    "test:unit": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand tests/unit",
+    "test:integration": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand tests/integration",
+    "test:system": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand tests/system",
     "test:all": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand",
     "test:watch": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand --watch",
     "test:coverage": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand --coverage"

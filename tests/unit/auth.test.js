@@ -5,11 +5,11 @@
 import 'dotenv/config';
 import request from 'supertest';
 import express from 'express';
-import prisma from '../src/lib/prisma.js';
+import prisma from '../../src/lib/prisma.js';
 import bcrypt from 'bcrypt';
 
 // Import routes
-import authRoutes from '../src/modules/auth/routes/authRoutes.js';
+import authRoutes from '../../src/modules/auth/routes/authRoutes.js';
 
 const app = express();
 app.use(express.json());

@@ -1,9 +1,9 @@
 import 'dotenv/config';
 import request from 'supertest';
 import express from 'express';
-import prisma from '../src/lib/prisma.js';
-import appRoutes from '../src/modules/app/routes/appRoutes.js';
-import { generateTestToken } from './helpers.js';
+import prisma from '../../src/lib/prisma.js';
+import appRoutes from '../../src/modules/app/routes/appRoutes.js';
+import { generateTestToken } from '../helpers.js';
 
 // Setup mock express app with app routes
 const app = express();

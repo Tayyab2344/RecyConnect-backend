@@ -1,8 +1,8 @@
 import request from 'supertest';
 import { jest } from '@jest/globals';
-import { createTestApp, generateTestToken, createTestUser, createAdminUser, prisma } from './helpers.js';
-import adminRouter from '../src/modules/admin/routes/index.js';
-import { UserRole, VerificationStatus, KycStage } from '../src/constants/enums.js';
+import { createTestApp, generateTestToken, createTestUser, createAdminUser, prisma } from '../helpers.js';
+import adminRouter from '../../src/modules/admin/routes/index.js';
+import { UserRole, VerificationStatus, KycStage } from '../../src/constants/enums.js';
 
 const app = createTestApp(adminRouter, '/api/admin');
 

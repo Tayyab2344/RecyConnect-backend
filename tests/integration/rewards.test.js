@@ -1,24 +1,24 @@
 import { jest } from '@jest/globals';
 import request from 'supertest';
 import express from 'express';
-import prisma from '../src/lib/prisma.js';
-import { createTestUser, generateTestToken } from './helpers.js';
+import prisma from '../../src/lib/prisma.js';
+import { createTestUser, generateTestToken } from '../helpers.js';
 
 // Setup mock for socketGateway.js and firebaseService.js to prevent integration errors
 beforeAll(async () => {
-    jest.unstable_mockModule('../src/modules/chat/gateway/socketGateway.js', () => ({
+    jest.unstable_mockModule('../../src/modules/chat/gateway/socketGateway.js', () => ({
         getIO: jest.fn().mockReturnValue({
             to: jest.fn().mockReturnThis(),
             emit: jest.fn()
         })
     }));
-    jest.unstable_mockModule('../src/services/firebaseService.js', () => ({
+    jest.unstable_mockModule('../../src/services/firebaseService.js', () => ({
         sendPushNotification: jest.fn().mockResolvedValue({ success: true })
     }));
 });
 
 // Import dynamically after mock configuration
-const { default: app } = await import('../src/index.js');
+const { default: app } = await import('../../src/index.js');
 
 describe('Rewards & Gamification Endpoint Tests', () => {
     let testUser;

@@ -2,11 +2,11 @@ import 'dotenv/config';
 import request from 'supertest';
 import express from 'express';
 import { jest } from '@jest/globals';
-import prisma from '../src/lib/prisma.js';
+import prisma from '../../src/lib/prisma.js';
 import jwt from 'jsonwebtoken';
-import { traceMiddleware } from '../src/middlewares/traceMiddleware.js';
+import { traceMiddleware } from '../../src/middlewares/traceMiddleware.js';
 
-jest.unstable_mockModule('../src/lib/redis.js', () => ({
+jest.unstable_mockModule('../../src/lib/redis.js', () => ({
     invalidateCache: jest.fn().mockResolvedValue(),
     getCache: jest.fn().mockResolvedValue(null),
     setCache: jest.fn().mockResolvedValue(),
@@ -31,7 +31,7 @@ describe('System E2E Tests: Bootstrap Integration', () => {
         app.use(traceMiddleware);
         
         // Import the bootstrap route dynamically after mocks are loaded
-        const appRoutes = (await import('../src/modules/app/routes/appRoutes.js')).default;
+        const appRoutes = (await import('../../src/modules/app/routes/appRoutes.js')).default;
         app.use('/api/app', appRoutes);
         
         // Create Mock User directly bypassing auth pipeline

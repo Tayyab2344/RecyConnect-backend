@@ -1,16 +1,16 @@
 import 'dotenv/config';
 import request from 'supertest';
 import express from 'express';
-import prisma from '../src/lib/prisma.js';
+import prisma from '../../src/lib/prisma.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { EventBus } from '../src/events/eventBus.js';
+import { EventBus } from '../../src/events/eventBus.js';
 import { jest } from '@jest/globals';
 
 // Import routers
-import dispatchRoutes from '../src/modules/warehouse/routes/dispatchRoutes.js';
-import orderRoutes from '../src/modules/order/routes/orderRoutes.js';
-import collectorRoutes from '../src/modules/warehouse/routes/collectorRoutes.js';
+import dispatchRoutes from '../../src/modules/warehouse/routes/dispatchRoutes.js';
+import orderRoutes from '../../src/modules/order/routes/orderRoutes.js';
+import collectorRoutes from '../../src/modules/warehouse/routes/collectorRoutes.js';
 
 const app = express();
 app.use(express.json());

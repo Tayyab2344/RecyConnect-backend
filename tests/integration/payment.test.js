@@ -5,7 +5,7 @@
 import 'dotenv/config';
 import request from 'supertest';
 import express from 'express';
-import prisma from '../src/lib/prisma.js';
+import prisma from '../../src/lib/prisma.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
@@ -48,11 +48,11 @@ const stripeSpies = {
     })
 };
 
-jest.unstable_mockModule('../src/services/stripeService.js', () => stripeSpies);
+jest.unstable_mockModule('../../src/services/stripeService.js', () => stripeSpies);
 
 // 2. Dynamically import routes
-const paymentRoutes = (await import('../src/modules/payment/routes/paymentRoutes.js')).default;
-const orderRoutes = (await import('../src/modules/order/routes/orderRoutes.js')).default;
+const paymentRoutes = (await import('../../src/modules/payment/routes/paymentRoutes.js')).default;
+const orderRoutes = (await import('../../src/modules/order/routes/orderRoutes.js')).default;
 
 const app = express();
 app.use(express.json());

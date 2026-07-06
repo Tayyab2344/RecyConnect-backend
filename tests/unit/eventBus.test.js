@@ -6,7 +6,7 @@ let EventBus;
 
 beforeAll(async () => {
     // Inject mock before dynamic imports evaluate
-    jest.unstable_mockModule('../src/lib/redis.js', () => ({
+    jest.unstable_mockModule('../../src/lib/redis.js', () => ({
         invalidateCache: jest.fn().mockResolvedValue(),
         getCache: jest.fn(),
         setCache: jest.fn(),
@@ -15,10 +15,10 @@ beforeAll(async () => {
         default: {}
     }));
     
-    redisModule = await import('../src/lib/redis.js');
+    redisModule = await import('../../src/lib/redis.js');
     
     // Dynamically load EventBus after mock is registered
-    const eb = await import('../src/events/eventBus.js');
+    const eb = await import('../../src/events/eventBus.js');
     EventBus = eb.EventBus;
 });
 

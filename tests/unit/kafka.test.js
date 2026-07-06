@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals';
-import { sendKafkaEvent, isKafkaHealthy } from '../src/lib/kafka.js';
+import { sendKafkaEvent, isKafkaHealthy } from '../../src/lib/kafka.js';
 
 describe('Kafka Client Integration & Resiliency', () => {
     it('should report unhealthy status by default in test environment', () => {

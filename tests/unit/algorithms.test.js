@@ -1,8 +1,8 @@
-import { Trie } from "../src/utils/algorithms/trie.js";
-import { PriorityQueue } from "../src/utils/algorithms/priorityQueue.js";
-import { LRUCache } from "../src/utils/algorithms/lruCache.js";
-import { KDTree, getHaversineDistance } from "../src/utils/algorithms/kdTree.js";
-import { aStarPathfind, solveTSP } from "../src/utils/algorithms/router.js";
+import { Trie } from "../../src/utils/algorithms/trie.js";
+import { PriorityQueue } from "../../src/utils/algorithms/priorityQueue.js";
+import { LRUCache } from "../../src/utils/algorithms/lruCache.js";
+import { KDTree, getHaversineDistance } from "../../src/utils/algorithms/kdTree.js";
+import { aStarPathfind, solveTSP } from "../../src/utils/algorithms/router.js";
 
 describe("Algorithm Unit Tests", () => {
   describe("Trie Search Autocomplete", () => {

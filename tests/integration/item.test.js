@@ -1,7 +1,7 @@
 import request from 'supertest';
 import { jest } from '@jest/globals';
-import { createTestApp, generateTestToken, createTestUser, createTestListing, prisma } from './helpers.js';
-import { ItemStatus } from '../src/constants/enums.js';
+import { createTestApp, generateTestToken, createTestUser, createTestListing, prisma } from '../helpers.js';
+import { ItemStatus } from '../../src/constants/enums.js';
 
 // Mock Cloudinary Package
 jest.mock('cloudinary', () => ({
@@ -40,7 +40,7 @@ describe('Item Controller', () => {
 
     beforeAll(async () => {
         // Dynamic import to ensure mocks apply
-        const itemRouter = (await import('../src/modules/item/routes/itemRoutes.js')).default;
+        const itemRouter = (await import('../../src/modules/item/routes/itemRoutes.js')).default;
         app = createTestApp(itemRouter, '/api/items');
 
         const timestamp = Date.now();

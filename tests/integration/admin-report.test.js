@@ -5,12 +5,12 @@
 import 'dotenv/config';
 import request from 'supertest';
 import express from 'express';
-import prisma from '../src/lib/prisma.js';
+import prisma from '../../src/lib/prisma.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
 
-import adminReportRoutes from '../src/modules/admin/routes/index.js';
+import adminReportRoutes from '../../src/modules/admin/routes/index.js';
 
 const app = express();
 app.use(express.json());
