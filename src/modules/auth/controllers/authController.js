@@ -18,6 +18,7 @@ import { UserRole, VerificationStatus, KycStage } from '../../../constants/enums
 import { sendSuccess, sendError } from '../../../utils/responseHelper.js';
 import prisma from '../../../lib/prisma.js';
 import { logActivity } from '../../../utils/activityLogger.js';
+import { trackFailedLoginAttempt, resetFailedLoginAttempts } from '../../../middlewares/loginLimiter.js';
 
 // Helper to upload to Cloudinary (Supports both Disk Storage & Memory Storage)
 const uploadToCloudinary = (file, folder) => {
@@ -438,23 +439,23 @@ export async function login(req, res) {
     });
 
     if (!user) {
-
+      await trackFailedLoginAttempt(req);
       return sendError(res, "Invalid credentials", null, 401);
     }
 
     if (!user.password) {
-
+      await trackFailedLoginAttempt(req);
       return sendError(res, "Invalid credentials", null, 401);
     }
-
-
 
     const match = await bcrypt.compare(sanitizedPassword, user.password);
 
-
     if (!match) {
+      await trackFailedLoginAttempt(req);
       return sendError(res, "Invalid credentials", null, 401);
     }
+
+    await resetFailedLoginAttempts(req);
 
     // Check if account has been deleted
     if (user.deletedAt) {

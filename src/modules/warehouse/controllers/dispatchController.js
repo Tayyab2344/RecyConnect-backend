@@ -410,7 +410,7 @@ export async function assignTripToCollector(req, res) {
       }
 
       return { ...t, conversations: [conversation] };
-    });
+    }, { timeout: 15000 });
 
     // Broadcast assign event via Pusher
     const io = getIO();

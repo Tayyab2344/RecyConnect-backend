@@ -20,7 +20,7 @@ import {
   verifyAdminMfa
 } from '../controllers/authController.js'
 import { authenticateToken } from '../../../middlewares/authMiddleware.js';
-import { loginLimiterByIP, loginLimiterByEmail, trackFailedLoginAttempt } from '../../../middlewares/loginLimiter.js';
+import { loginLimiterByIP, loginLimiterByEmail } from '../../../middlewares/loginLimiter.js';
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = express.Router();
@@ -545,7 +545,7 @@ router.post(
 );
 router.post(
   "/login",
-  [loginLimiterByIP, loginLimiterByEmail, trackFailedLoginAttempt],
+  [loginLimiterByIP, loginLimiterByEmail],
   [
     body("identifier")
       .trim()

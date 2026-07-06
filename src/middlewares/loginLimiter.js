@@ -45,6 +45,7 @@ export const loginLimiterByIP = rateLimit({
   passOnStoreError: true,
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  skipSuccessfulRequests: true,
   handler: (req, res) => {
     logger.warn(`Brute force attempt detected from IP: ${req.ip}`, {
       method: req.method,
@@ -77,6 +78,7 @@ export const loginLimiterByEmail = rateLimit({
   passOnStoreError: true,
   standardHeaders: true,
   legacyHeaders: false,
+  skipSuccessfulRequests: true,
   handler: (req, res) => {
     const email = req.body?.identifier || "unknown";
     logger.warn(`Brute force attempt detected for email: ${email}`, {
@@ -115,38 +117,54 @@ export async function trackFailedLoginAttempt(req, res, next) {
 
     // Store failed attempt in Redis with expiry (24 hours)
     const failedAttemptKey = `failed_login:${identifier}:${ip}`;
-    const currentCount = await redis.incr(failedAttemptKey);
+    if (redis) {
+      const currentCount = await redis.incr(failedAttemptKey);
 
-    if (currentCount === 1) {
-      // First attempt, set expiry
-      await redis.expire(failedAttemptKey, 24 * 60 * 60);
+      if (currentCount === 1) {
+        // First attempt, set expiry
+        await redis.expire(failedAttemptKey, 24 * 60 * 60);
+      }
+
+      logger.warn(`Failed login attempt for ${identifier}`, {
+        ip,
+        attempt_count: currentCount,
+        timestamp,
+      });
+
+      // Alert admin if suspicious pattern detected (5+ attempts)
+      if (currentCount >= 5) {
+        logger.error(
+          `🚨 BRUTE FORCE ALERT: ${identifier} from IP ${ip} (${currentCount} failed attempts)`,
+          {
+            identifier,
+            ip,
+            attempts: currentCount,
+            severity: currentCount > 10 ? "CRITICAL" : "HIGH",
+          },
+        );
+      }
     }
 
-    logger.warn(`Failed login attempt for ${identifier}`, {
-      ip,
-      attempt_count: currentCount,
-      timestamp,
-    });
-
-    // Alert admin if suspicious pattern detected (5+ attempts)
-    if (currentCount >= 5) {
-      logger.error(
-        `🚨 BRUTE FORCE ALERT: ${identifier} from IP ${ip} (${currentCount} failed attempts)`,
-        {
-          identifier,
-          ip,
-          attempts: currentCount,
-          severity: currentCount > 10 ? "CRITICAL" : "HIGH",
-        },
-      );
-
-      // Could send Slack/Email alert here
-    }
-
-    next();
+    if (next) next();
   } catch (err) {
     logger.error("Error tracking failed login", err);
-    next(); // Don't block the request on logging error
+    if (next) next();
+  }
+}
+
+/**
+ * Reset failed login attempts on successful login
+ */
+export async function resetFailedLoginAttempts(req) {
+  try {
+    const identifier = req.body?.identifier || "";
+    const ip = req.ip || req.connection.remoteAddress || "unknown";
+    const failedAttemptKey = `failed_login:${identifier}:${ip}`;
+    if (redis) {
+      await redis.del(failedAttemptKey);
+    }
+  } catch (err) {
+    logger.error("Error resetting failed login attempt counter", err);
   }
 }
 
