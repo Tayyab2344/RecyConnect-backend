@@ -70,10 +70,11 @@ export async function cleanupTestUsers(emails) {
 export async function createTestListing(userId, data = {}) {
     const defaultData = {
         userId,
+        category: 'PLASTIC',
         materialType: 'PLASTIC',
         estimatedWeight: 10,
         pickupAddress: 'Test Address',
-        status: 'ACTIVE',
+        status: 'PUBLISHED',
         ...data
     };
 
@@ -84,19 +85,30 @@ export async function createTestListing(userId, data = {}) {
  * Create a test order
  */
 export async function createTestOrder(buyerId, sellerId, listingId, data = {}) {
+    const { materialType, weight, pickupAddress, ...orderData } = data;
+    const quantity = weight || 10;
+    const price = orderData.totalAmount || 100;
+
     const defaultData = {
         buyerId,
         sellerId,
-        listingId,
-        materialType: 'PLASTIC',
-        weight: 10,
-        pickupAddress: 'Test Address',
         status: 'PENDING',
         paymentMethod: 'CASH',
-        ...data
+        totalAmount: price,
+        items: {
+            create: {
+                listingId,
+                quantity,
+                price
+            }
+        },
+        ...orderData
     };
 
-    return prisma.order.create({ data: defaultData });
+    return prisma.order.create({ 
+        data: defaultData,
+        include: { items: true }
+    });
 }
 
 export { request, prisma };

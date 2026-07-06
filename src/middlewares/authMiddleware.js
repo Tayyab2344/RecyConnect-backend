@@ -12,6 +12,9 @@ export async function authenticateToken(req, res, next) {
     const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET)
     const user = await prisma.user.findUnique({ where: { id: payload.userId } })
     if (!user) return sendError(res, 'Invalid token', null, 401)
+    if (user.verificationStatus === 'SUSPENDED' || user.verificationStatus === 'BLOCKED') {
+      return sendError(res, 'Account is suspended or blocked', null, 403)
+    }
     req.user = {
       id: user.id,
       role: user.role,
