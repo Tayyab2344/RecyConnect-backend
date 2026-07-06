@@ -206,9 +206,13 @@ export const createOrder = async (req, res) => {
 
         // 6. Create order with status CREATED
         const handshakeOtp = Math.floor(1000 + Math.random() * 9000).toString();
-        const resolvedDeliveryMethod = (sellerRole === "warehouse" || buyerRole === "warehouse")
-          ? "WAREHOUSE_COLLECTOR_SERVICE"
-          : (deliveryMethod || "SELF_TRANSPORTATION");
+        // Individual-to-individual orders do NOT use collector pickup and must use SELF_TRANSPORTATION.
+        const isIndividualToIndividual = sellerRole === "individual" && buyerRole === "individual";
+        const resolvedDeliveryMethod = isIndividualToIndividual
+          ? "SELF_TRANSPORTATION"
+          : (sellerRole === "warehouse" || buyerRole === "warehouse")
+            ? "WAREHOUSE_COLLECTOR_SERVICE"
+            : (deliveryMethod || "SELF_TRANSPORTATION");
 
         let order = await tx.order.create({
           data: {
