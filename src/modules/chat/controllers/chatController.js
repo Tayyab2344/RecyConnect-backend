@@ -18,6 +18,12 @@ import { createAndSendNotification } from '../../../services/notificationService
 
 const PARTICIPANT_SELECT = {
   id: true, name: true, profileImage: true, role: true, businessName: true,
+  currentLevel: true,
+  badges: {
+    select: {
+      badgeName: true,
+    },
+  },
 };
 
 /**

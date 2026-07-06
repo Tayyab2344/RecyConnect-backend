@@ -34,6 +34,27 @@ describe('Rewards & Gamification Endpoint Tests', () => {
             currentLevel: 'Beginner Recycler',
             dailyStreak: 0,
         });
+        testEmails.push(testUser.email);
+
+        const secondUser = await createTestUser({
+            name: 'Buyer Warrior',
+            role: 'individual',
+            email: 'buyer.warrior@example.com',
+            contactNo: '999999999',
+        });
+        testEmails.push(secondUser.email);
+
+        // Create an order in the last 24 hours to allow check-in
+        await prisma.order.create({
+            data: {
+                buyerId: secondUser.id,
+                sellerId: testUser.id,
+                totalAmount: 100.0,
+                status: 'PENDING',
+                deliveryMethod: 'SELF_TRANSPORTATION'
+            }
+        });
+
         await prisma.reward.create({
             data: {
                 userId: testUser.id,
@@ -42,17 +63,62 @@ describe('Rewards & Gamification Endpoint Tests', () => {
                 rewardType: 'POINTS'
             }
         });
-        testEmails.push(testUser.email);
         token = generateTestToken(testUser);
     });
 
     afterAll(async () => {
         // Clean up data
-        await prisma.reward.deleteMany({ where: { userId: testUser.id } });
-        await prisma.badge.deleteMany({ where: { userId: testUser.id } });
-        await prisma.leaderboard.deleteMany({ where: { userId: testUser.id } });
-        await prisma.notification.deleteMany({ where: { userId: testUser.id } });
-        await prisma.user.delete({ where: { id: testUser.id } });
+        await prisma.order.deleteMany({
+            where: {
+                OR: [
+                    { buyerId: testUser.id },
+                    { sellerId: testUser.id }
+                ]
+            }
+        });
+        await prisma.reward.deleteMany({
+            where: {
+                userId: {
+                    in: await prisma.user.findMany({
+                        where: { email: { in: testEmails } },
+                        select: { id: true }
+                    }).then(users => users.map(u => u.id))
+                }
+            }
+        });
+        await prisma.badge.deleteMany({
+            where: {
+                userId: {
+                    in: await prisma.user.findMany({
+                        where: { email: { in: testEmails } },
+                        select: { id: true }
+                    }).then(users => users.map(u => u.id))
+                }
+            }
+        });
+        await prisma.leaderboard.deleteMany({
+            where: {
+                userId: {
+                    in: await prisma.user.findMany({
+                        where: { email: { in: testEmails } },
+                        select: { id: true }
+                    }).then(users => users.map(u => u.id))
+                }
+            }
+        });
+        await prisma.notification.deleteMany({
+            where: {
+                userId: {
+                    in: await prisma.user.findMany({
+                        where: { email: { in: testEmails } },
+                        select: { id: true }
+                    }).then(users => users.map(u => u.id))
+                }
+            }
+        });
+        await prisma.user.deleteMany({
+            where: { email: { in: testEmails } }
+        });
     });
 
     it('should successfully fetch the user rewards status', async () => {

@@ -206,7 +206,7 @@ export const getListings = async (req, res) => {
             pickupAddress: true, images: true, city: true, area: true,
             latitude: true, longitude: true, metadata: true,
             status: true, createdAt: true, updatedAt: true,
-            user: { select: { id: true, name: true, city: true, area: true, role: true, profileImage: true, createdAt: true } },
+            user: { select: { id: true, name: true, city: true, area: true, role: true, profileImage: true, createdAt: true, currentLevel: true, ecoPoints: true, badges: { select: { badgeName: true } } } },
           },
           orderBy: { createdAt: "desc" },
           skip, take,
@@ -395,7 +395,7 @@ export const getListingById = async (req, res) => {
     const listing = await prisma.listing.findUnique({
       where: { id: parseInt(id) },
       include: {
-        user: { select: { id: true, name: true, email: true, contactNo: true, profileImage: true } },
+        user: { select: { id: true, name: true, email: true, contactNo: true, role: true, profileImage: true, currentLevel: true, ecoPoints: true, badges: { select: { badgeName: true } } } },
       },
     });
 

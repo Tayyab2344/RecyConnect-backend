@@ -55,6 +55,14 @@ export async function getProfile(req, res) {
         companyName: true,
         verificationStatus: true,
         createdAt: true,
+        ecoPoints: true,
+        currentLevel: true,
+        badges: {
+          select: {
+            badgeName: true,
+            earnedAt: true,
+          }
+        }
       },
     });
 

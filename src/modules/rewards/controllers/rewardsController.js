@@ -105,6 +105,31 @@ export async function checkIn(req, res) {
     const userId = req.user.id;
     const today = new Date();
 
+    // Check if user bought or sold something in the last 24 hours
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const ordersCount = await prisma.order.count({
+      where: {
+        createdAt: { gte: oneDayAgo },
+        OR: [
+          { buyerId: userId },
+          { sellerId: userId }
+        ]
+      }
+    });
+    const transactionsCount = await prisma.transaction.count({
+      where: {
+        createdAt: { gte: oneDayAgo },
+        OR: [
+          { buyerId: userId },
+          { sellerId: userId }
+        ]
+      }
+    });
+
+    if (ordersCount === 0 && transactionsCount === 0) {
+      return sendError(res, "You must buy or sell something in the last 24 hours to claim your daily streak!", null, 400);
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, lastLoginDate: true, dailyStreak: true }
