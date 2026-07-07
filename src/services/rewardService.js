@@ -4,6 +4,21 @@ import { createAndSendNotification } from './notificationService.js';
 import { getIO } from '../modules/chat/gateway/socketGateway.js';
 import redis, { isRedisConnected } from '../lib/redis.js';
 
+// Activity points mappings
+const ACTIVITY_POINTS = {
+  SUCCESSFUL_SALE: 10,
+  PURCHASE: 10,
+  BULK_SALE: 20,
+  BULK_PURCHASE: 20,
+  LISTING_UPLOAD: 10,
+  AI_CLASSIFICATION: 15,
+  FAST_ORDER_COMPLETION: 20,
+  REFERRAL: 100,
+  DAILY_STREAK: 5,
+  RATING: 5,
+  CHALLENGE: 50,
+};
+
 // Level thresholds
 const LEVEL_THRESHOLDS = [
   { level: "Recycling Leader", minPoints: 7000 },
@@ -100,14 +115,15 @@ export async function awardPoints({ userId, activityType, customPoints = null })
     }
 
     // 2. Determine points based on activityType
-    const allowedActivities = ['SUCCESSFUL_SALE', 'PURCHASE', 'BULK_SALE', 'BULK_PURCHASE'];
-    if (!allowedActivities.includes(activityType)) {
-      logger.info(`[REWARDS] Points skipped. User only earns points for buying or selling. Activity: ${activityType}`);
+    let points = 10;
+    if (customPoints !== null) {
+      points = customPoints;
+    } else if (ACTIVITY_POINTS[activityType] !== undefined) {
+      points = ACTIVITY_POINTS[activityType];
+    } else {
+      logger.info(`[REWARDS] Points skipped. Activity type not allowed: ${activityType}`);
       return null;
     }
-
-    // Sell or buy gets exactly 10 points
-    const points = 10;
 
     const newPoints = user.ecoPoints + points;
     const computedLevel = getLevelForPoints(newPoints);

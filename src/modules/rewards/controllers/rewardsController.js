@@ -34,6 +34,80 @@ export async function getRewardsStatus(req, res) {
       return sendError(res, "User not found", null, 404);
     }
 
+    // --- Automatic Check-in Logic ---
+    const today = new Date();
+    let checkedInToday = false;
+    if (user.lastLoginDate) {
+      const lastCheckIn = new Date(user.lastLoginDate);
+      if (lastCheckIn.toDateString() === today.toDateString()) {
+        checkedInToday = true;
+      }
+    }
+
+    if (!checkedInToday) {
+      let newStreak = 1;
+      if (user.lastLoginDate) {
+        const lastCheckIn = new Date(user.lastLoginDate);
+        const lastCheckInDate = new Date(lastCheckIn.getFullYear(), lastCheckIn.getMonth(), lastCheckIn.getDate());
+        const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        
+        const diffTime = todayDate.getTime() - lastCheckInDate.getTime();
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 1) {
+          newStreak = user.dailyStreak + 1;
+        } else if (diffDays > 1) {
+          newStreak = 1;
+        } else {
+          newStreak = user.dailyStreak;
+        }
+      }
+
+      // Update lastLoginDate and dailyStreak in the database
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          lastLoginDate: today,
+          dailyStreak: newStreak,
+        }
+      });
+
+      // Award base daily streak points (+5 Eco Points)
+      await awardPoints({
+        userId,
+        activityType: 'DAILY_STREAK',
+        customPoints: 5,
+      });
+
+      // Award milestone bonuses
+      let bonusPoints = 0;
+      if (newStreak === 3) {
+        bonusPoints = 20;
+      } else if (newStreak === 7) {
+        bonusPoints = 50;
+      } else if (newStreak === 15) {
+        bonusPoints = 120;
+      } else if (newStreak === 30) {
+        bonusPoints = 300;
+      }
+
+      if (bonusPoints > 0) {
+        await awardPoints({
+          userId,
+          activityType: 'DAILY_STREAK',
+          customPoints: bonusPoints,
+        });
+      }
+
+      // Update local variables for returned response
+      user.dailyStreak = newStreak;
+      user.lastLoginDate = today;
+      user.ecoPoints += (5 + bonusPoints);
+      
+      const newLevelInfo = getNextLevelInfo(user.ecoPoints);
+      user.currentLevel = newLevelInfo.currentLevel;
+    }
+
     // --- Dynamic Trust Score Calculation ---
     const [
       completedOrders,
@@ -104,31 +178,6 @@ export async function checkIn(req, res) {
   try {
     const userId = req.user.id;
     const today = new Date();
-
-    // Check if user bought or sold something in the last 24 hours
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const ordersCount = await prisma.order.count({
-      where: {
-        createdAt: { gte: oneDayAgo },
-        OR: [
-          { buyerId: userId },
-          { sellerId: userId }
-        ]
-      }
-    });
-    const transactionsCount = await prisma.transaction.count({
-      where: {
-        createdAt: { gte: oneDayAgo },
-        OR: [
-          { buyerId: userId },
-          { sellerId: userId }
-        ]
-      }
-    });
-
-    if (ordersCount === 0 && transactionsCount === 0) {
-      return sendError(res, "You must buy or sell something in the last 24 hours to claim your daily streak!", null, 400);
-    }
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -285,18 +334,13 @@ export async function getLeaderboard(req, res) {
       }
     });
 
-    // 3. Map weekly points and sort desc
+    // 3. Sort by total ecoPoints desc
     const mapped = users.map(u => ({
       ...u,
       weeklyPoints: weeklyPointsMap.get(u.id) || 0
     }));
 
-    mapped.sort((a, b) => {
-      if (b.weeklyPoints !== a.weeklyPoints) {
-        return b.weeklyPoints - a.weeklyPoints;
-      }
-      return b.ecoPoints - a.ecoPoints; // tie breaker
-    });
+    mapped.sort((a, b) => b.ecoPoints - a.ecoPoints);
 
     const top20 = mapped.slice(0, 20);
 
@@ -330,7 +374,7 @@ export async function getLeaderboard(req, res) {
         profileImage: u.profileImage,
         city: u.city,
         area: u.area,
-        ecoPoints: u.weeklyPoints, // Show weekly points on leaderboard
+        ecoPoints: u.ecoPoints, // Show total ecoPoints as primary points on leaderboard
         totalEcoPoints: u.ecoPoints,
         currentLevel: u.currentLevel,
         completedTransactions,
