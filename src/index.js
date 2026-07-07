@@ -56,10 +56,8 @@ import dispatchRoutes from "./modules/warehouse/routes/dispatchRoutes.js";
 dotenv.config({ quiet: true });
 const app = express();
 
-// Enable trust proxy only in production to handle X-Forwarded-For headers
-if (process.env.NODE_ENV === "production") {
-    app.set("trust proxy", 1);
-}
+// Enable trust proxy to handle X-Forwarded-For headers (behind reverse proxies/tunnels)
+app.set("trust proxy", true);
 
 const httpServer = createServer(app);
 const PORT = process.env.PORT || 5000;
