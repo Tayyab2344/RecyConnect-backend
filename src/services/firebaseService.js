@@ -110,12 +110,17 @@ export async function sendPushNotification({ token, title, body, data = {} }) {
     const messageId = await firebaseAdmin.messaging().send({
       token,
       notification: { title, body },
-      data,
+      data: {
+        ...data,
+        title: title || '',
+        message: body || '',
+      },
       android: {
         priority: "high",
         notification: {
           channelId: "orders",
           sound: "default",
+          priority: "high",
         },
       },
       apns: {
@@ -126,6 +131,7 @@ export async function sendPushNotification({ token, title, body, data = {} }) {
           aps: {
             sound: "default",
             badge: 1,
+            "content-available": 1,
           },
         },
       },
