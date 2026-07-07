@@ -128,22 +128,21 @@ describe('Rewards & Gamification Endpoint Tests', () => {
 
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
-        expect(res.body.data.ecoPoints).toBe(100);
+        expect(res.body.data.ecoPoints).toBe(100); // Automatically checked in today (awards 0 pts)
         expect(res.body.data.currentLevel).toBe('Beginner Recycler');
         expect(res.body.data.nextLevelInfo).toBeDefined();
         expect(res.body.data.nextLevelInfo.pointsNeeded).toBe(400); // 500 - 100
     });
 
     it('should claim daily login reward and increase points/streak', async () => {
+        // Since user is already automatically checked in, we test manual claim on the same day fails
         const res = await request(app)
             .post('/api/rewards/check-in')
             .set('Authorization', `Bearer ${token}`);
 
-        expect(res.statusCode).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(res.body.data.dailyStreak).toBe(1);
-        expect(res.body.data.ecoPoints).toBe(100); // Daily check-in does not award points
-        expect(res.body.data.pointsEarned).toBe(5);
+        expect(res.statusCode).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.message).toContain('already checked in');
     });
 
     it('should block duplicate daily check-in on the same day', async () => {

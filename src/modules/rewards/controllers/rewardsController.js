@@ -63,7 +63,7 @@ export async function getRewardsStatus(req, res) {
         }
       }
 
-      // Update lastLoginDate and dailyStreak in the database
+      // Update lastLoginDate and dailyStreak in the database (no points awarded)
       await prisma.user.update({
         where: { id: userId },
         data: {
@@ -72,40 +72,9 @@ export async function getRewardsStatus(req, res) {
         }
       });
 
-      // Award base daily streak points (+5 Eco Points)
-      await awardPoints({
-        userId,
-        activityType: 'DAILY_STREAK',
-        customPoints: 5,
-      });
-
-      // Award milestone bonuses
-      let bonusPoints = 0;
-      if (newStreak === 3) {
-        bonusPoints = 20;
-      } else if (newStreak === 7) {
-        bonusPoints = 50;
-      } else if (newStreak === 15) {
-        bonusPoints = 120;
-      } else if (newStreak === 30) {
-        bonusPoints = 300;
-      }
-
-      if (bonusPoints > 0) {
-        await awardPoints({
-          userId,
-          activityType: 'DAILY_STREAK',
-          customPoints: bonusPoints,
-        });
-      }
-
       // Update local variables for returned response
       user.dailyStreak = newStreak;
       user.lastLoginDate = today;
-      user.ecoPoints += (5 + bonusPoints);
-      
-      const newLevelInfo = getNextLevelInfo(user.ecoPoints);
-      user.currentLevel = newLevelInfo.currentLevel;
     }
 
     // --- Dynamic Trust Score Calculation ---
@@ -215,7 +184,7 @@ export async function checkIn(req, res) {
       }
     }
 
-    // 1. Award base check-in points (+5 points)
+    // 1. Update streak
     await prisma.user.update({
       where: { id: userId },
       data: {
@@ -224,34 +193,7 @@ export async function checkIn(req, res) {
       }
     });
 
-    await awardPoints({
-      userId,
-      activityType: 'DAILY_STREAK',
-      customPoints: 5,
-    });
-
-    // 2. Check and award milestone bonuses
-    let bonusPoints = 0;
-    let message = "Successfully checked in! You earned +5 Eco Points.";
-
-    if (newStreak === 3) {
-      bonusPoints = 20;
-    } else if (newStreak === 7) {
-      bonusPoints = 50;
-    } else if (newStreak === 15) {
-      bonusPoints = 120;
-    } else if (newStreak === 30) {
-      bonusPoints = 300;
-    }
-
-    if (bonusPoints > 0) {
-      await awardPoints({
-        userId,
-        activityType: 'DAILY_STREAK',
-        customPoints: bonusPoints,
-      });
-      message = `Amazing! You hit a ${newStreak}-day streak and earned a bonus of +${bonusPoints} points!`;
-    }
+    let message = "Successfully checked in!";
 
     // Fetch updated user data to return
     const updatedUser = await prisma.user.findUnique({
@@ -269,7 +211,7 @@ export async function checkIn(req, res) {
       lastLoginDate: updatedUser.lastLoginDate,
       ecoPoints: updatedUser.ecoPoints,
       currentLevel: updatedUser.currentLevel,
-      pointsEarned: 5 + bonusPoints,
+      pointsEarned: 0,
     });
   } catch (error) {
     logger.error(`[REWARDS_CTRL] Daily check-in failed: ${error.message}`);
