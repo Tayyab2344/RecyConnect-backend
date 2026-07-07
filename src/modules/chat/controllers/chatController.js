@@ -378,10 +378,24 @@ export async function getOrderChats(req, res) {
     const userId = req.user.id;
     const { orderId } = req.params;
 
+    // Fetch trip tasks related to this order to check for warehouse-collector chats
+    const tasks = await prisma.collectorTask.findMany({
+      where: { orderId: parseInt(orderId) },
+      select: { tripId: true }
+    });
+    const tripIds = tasks.map(t => t.tripId).filter(Boolean);
+
     const conversations = await prisma.conversation.findMany({
       where: {
-        orderId: parseInt(orderId),
-        OR: [{ participant1Id: userId }, { participant2Id: userId }],
+        OR: [
+          { orderId: parseInt(orderId) },
+          { tripId: { in: tripIds } }
+        ],
+        AND: [
+          {
+            OR: [{ participant1Id: userId }, { participant2Id: userId }]
+          }
+        ]
       },
       include: {
         participant1: { select: PARTICIPANT_SELECT },

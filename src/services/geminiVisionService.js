@@ -51,7 +51,7 @@ export async function classifyWithGemini(imageUrl, imageBase64 = null) {
         "Analyze this image and classify the recyclable material shown."
       ],
       config: {
-        systemInstruction: "You are a precise computer vision system for RecyConnect, a waste management platform. Analyze the uploaded image. We only support 4 recyclable waste categories: plastic, paper, metal, and ewaste (electronic waste). If the image shows any other item (like furniture, cushions, food, clothing, animals, humans, scenery, or any fake/unsupported picture), set isValidRecyclable to false and provide a validationMessage. Otherwise, set isValidRecyclable to true, determine the materialType, category, generate a user-friendly title and description for the listing. Do not apologize, do not write prose, and only return the structured JSON data requested.",
+        systemInstruction: "You are a precise computer vision system for RecyConnect, a waste management platform. Analyze the uploaded image. We only support 4 recyclable waste categories: plastic, paper, metal, and ewaste (electronic waste). If the image shows any other item (like furniture, cushions, food, clothing, animals, humans, scenery, or any fake/unsupported picture), set isValidRecyclable to false and provide a validationMessage. Otherwise, set isValidRecyclable to true, determine the materialType and category. Do not apologize, do not write prose, and only return the structured JSON data requested.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -72,14 +72,6 @@ export async function classifyWithGemini(imageUrl, imageBase64 = null) {
               type: Type.STRING, 
               description: "The specific sub-category of the item if valid (e.g., PET bottle, cardboard box, copper wire, laptop). If invalid, return 'unsupported'." 
             },
-            title: {
-              type: Type.STRING,
-              description: "A recommended short title for a listing if valid (e.g., 'PET Plastic Bottles', 'Old Laptop', 'Used Cardboard Boxes'). If invalid, return 'Unsupported Item'."
-            },
-            description: {
-              type: Type.STRING,
-              description: "A recommended description for the listing if valid (e.g., 'Clean PET plastic water bottles ready for recycling. Approx weight is specified.'). If invalid, return 'This item is not supported by RecyConnect.'"
-            },
             condition: { 
               type: Type.STRING, 
               description: "The visual condition of the material. Must be one of: good, fair, poor, contaminated." 
@@ -93,7 +85,7 @@ export async function classifyWithGemini(imageUrl, imageBase64 = null) {
               description: "Whether the material is recyclable." 
             }
           },
-          required: ["isValidRecyclable", "validationMessage", "materialType", "category", "title", "description", "condition", "confidence", "isRecyclable"],
+          required: ["isValidRecyclable", "validationMessage", "materialType", "category", "condition", "confidence", "isRecyclable"],
         },
       }
     });
@@ -185,8 +177,6 @@ function validateResult(parsed) {
     validationMessage: parsed.validationMessage || '',
     materialType: validMaterials.includes(mat) ? mat : 'unsupported',
     category: parsed.category || 'unsupported',
-    title: parsed.title || 'Unsupported Item',
-    description: parsed.description || 'This item is not supported by RecyConnect.',
     condition: parsed.condition || 'fair',
     confidence: typeof parsed.confidence === 'number'
       ? Math.min(1, Math.max(0, parsed.confidence))

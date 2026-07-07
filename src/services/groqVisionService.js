@@ -16,8 +16,6 @@ You MUST respond with ONLY a valid JSON object (no markdown, no code fences, no 
   "validationMessage": "If isValidRecyclable is false, explain why (e.g. 'Cushion is not a supported recyclable material. RecyConnect only accepts plastic, paper, metal, and e-waste.'). Otherwise empty string.",
   "materialType": "one of: plastic, paper, metal, ewaste (or 'unsupported' if invalid)",
   "category": "specific sub-category if valid, or 'unsupported' if invalid",
-  "title": "a recommended user-friendly listing title if valid, or 'Unsupported Item' if invalid",
-  "description": "a recommended user-friendly description if valid, or 'This item is not supported' if invalid",
   "condition": "one of: good, fair, poor, contaminated",
   "confidence": 0.0 to 1.0,
   "isRecyclable": true or false
@@ -181,8 +179,6 @@ function validateClassificationResult(parsed) {
     validationMessage: parsed.validationMessage || '',
     materialType: validMaterials.includes(mat) ? mat : 'unsupported',
     category: parsed.category || 'unsupported',
-    title: parsed.title || 'Unsupported Item',
-    description: parsed.description || 'This item is not supported by RecyConnect.',
     condition: parsed.condition || 'fair',
     confidence: typeof parsed.confidence === 'number'
       ? Math.min(1, Math.max(0, parsed.confidence))

@@ -1,5 +1,5 @@
 import express from "express";
-import { addCollector, getCollectors } from "../controllers/warehouseController.js";
+import { addCollector, getCollectors, updateCollector, deleteCollector } from "../controllers/warehouseController.js";
 import {
     assignCollectorTask,
     getCollectorOperationsSummary,
@@ -143,6 +143,24 @@ router.post(
     authenticateToken,
     permit("warehouse"),
     resetCollectorPassword
+);
+
+router.put(
+    "/collectors/:id",
+    authenticateToken,
+    permit("warehouse"),
+    upload.fields([
+        { name: "profileImage", maxCount: 1 },
+        { name: "cnic", maxCount: 1 }
+    ]),
+    updateCollector
+);
+
+router.delete(
+    "/collectors/:id",
+    authenticateToken,
+    permit("warehouse"),
+    deleteCollector
 );
 
 export default router;

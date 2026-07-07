@@ -132,3 +132,130 @@ export async function getCollectors(req, res) {
     sendError(res, 'Failed to fetch collectors', err);
   }
 }
+
+export async function updateCollector(req, res) {
+  try {
+    const warehouseId = req.user.id;
+    const { id } = req.params;
+    const { name, address, contactNo } = req.body;
+
+    // 1. Find user first to verify ownership and existence
+    const collector = await prisma.user.findFirst({
+      where: {
+        id: parseInt(id),
+        role: UserRole.COLLECTOR,
+        createdById: warehouseId,
+        deletedAt: null
+      }
+    });
+
+    if (!collector) {
+      return sendError(res, "Collector not found or access denied", null, 404);
+    }
+
+    // 2. Handle File Uploads
+    let profileImageUrl = collector.profileImage;
+    const documentsData = [];
+
+    if (req.files) {
+      if (req.files.profileImage?.[0]) {
+        const file = req.files.profileImage[0];
+        const uploaded = await uploadToCloudinary(file, `recyconnect/profile/collector_${Date.now()}`);
+        profileImageUrl = uploaded.secure_url;
+      }
+
+      if (req.files.cnic?.[0]) {
+        const file = req.files.cnic[0];
+        const uploaded = await uploadEncryptedToCloudinary(file, `recyconnect/docs/collector_${Date.now()}`);
+        documentsData.push(encryptedDocumentData("CNIC", file, uploaded));
+      }
+    }
+
+    // 3. Update User
+    const updated = await prisma.user.update({
+      where: { id: parseInt(id) },
+      data: {
+        name: name || undefined,
+        address: address || undefined,
+        contactNo: contactNo || undefined,
+        profileImage: profileImageUrl,
+        documents: documentsData.length > 0 ? {
+          create: documentsData
+        } : undefined
+      }
+    });
+
+    await logActivity({
+      userId: warehouseId,
+      role: UserRole.WAREHOUSE,
+      action: 'COLLECTOR_UPDATED',
+      resourceType: 'collector',
+      resourceId: collector.collectorId,
+      meta: { name: updated.name },
+      req
+    });
+
+    sendSuccess(res, 'Collector updated successfully', {
+      id: updated.id,
+      collectorId: updated.collectorId,
+      name: updated.name,
+      address: updated.address,
+      contactNo: updated.contactNo,
+      profileImage: updated.profileImage
+    });
+  } catch (err) {
+    sendError(res, 'Failed to update collector', err);
+  }
+}
+
+export async function deleteCollector(req, res) {
+  try {
+    const warehouseId = req.user.id;
+    const { id } = req.params;
+
+    // 1. Find user first to verify ownership and existence
+    const collector = await prisma.user.findFirst({
+      where: {
+        id: parseInt(id),
+        role: UserRole.COLLECTOR,
+        createdById: warehouseId,
+        deletedAt: null
+      }
+    });
+
+    if (!collector) {
+      return sendError(res, "Collector not found or access denied", null, 404);
+    }
+
+    // 2. Perform soft delete
+    await prisma.user.update({
+      where: { id: parseInt(id) },
+      data: {
+        deletedAt: new Date()
+      }
+    });
+
+    // Also update collector availability status in the profile to OFFLINE
+    await prisma.collectorProfile.updateMany({
+      where: { userId: parseInt(id) },
+      data: {
+        availabilityStatus: 'OFFLINE'
+      }
+    });
+
+    await logActivity({
+      userId: warehouseId,
+      role: UserRole.WAREHOUSE,
+      action: 'COLLECTOR_DELETED',
+      resourceType: 'collector',
+      resourceId: collector.collectorId,
+      meta: { name: collector.name },
+      req
+    });
+
+    sendSuccess(res, 'Collector deleted successfully', null);
+  } catch (err) {
+    sendError(res, 'Failed to delete collector', err);
+  }
+}
+

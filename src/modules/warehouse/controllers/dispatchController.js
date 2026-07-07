@@ -679,7 +679,7 @@ export async function assignOrdersToCollector(req, res) {
             participant1Id: task.counterpartId,
             participant2Id: collectorUserId,
             status: "ACTIVE",
-            type: "BUYER_SELLER"
+            type: "BUYER_COLLECTOR"
           }
         });
       }

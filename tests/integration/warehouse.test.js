@@ -59,7 +59,13 @@ describe('Warehouse Controller', () => {
     });
 
     afterAll(async () => {
-        // Cleanup collectors first (they reference the warehouse)
+        // Cleanup collector profiles first (they reference the user)
+        await prisma.collectorProfile.deleteMany({
+            where: {
+                warehouseId: warehouseUser.id
+            }
+        });
+        // Cleanup collectors
         await prisma.user.deleteMany({
             where: {
                 createdById: warehouseUser.id,
@@ -155,6 +161,72 @@ describe('Warehouse Controller', () => {
                 .set('Authorization', `Bearer ${warehouseToken}`);
 
             expect([200, 401, 404]).toContain(res.status); // 404 if route doesn't exist
+        });
+    });
+
+    describe('PUT /api/warehouse/collectors/:id & DELETE /api/warehouse/collectors/:id', () => {
+        let testCollectorId;
+
+        beforeAll(async () => {
+            // Create a test collector directly in DB to test updates/deletes
+            const uniqueId = `COL-CRUD-${Date.now()}`;
+            const collector = await prisma.user.create({
+                data: {
+                    collectorId: uniqueId,
+                    role: 'collector',
+                    name: 'CRUD Collector',
+                    contactNo: '03123456789',
+                    address: 'Original Address',
+                    emailVerified: true,
+                    createdById: warehouseUser.id,
+                    assignedWarehouseId: warehouseUser.id,
+                    verificationStatus: 'VERIFIED',
+                    collectorProfile: {
+                        create: {
+                            warehouseId: warehouseUser.id,
+                            employeeId: uniqueId
+                        }
+                    }
+                }
+            });
+            testCollectorId = collector.id;
+        });
+
+        it('should fail to update without authorization', async () => {
+            const res = await request(app)
+                .put(`/api/warehouse/collectors/${testCollectorId}`)
+                .send({ name: 'Unauthorized Edit' });
+            expect([401, 403]).toContain(res.status);
+        });
+
+        it('should update collector successfully', async () => {
+            const res = await request(app)
+                .put(`/api/warehouse/collectors/${testCollectorId}`)
+                .set('Authorization', `Bearer ${warehouseToken}`)
+                .send({
+                    name: 'Updated Collector Name',
+                    address: 'Updated Address',
+                    contactNo: '03999999999'
+                });
+            expect(res.status).toBe(200);
+            expect(res.body.success).toBe(true);
+            expect(res.body.data.name).toBe('Updated Collector Name');
+        });
+
+        it('should delete collector successfully', async () => {
+            const res = await request(app)
+                .delete(`/api/warehouse/collectors/${testCollectorId}`)
+                .set('Authorization', `Bearer ${warehouseToken}`);
+            expect(res.status).toBe(200);
+            expect(res.body.success).toBe(true);
+
+            // Verify they no longer show in active collectors list
+            const listRes = await request(app)
+                .get('/api/warehouse/collectors')
+                .set('Authorization', `Bearer ${warehouseToken}`);
+            expect(listRes.status).toBe(200);
+            const found = listRes.body.data.some(c => c.id === testCollectorId);
+            expect(found).toBe(false);
         });
     });
 });
