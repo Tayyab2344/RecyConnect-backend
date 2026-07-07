@@ -222,7 +222,7 @@ describe('Payment Controller - Stripe Integration', () => {
                 .send({ orderId: pendingOrder.id });
 
             expect(res.status).toBe(400);
-            expect(res.body.message).toContain('Order status must be CREATED or CONFIRMED');
+            expect(res.body.message).toContain('Order status must be CREATED, CONFIRMED, WAITING_FOR_DISPATCH, or WAREHOUSE_ASSIGNED');
 
             // Cleanup
             await prisma.orderItem.deleteMany({ where: { orderId: pendingOrder.id } });

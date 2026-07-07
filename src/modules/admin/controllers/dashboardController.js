@@ -196,10 +196,10 @@ export async function getAdminOrders(req, res) {
       orderBy: { createdAt: "desc" },
       include: {
         buyer: {
-          select: { id: true, name: true, email: true, role: true, city: true, area: true },
+          select: { id: true, name: true, email: true, role: true, city: true, area: true, businessName: true, companyName: true },
         },
         seller: {
-          select: { id: true, name: true, email: true, role: true, city: true, area: true },
+          select: { id: true, name: true, email: true, role: true, city: true, area: true, businessName: true, companyName: true },
         },
         payment: true,
         items: {
@@ -247,8 +247,8 @@ export async function getAdminPayments(req, res) {
       include: {
         order: {
           include: {
-            buyer: { select: { id: true, name: true, email: true, role: true } },
-            seller: { select: { id: true, name: true, email: true, role: true } },
+            buyer: { select: { id: true, name: true, email: true, role: true, businessName: true, companyName: true } },
+            seller: { select: { id: true, name: true, email: true, role: true, businessName: true, companyName: true } },
           },
         },
       },
@@ -287,7 +287,10 @@ export async function getAdminListings(req, res) {
       orderBy: { createdAt: "desc" },
       include: {
         user: {
-          select: { id: true, name: true, email: true, role: true, verificationStatus: true },
+          select: { id: true, name: true, email: true, role: true, verificationStatus: true, businessName: true, companyName: true },
+        },
+        orderItems: {
+          select: { quantity: true },
         },
       },
     });

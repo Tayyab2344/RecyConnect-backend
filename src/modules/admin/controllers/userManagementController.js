@@ -174,7 +174,7 @@ export async function getActiveSessions(req, res) {
       where: { revoked: false, expiresAt: { gte: new Date() } },
       include: {
         user: {
-          select: { id: true, name: true, email: true, role: true }
+          select: { id: true, name: true, email: true, role: true, businessName: true, companyName: true }
         }
       },
       orderBy: { createdAt: "desc" }
@@ -197,7 +197,7 @@ export async function getActiveSessions(req, res) {
       return {
         id: session.id,
         userId: session.userId,
-        userName: session.user?.name || "System/Admin",
+        userName: session.user?.name || session.user?.businessName || session.user?.companyName || "System/Admin",
         userEmail: session.user?.email || "—",
         userRole: session.user?.role || "—",
         createdAt: session.createdAt,
