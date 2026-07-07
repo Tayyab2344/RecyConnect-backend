@@ -66,9 +66,15 @@ export const createPaymentIntent = async (req, res) => {
                 throw new Error('Only the buyer can initiate payment');
             }
 
-            // 3. Validate order status is CREATED or CONFIRMED
-            if (order.status !== OrderStatus.CREATED && order.status !== OrderStatus.CONFIRMED) {
-                throw new Error(`Cannot create payment. Order status must be CREATED or CONFIRMED. Current status: ${order.status}`);
+            // 3. Validate order status is CREATED, CONFIRMED, WAITING_FOR_DISPATCH, or WAREHOUSE_ASSIGNED
+            const allowedPaymentStatuses = [
+                OrderStatus.CREATED,
+                OrderStatus.CONFIRMED,
+                OrderStatus.WAITING_FOR_DISPATCH,
+                OrderStatus.WAREHOUSE_ASSIGNED
+            ];
+            if (!allowedPaymentStatuses.includes(order.status)) {
+                throw new Error(`Cannot create payment. Order status must be CREATED, CONFIRMED, WAITING_FOR_DISPATCH, or WAREHOUSE_ASSIGNED. Current status: ${order.status}`);
             }
 
             // 4. Check if payment already exists
@@ -169,9 +175,15 @@ export const createCodPayment = async (req, res) => {
                 throw new Error('Only the buyer can initiate payment');
             }
 
-            // 3. Validate order status is CREATED or CONFIRMED
-            if (order.status !== OrderStatus.CREATED && order.status !== OrderStatus.CONFIRMED) {
-                throw new Error(`Cannot create payment. Order status must be CREATED or CONFIRMED. Current: ${order.status}`);
+            // 3. Validate order status is CREATED, CONFIRMED, WAITING_FOR_DISPATCH, or WAREHOUSE_ASSIGNED
+            const allowedPaymentStatuses = [
+                OrderStatus.CREATED,
+                OrderStatus.CONFIRMED,
+                OrderStatus.WAITING_FOR_DISPATCH,
+                OrderStatus.WAREHOUSE_ASSIGNED
+            ];
+            if (!allowedPaymentStatuses.includes(order.status)) {
+                throw new Error(`Cannot create payment. Order status must be CREATED, CONFIRMED, WAITING_FOR_DISPATCH, or WAREHOUSE_ASSIGNED. Current: ${order.status}`);
             }
 
             // 4. Check if payment already exists

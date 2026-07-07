@@ -489,13 +489,16 @@ export const cancelOrder = async (req, res) => {
           throw new Error("You do not have permission to cancel this order");
         }
 
-        // 3. Validate order can be cancelled (CREATED or CONFIRMED only)
-        if (
-          order.status !== OrderStatus.CREATED &&
-          order.status !== OrderStatus.CONFIRMED
-        ) {
+        // 3. Validate order can be cancelled
+        const allowedCancelStatuses = [
+          OrderStatus.CREATED,
+          OrderStatus.CONFIRMED,
+          OrderStatus.WAITING_FOR_DISPATCH,
+          OrderStatus.WAREHOUSE_ASSIGNED
+        ];
+        if (!allowedCancelStatuses.includes(order.status)) {
           throw new Error(
-            `Cannot cancel order. Current status: ${order.status}. Only CREATED or CONFIRMED orders can be cancelled.`,
+            `Cannot cancel order. Current status: ${order.status}. Only CREATED, CONFIRMED, WAITING_FOR_DISPATCH, or WAREHOUSE_ASSIGNED orders can be cancelled.`,
           );
         }
 
