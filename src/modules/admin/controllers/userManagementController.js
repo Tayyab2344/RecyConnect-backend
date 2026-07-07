@@ -182,17 +182,38 @@ export async function getActiveSessions(req, res) {
 
     // Fetch corresponding login activities to map metadata
     const logs = await prisma.activityLog.findMany({
-      where: { action: "LOGIN_SUCCESS" },
+      where: { action: "LOGIN" },
       orderBy: { createdAt: "desc" },
       take: 200
     });
 
     const sessionsWithDevice = sessions.map(session => {
-      // Find matching activity log within close time range (e.g. 10s)
+      // Find matching activity log within close time range (e.g. 60s)
       const match = logs.find(log => 
         log.userId === session.userId && 
-        Math.abs(new Date(log.createdAt) - new Date(session.createdAt)) < 15000
+        Math.abs(new Date(log.createdAt) - new Date(session.createdAt)) < 60000
       );
+
+      const userAgentStr = match?.userAgent || "unknown";
+      let device = "Other / API";
+      if (userAgentStr !== "unknown") {
+        const ua = userAgentStr.toLowerCase();
+        if (ua.includes("dart") || ua.includes("flutter")) {
+          device = "Mobile App (Flutter)";
+        } else if (ua.includes("chrome")) {
+          device = "Chrome Browser";
+        } else if (ua.includes("firefox")) {
+          device = "Firefox Browser";
+        } else if (ua.includes("safari")) {
+          device = "Safari Browser";
+        } else if (ua.includes("edge")) {
+          device = "Edge Browser";
+        } else if (ua.includes("postman")) {
+          device = "Postman Client";
+        } else {
+          device = "Web Browser";
+        }
+      }
 
       return {
         id: session.id,
@@ -202,9 +223,9 @@ export async function getActiveSessions(req, res) {
         userRole: session.user?.role || "—",
         createdAt: session.createdAt,
         expiresAt: session.expiresAt,
-        device: match?.meta?.device || "Other / API",
+        device: device,
         ip: match?.ip || "unknown",
-        userAgent: match?.userAgent || "unknown"
+        userAgent: userAgentStr
       };
     });
 
