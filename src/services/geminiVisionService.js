@@ -126,7 +126,10 @@ async function fetchImageAsBase64(url) {
     });
     clearTimeout(timeout);
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      logger.error(`fetchImageAsBase64: response is not ok: ${response.status} ${response.statusText} for URL: ${url}`);
+      return null;
+    }
 
     const buffer = await response.arrayBuffer();
     return Buffer.from(buffer).toString('base64');
