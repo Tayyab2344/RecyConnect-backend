@@ -118,7 +118,12 @@ async function fetchImageAsBase64(url) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
 
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      signal: controller.signal
+    });
     clearTimeout(timeout);
 
     if (!response.ok) return null;
